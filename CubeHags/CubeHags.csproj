@@ -1,0 +1,338 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Project ToolsVersion="4.0" DefaultTargets="Build" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <PropertyGroup>
+    <Configuration Condition=" '$(Configuration)' == '' ">Debug</Configuration>
+    <Platform Condition=" '$(Platform)' == '' ">AnyCPU</Platform>
+    <ProductVersion>9.0.21022</ProductVersion>
+    <SchemaVersion>2.0</SchemaVersion>
+    <ProjectGuid>{DA7C07F6-2655-41AF-B966-E87E3AF46C7C}</ProjectGuid>
+    <OutputType>WinExe</OutputType>
+    <AppDesignerFolder>Properties</AppDesignerFolder>
+    <RootNamespace>CubeHags</RootNamespace>
+    <AssemblyName>CubeHags</AssemblyName>
+    <TargetFrameworkVersion>v4.0</TargetFrameworkVersion>
+    <FileAlignment>512</FileAlignment>
+    <IsWebBootstrapper>false</IsWebBootstrapper>
+    <StartupObject>CubeHags.Program</StartupObject>
+    <FileUpgradeFlags>
+    </FileUpgradeFlags>
+    <UpgradeBackupLocation>
+    </UpgradeBackupLocation>
+    <OldToolsVersion>3.5</OldToolsVersion>
+    <TargetFrameworkProfile />
+    <PublishUrl>publish\</PublishUrl>
+    <Install>true</Install>
+    <InstallFrom>Disk</InstallFrom>
+    <UpdateEnabled>false</UpdateEnabled>
+    <UpdateMode>Foreground</UpdateMode>
+    <UpdateInterval>7</UpdateInterval>
+    <UpdateIntervalUnits>Days</UpdateIntervalUnits>
+    <UpdatePeriodically>false</UpdatePeriodically>
+    <UpdateRequired>false</UpdateRequired>
+    <MapFileExtensions>true</MapFileExtensions>
+    <ApplicationRevision>0</ApplicationRevision>
+    <ApplicationVersion>1.0.0.%2a</ApplicationVersion>
+    <UseApplicationTrust>false</UseApplicationTrust>
+    <BootstrapperEnabled>true</BootstrapperEnabled>
+  </PropertyGroup>
+  <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Debug|AnyCPU' ">
+    <DebugSymbols>true</DebugSymbols>
+    <DebugType>full</DebugType>
+    <Optimize>false</Optimize>
+    <OutputPath>bin\Debug\</OutputPath>
+    <DefineConstants>DEBUG;TRACE</DefineConstants>
+    <ErrorReport>prompt</ErrorReport>
+    <WarningLevel>4</WarningLevel>
+    <PlatformTarget>x86</PlatformTarget>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <CodeAnalysisRuleSet>AllRules.ruleset</CodeAnalysisRuleSet>
+  </PropertyGroup>
+  <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Release|AnyCPU' ">
+    <DebugType>pdbonly</DebugType>
+    <Optimize>true</Optimize>
+    <OutputPath>bin\Release\</OutputPath>
+    <DefineConstants>TRACE</DefineConstants>
+    <ErrorReport>prompt</ErrorReport>
+    <WarningLevel>4</WarningLevel>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <PlatformTarget>x86</PlatformTarget>
+    <CodeAnalysisRuleSet>AllRules.ruleset</CodeAnalysisRuleSet>
+  </PropertyGroup>
+  <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'PerfHudDebug|AnyCPU' ">
+    <DebugSymbols>true</DebugSymbols>
+    <OutputPath>bin\PerfHudDebug\</OutputPath>
+    <DefineConstants>DEBUG;TRACE</DefineConstants>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <DebugType>full</DebugType>
+    <PlatformTarget>x86</PlatformTarget>
+    <ErrorReport>prompt</ErrorReport>
+    <CodeAnalysisRuleSet>AllRules.ruleset</CodeAnalysisRuleSet>
+  </PropertyGroup>
+  <ItemGroup>
+    <Reference Include="Ionic.Zip.Reduced, Version=1.8.4.26, Culture=neutral, PublicKeyToken=edbe51ad942a3f5c, processorArchitecture=MSIL" />
+    <Reference Include="Lidgren.Network, Version=1.0.0.0, Culture=neutral, processorArchitecture=MSIL">
+      <SpecificVersion>False</SpecificVersion>
+      <HintPath>.\Lidgren.Network.dll</HintPath>
+    </Reference>
+    <Reference Include="SlimDX, Version=2.0.9.42, Culture=neutral, PublicKeyToken=b1b0c32fd1ffe4f9, processorArchitecture=AMD64">
+      <SpecificVersion>False</SpecificVersion>
+      <HintPath>..\..\..\..\..\Program Files (x86)\SlimDX SDK (February 2010)\Bin\x86\SlimDX.dll</HintPath>
+    </Reference>
+    <Reference Include="System" />
+    <Reference Include="System.Core">
+      <RequiredTargetFramework>3.5</RequiredTargetFramework>
+    </Reference>
+    <Reference Include="System.Drawing" />
+    <Reference Include="System.Windows.Forms" />
+    <Reference Include="System.XML" />
+  </ItemGroup>
+  <ItemGroup>
+    <Compile Include="client\cgame\CGame.cs" />
+    <Compile Include="client\cgame\CGameEnts.cs" />
+    <Compile Include="client\cgame\CGamePlayerState.cs" />
+    <Compile Include="client\cgame\CGamePredict.cs" />
+    <Compile Include="client\cgame\CGameServerCmds.cs" />
+    <Compile Include="client\cgame\CGameSnapshot.cs" />
+    <Compile Include="client\Client.cs" />
+    <Compile Include="client\ClientGame.cs" />
+    <Compile Include="client\ClientNetChan.cs" />
+    <Compile Include="client\ClientParse.cs" />
+    <Compile Include="client\ClientScreen.cs" />
+    <Compile Include="client\ClientStructs.cs" />
+    <Compile Include="client\gui\ConnectGUI.cs" />
+    <Compile Include="client\gui\Controls\Scrollbar.cs" />
+    <Compile Include="client\gui\Misc\ScrollbarStyle.cs" />
+    <Compile Include="common\Commands.cs" />
+    <Compile Include="common\CommonTrace.cs" />
+    <Compile Include="common\CVars.cs" />
+    <Compile Include="common\FCDictionary.cs" />
+    <Compile Include="common\FCFile.cs" />
+    <Compile Include="common\FileCache.cs" />
+    <Compile Include="client\gfx\HagsAtlas.cs" />
+    <Compile Include="client\gfx\HagsTexture.cs" />
+    <Compile Include="client\gfx\MegaTexture.cs" />
+    <Compile Include="client\gfx\TextureManager.cs" />
+    <Compile Include="common\Info.cs" />
+    <Compile Include="common\Move.cs" />
+    <Compile Include="common\NetChan.cs" />
+    <Compile Include="common\TextureNode.cs" />
+    <Compile Include="client\gui\Controls\Button.cs" />
+    <Compile Include="client\gui\Controls\Container.cs" />
+    <Compile Include="client\gui\Controls\TextBox.cs" />
+    <Compile Include="client\gui\InfoUI.cs" />
+    <Compile Include="client\gui\MainRibbon.cs" />
+    <Compile Include="client\gui\Misc\Dimension.cs" />
+    <Compile Include="client\gui\Misc\FlowLayout.cs" />
+    <Compile Include="client\gui\FPSCounter.cs" />
+    <Compile Include="client\gui\Controls\Label.cs" />
+    <Compile Include="client\gui\Misc\LayoutBox.cs" />
+    <Compile Include="client\gui\Misc\LayoutManager.cs" />
+    <Compile Include="client\gui\Misc\LayoutSingle.cs" />
+    <Compile Include="client\gui\Controls\Control.cs" />
+    <Compile Include="client\gui\Controls\Panel.cs" />
+    <Compile Include="client\gui\ProfilerUI.cs" />
+    <Compile Include="client\gui\Controls\ProgressBar.cs" />
+    <Compile Include="client\gui\Controls\Window.cs" />
+    <Compile Include="client\gui\Misc\WindowComparer.cs" />
+    <Compile Include="client\gui\Core\WindowManager.cs" />
+    <Compile Include="client\gui\Controls\RibbonGroup.cs" />
+    <Compile Include="client\gui\Controls\RibbonMenu.cs" />
+    <Compile Include="client\gui\Controls\RibbonMenuItem.cs" />
+    <Compile Include="client\input\KeyHags.cs" />
+    <Compile Include="client\input\MouseEvent.cs" />
+    <Compile Include="client\map\Entity.cs" />
+    <Compile Include="client\map\Header.cs" />
+    <Compile Include="client\map\MDLHeader.cs" />
+    <Compile Include="client\map\MDLReader.cs" />
+    <Compile Include="client\map\RadianEuler.cs" />
+    <Compile Include="client\map\RenderModel.cs" />
+    <Compile Include="client\map\SkyBox.cs" />
+    <Compile Include="client\map\SkyBox3D.cs" />
+    <Compile Include="client\map\SourceMaterial.cs" />
+    <Compile Include="client\map\SourceMap.cs" />
+    <Compile Include="client\map\SourceModel.cs" />
+    <Compile Include="client\map\SourceParser.cs" />
+    <Compile Include="client\map\SourceProp.cs" />
+    <Compile Include="client\map\Trace.cs" />
+    <Compile Include="client\map\VTXReader.cs" />
+    <Compile Include="client\map\VVDReader.cs" />
+    <Compile Include="client\player\Frustrum.cs" />
+    <Compile Include="client\player\Vec.cs" />
+    <Compile Include="client\render\Bloom.cs" />
+    <Compile Include="client\render\DynamicItem.cs" />
+    <Compile Include="client\render\Formats\VertexPositionNormalTextured.cs" />
+    <Compile Include="client\render\Formats\VertexPositionNormalTexturedLightmap.cs" />
+    <Compile Include="client\render\Formats\VertexPositionNormalTexturedLightmapTangent.cs" />
+    <Compile Include="client\render\Formats\VertexPosTex.cs" />
+    <Compile Include="client\map\Vtflib.cs" />
+    <Compile Include="client\render\Formats\VertexPosTexNormalTanBitan.cs" />
+    <Compile Include="client\player\Camera.cs" />
+    <Compile Include="client\render\ViewParams.cs" />
+    <Compile Include="common\ClipMap.cs" />
+    <Compile Include="common\GameCommon.cs" />
+    <Compile Include="common\Net.cs" />
+    <Compile Include="server\game\Game.cs" />
+    <Compile Include="server\game\GameLocal.cs" />
+    <Compile Include="server\game\GameSession.cs" />
+    <Compile Include="server\game\GameSpawn.cs" />
+    <Compile Include="server\Server.cs" />
+    <Compile Include="server\ServerClient.cs" />
+    <Compile Include="server\ServerInit.cs" />
+    <Compile Include="server\ServerSnapshot.cs" />
+    <None Include="app.config" />
+    <Compile Include="client\gfx\HeightMap.cs" />
+    <Compile Include="common\HighResolutionTimer.cs" />
+    <Compile Include="client\input\Input.cs" />
+    <Compile Include="client\input\InputArgs.cs" />
+    <Compile Include="client\input\KeyEvent.cs" />
+    <Compile Include="client\net\Network.cs" />
+    <Compile Include="client\gfx\ParallaxTest.cs" />
+    <Compile Include="common\Profiler.cs" />
+    <Compile Include="client\render\Formats\VertexPropInstance.cs" />
+    <Compile Include="client\render\HagsIndexBuffer.cs" />
+    <Compile Include="client\render\HagsVertexBuffer.cs" />
+    <Compile Include="client\render\InstanceItem.cs" />
+    <Compile Include="client\render\MiscRender.cs" />
+    <Compile Include="client\render\RenderChildren.cs" />
+    <Compile Include="client\render\Renderer.cs" />
+    <Compile Include="client\render\RenderGroup.cs" />
+    <Compile Include="client\render\RenderItem.cs" />
+    <Compile Include="client\render\SortItem.cs" />
+    <Compile Include="client\render\ToneMap.cs" />
+    <Compile Include="client\render\VertexPosTesx.cs" />
+    <Compile Include="common\Common.cs" />
+    <Compile Include="common\SysEvent.cs" />
+    <Compile Include="Program.cs" />
+    <None Include="data\gui\dina10px.ttf">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Include="data\gfx\checkerboard.dds">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Include="data\gui\Dina.fon">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Include="data\gui\ProggySquareSZ.ttf">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Include="client\render\shaderhelp.fx">
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+    </None>
+    <None Include="client\render\simple.fx">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+  </ItemGroup>
+  <ItemGroup>
+    <Content Include="data\gui\ribbon\blacktransgrad.png">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+    <Content Include="data\gui\ribbon\ribbonbg.png">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+    <Content Include="data\gui\ribbon\ribbonbutton.png">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+    <Content Include="data\gui\ribbon\ribbongroup.png">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+    <Content Include="data\gui\window-theme\scrollbar.png">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+    <Content Include="data\gui\window-theme\button\button-default.png">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+    <Content Include="data\gui\window-theme\button\button-prelight.png">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+    <Content Include="data\gui\window-theme\button\button-pressed.png">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+    <Content Include="data\gui\window-theme\progress.png">
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+    </Content>
+    <Content Include="data\gui\window-theme\progressbar.png">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+    <Content Include="data\gui\window-theme\cursor.png">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+    <Content Include="data\gfx\heightmaps\heightmap.png">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+    <Content Include="data\gui\window-theme\close.png">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+    <Content Include="data\gui\window-theme\cursor_caret.png">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+    <Content Include="data\gui\window-theme\cursor_horiz.png">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+    <Content Include="data\gui\window-theme\cursor_move.png">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+    <Content Include="data\gui\window-theme\cursor_scale.png">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+    <Content Include="data\gui\window-theme\cursor_vert.png">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+    <Content Include="data\gui\window-theme\textframe.png">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+    <Content Include="data\gui\window-theme\window-borders.png">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+    <Content Include="Ionic.Zip.Reduced.dll" />
+    <Content Include="Lidgren.Network.dll" />
+    <Content Include="Lidgren.Network.pdb" />
+    <Content Include="VTFLib.dll">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+  </ItemGroup>
+  <ItemGroup>
+    <BootstrapperPackage Include="Microsoft.Net.Client.3.5">
+      <Visible>False</Visible>
+      <ProductName>.NET Framework 3.5 SP1 Client Profile</ProductName>
+      <Install>false</Install>
+    </BootstrapperPackage>
+    <BootstrapperPackage Include="Microsoft.Net.Framework.2.0">
+      <Visible>False</Visible>
+      <ProductName>.NET Framework 2.0 %28x86%29</ProductName>
+      <Install>false</Install>
+    </BootstrapperPackage>
+    <BootstrapperPackage Include="Microsoft.Net.Framework.3.0">
+      <Visible>False</Visible>
+      <ProductName>.NET Framework 3.0 %28x86%29</ProductName>
+      <Install>false</Install>
+    </BootstrapperPackage>
+    <BootstrapperPackage Include="Microsoft.Net.Framework.3.5">
+      <Visible>False</Visible>
+      <ProductName>.NET Framework 3.5</ProductName>
+      <Install>true</Install>
+    </BootstrapperPackage>
+    <BootstrapperPackage Include="Microsoft.Net.Framework.3.5.SP1">
+      <Visible>False</Visible>
+      <ProductName>.NET Framework 3.5 SP1</ProductName>
+      <Install>false</Install>
+    </BootstrapperPackage>
+    <BootstrapperPackage Include="Microsoft.Windows.Installer.3.1">
+      <Visible>False</Visible>
+      <ProductName>Windows Installer 3.1</ProductName>
+      <Install>true</Install>
+    </BootstrapperPackage>
+  </ItemGroup>
+  <ItemGroup>
+    <Folder Include="data\gui\Atlas\" />
+    <Folder Include="data\map\" />
+    <Folder Include="Properties\" />
+  </ItemGroup>
+  <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />
+  <!-- To modify your build process, add your task inside one of the targets below and uncomment it. 
+       Other similar extension points exist, see Microsoft.Common.targets.
+  <Target Name="BeforeBuild">
+  </Target>
+  <Target Name="AfterBuild">
+  </Target>
+  -->
+</Project>

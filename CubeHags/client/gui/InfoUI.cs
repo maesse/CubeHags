@@ -1,0 +1,90 @@
+﻿using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Text;
+using CubeHags.client.gui.Controls;
+
+namespace CubeHags.client.gui
+{
+    class InfoUI : Window
+    {
+        private Label MouseFocus = null;
+        private Label Info = null;
+        private bool mouselock = false;
+        Button button3 = null;
+        int clickcount = 0;
+        public InfoUI()
+        {
+            panel.ScrollbarStyle = Misc.ScrollbarStyle.BOTH;
+            this.panel.Layout = new FlowLayout(false);
+            this.Title = "Hags Windowing system";
+            MouseFocus = new Label("MouseFocus: No", this);
+            this.panel.AddControl(MouseFocus);
+            Info = new Label("Info her", this);
+            panel.AddControl(Info);
+            //this.panel.AddControl(new Label("TEsttt", this));
+            //this.panel.AddControl(new Label("TEstttasdddddd", this));
+            //this.panel.AddControl(new Label("TEstttsss", this));
+            //this.panel.AddControl();
+            Button button = new Button("Load Sourcemap", this);
+            button.Selected += new Button.ButtonSelectedEvent(LoadMapEvent);
+            this.panel.AddControl(button);
+            Button button2 = new Button("Unload Sourcemap", this);
+            button2.Selected += new Button.ButtonSelectedEvent(UnLoadMapEvent);
+            this.panel.AddControl(button2);
+            button3 = new Button("Clicks: 0", this);
+            button3.Selected += new Button.ButtonSelectedEvent(IncrementClickCount);
+            
+            this.panel.AddControl(button3);
+
+
+            Button button4 = new Button("Take Screenshot", this);
+            this.panel.AddControl(button4);
+
+            TextBox textbox = new TextBox(this);
+            
+            this.panel.AddControl(textbox);
+        }
+
+        public void IncrementClickCount()
+        {
+            clickcount++;
+            button3.label.Text = "Clicks: " + clickcount;
+        }
+
+        public void LoadMapEvent()
+        {
+
+            //string str = Renderer.Instance.gui.OpenFileDialog("BSP Files|*.bsp|All Files|*.*");
+            //if (str != null)
+            //{
+            //    Renderer.Instance.LoadMap(str);
+            //    //Renderer.Instance.LoadMap(@"client/data/map/albjergparken.bsp");
+            //}
+            
+        }
+
+        public void UnLoadMapEvent()
+        {
+            //Renderer.Instance.UnloadMap();
+        }
+
+        public override void Update()
+        {
+            // Check for changed value
+            if (WindowManager.Instance.MouseLock != mouselock)
+            {
+                mouselock = WindowManager.Instance.MouseLock;
+                MouseFocus.Text = "MouseFocus: " + ((mouselock) ? "Yes" : "No");
+            }
+            if (Renderer.Instance.SourceMap != null)
+            {
+                Info.Text = "CurrLeaf: " + Renderer.Instance.SourceMap.CurrentLeaf.cluster;
+            }
+            //Info.Text = string.Format("ControlsWithMouseEnter - n:{0}\n{1}", Window.ControlsWithMouseEnter.Count(), Window.ControlsWithMouseEnter);
+
+            // button event: Renderer.Instance.LoadMap(@"client/data/map/albjergparken.bsp");
+        }
+        
+    }
+}

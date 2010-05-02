@@ -1,0 +1,1246 @@
+﻿using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Text;
+using SlimDX.Direct3D9;
+using SlimDX;
+using System.Drawing;
+using CubeHags.client.gui;
+using CubeHags.client.map.Source;
+using CubeHags.client;
+using System.Collections;
+using SlimDX.Windows;
+using CubeHags.client.render.Formats;
+using CubeHags.client.render;
+using CubeHags.client.common;
+using CubeHags.client.input;
+using System.Windows.Forms;
+
+
+namespace CubeHags.client
+{
+    public delegate void RenderDelegate(Effect effect, Device device, bool setMaterial);
+    public sealed class Renderer : IResettable
+    {
+        // Singleton stuff
+        private static readonly Renderer _instance = new Renderer();
+        Texture testTex;
+
+        // Device
+        public Device device = null;
+        private bool _is3D9Ex = false;
+        public bool Is3D9Ex { get { return _is3D9Ex; } }
+        private PresentParameters _pp;
+        public bool _sizeChanged;
+        public bool deviceLost = false;
+
+        // Shader
+        public Effect effect;
+        private string technique = "TexturedLightmap"; // What shader technique to use
+        public float MIDDLE_GRAY = 0.68f;
+        public float LUM_WHITE = 0.47f;
+        public float BRIGHT_THRESHOLD = 0.9f;
+        public float bloomMulti = 0.4f;
+        public Matrix worldMatrix, viewMatrix, projMatrix;
+
+        // Gui for showing messageboxes...
+        public RenderForm form;
+        private System.Windows.Forms.FormWindowState currentWindowState;
+        bool formIsResizing = false;
+
+        // Text
+        public Sprite sprite;
+
+        // Buffers that contain stuff to be rendered
+        public List<KeyValuePair<ulong, RenderDelegate>> drawCalls = new List<KeyValuePair<ulong, RenderDelegate>>();
+        private List<KeyValuePair<ulong, RenderDelegate>> currentdrawCalls = new List<KeyValuePair<ulong, RenderDelegate>>();
+        public Dictionary<ushort, HagsIndexBuffer> IndexBuffers = new Dictionary<ushort, HagsIndexBuffer>();
+        public Dictionary<ushort, HagsVertexBuffer> VertexBuffers = new Dictionary<ushort, HagsVertexBuffer>();
+
+        // Display options 
+        public Size RenderSize = new Size(1280, 800);
+        public bool Windowed = true;
+        public bool VSync = true;
+        public MultisampleType MultiSampling = MultisampleType.TwoSamples;
+        private FillMode _fillMode = FillMode.Solid;
+        public FillMode FillMode { get { return _fillMode; } set { _fillMode = value; device.SetRenderState<FillMode>(RenderState.FillMode, value); } }
+        public Camera Camera;
+
+        // Source map
+        public SourceMap SourceMap = null;
+
+        // Render To Texture stuff.
+        public Surface RenderSurface;
+        public Texture RenderTexture;
+        public Surface RenderTextureSfc;
+        public Surface RenderDepthSurface;
+        public long LastFrameTime = 0;
+
+        // Render controls
+        Bloom bloom;
+        ToneMap tonemap;
+        public Texture AvgLum { get { return tonemap.AverageLum; } }
+        public float DetailMultiplier = 2f;
+
+        // Profiling
+        private float Profile_PreFrame = 0f;
+        private float Profile_Render = 0f;
+        private float Profile_Sort = 0f;
+        private float Profile_Final = 0f;
+        private float Profile_Present = 0f;
+        private int nProfileCount;
+        private int nProfileSamples = 60;
+        private int nSameMaterial = 0;
+        public bool EnableProfiling = false;
+        private int _nextRenderItemID = 1;
+        public int NextRenderItemID { get { return _nextRenderItemID++; } }
+
+        public Dictionary<string, SlimDX.Direct3D9.Font> Fonts = new Dictionary<string, SlimDX.Direct3D9.Font>();
+        
+
+        // Quake implementation
+        public int visCount;    // incremented every time a new vis cluster is entered
+        public int frameCount;  // incremented every frame
+        public int sceneCount;  // incremented every scene
+        public int viewCount;   // incremented every view (twice a scene if portaled)
+                                // and every R_MarkFragments call
+        public int frameSceneNum;// zeroed at RE_BeginFrame
+
+        public bool worldMapLoaded = false;
+        public ViewParams viewParams;
+        public CubeHags.client.render.Orientation or;  // for current entity
+
+        public int viewCluster;
+
+        
+
+
+        // Constructor
+        Renderer()
+        {
+            
+        }
+
+        public void BeginFrame()
+        {
+            frameCount++;
+            frameSceneNum = 0;
+            device.Clear(ClearFlags.Target | ClearFlags.ZBuffer, Color.FromArgb(0, Color.CornflowerBlue), 1.0f, 0);
+        }
+
+        /*
+        ================
+        R_RenderView
+
+        A view may be either the actual camera view,
+        or a mirror / remote location
+        ================
+        */
+        void RenderView(ViewParams view) 
+        {
+
+            
+
+            if (view.viewportWidth <= 0 || view.viewportHeight <= 0)
+            {
+                return;
+            }
+            view.SetupProjection(10000f, true);
+
+            if (SourceMap != null)
+                SourceMap.Render(device);
+
+            // SetFarClip()
+
+            view.SetupProjectionZ();
+
+            // Sort calls for next frame
+            //drawCalls.Sort((firstPair, secondPair) =>
+            //{
+            //    return secondPair.Key.CompareTo(firstPair.Key);
+            //});
+
+            RotateForViewer();
+            //Camera.Update(HighResolutionTimer.Instance.FrameTime);
+            Camera.RotateForViewer();
+        }
+
+        void RotateForViewer()
+        {
+            
+
+            
+        }
+
+        void myGlMultMatrix( Matrix a, Matrix b, out Matrix c ) 
+        {
+        	int		i, j;
+            c = new Matrix();
+        	for ( i = 0 ; i < 4 ; i++ ) {
+        		for ( j = 0 ; j < 4 ; j++ ) {
+        			c[ i,  j ] =
+        				a [ i , 0 ] * b [ 0 ,  j ]
+        				+ a [ i,  1 ] * b [ 1 ,  j ]
+        				+ a [ i ,  2 ] * b [ 2 ,  j ]
+        				+ a [ i,  3 ] * b [ 3 ,  j ];
+        		}
+        	}
+        }
+
+        public void Render(ViewParams view)
+        {
+            view.Origin = new render.Orientation();
+            view.Origin.axis[0] = view.viewaxis[0];
+            view.Origin.axis[1] = view.viewaxis[1];
+            view.Origin.axis[2] = view.viewaxis[2];
+            view.Origin.origin = view.vieworg;
+            view.PVSOrigin = view.vieworg;
+
+            viewParams = view;
+            RenderView(view);
+        }
+
+        // Renders the scene. This is the core render method.
+        public void Render()
+        {
+            if (formIsResizing)
+                return;
+
+            if (deviceLost)
+            {
+                if (device.TestCooperativeLevel() == ResultCode.DeviceNotReset)
+                {
+                    device.Reset(_pp);
+                    OnResetDevice();
+                    deviceLost = false;
+                }
+                else
+                {
+                    System.Threading.Thread.Sleep(100);
+                    return;
+                }
+            }
+
+            long profile_preframe = HighResolutionTimer.Ticks;
+            // Set new size if using WPF
+            if (_sizeChanged)
+            {
+                if (Windowed)
+                {
+                    // Get window size
+                    RenderSize = form.ClientSize;
+
+                    _pp.BackBufferWidth = RenderSize.Width;
+                    _pp.BackBufferHeight = RenderSize.Height;
+                }
+                else
+                {
+                    // Hardcoded fullscreen
+                    _pp.BackBufferWidth = RenderSize.Width = 1680;
+                    _pp.BackBufferHeight = RenderSize.Height = 1050;
+                }
+                
+                _pp.Windowed = Windowed;
+                _sizeChanged = false;
+
+                OnLostDevice();
+                // Reset device
+                device.Reset(_pp);
+                OnResetDevice();
+                return;
+            }
+                
+
+            //Commands.Instance.Execute();
+            
+            //if (SourceMap != null)
+            //    SourceMap.Render(device);
+
+            //device.SetRenderTarget(0, RenderSurface);
+            
+            SetupFrame();
+
+            // Sort calls for next frame
+            //drawCalls.Sort((firstPair, secondPair) =>
+            //{
+            //    return secondPair.Key.CompareTo(firstPair.Key);
+            //});
+
+            // Begin drawing
+            device.BeginScene();
+
+            long profile_render = HighResolutionTimer.Ticks;
+            profile_preframe = profile_render - profile_preframe;
+
+            // Swich drawcall list
+            FlushDrawCalls();
+            int nDrawCalls = currentdrawCalls.Count;
+            // Render drawcalls
+            RenderDrawCallsOld();
+
+            // Render UI
+            WindowManager.Instance.Render();
+            FlushDrawCalls();
+            nDrawCalls += currentdrawCalls.Count;
+            // Do unsorted UI render (Added to drawcalls list back to front)
+            RenderDrawCallsOld();
+            
+            long profile_final = HighResolutionTimer.Ticks;
+            profile_render = profile_final - profile_render;
+
+            // Stretch to texture
+            //Rectangle rect = new Rectangle(new Point(), Renderer.Instance.RenderSize);
+            //Rectangle destRect = new Rectangle(new Point(), new Size(RenderTextureSfc.Description.Width, RenderTextureSfc.Description.Height));
+            //device.StretchRectangle(RenderSurface, rect, RenderTextureSfc, destRect, TextureFilter.Point);
+
+            //tonemap.MeasureLuminance(effect, device);
+            //bloom.RenderBloom(device, effect);
+            //FinalPass();
+            effect.Technique = technique;
+
+            // Draw FPS
+            MiscRender.DrawRenderStats(this);
+
+            //if (window == null)
+            //{
+            //    using(Surface backbuff = device.GetBackBuffer(0, 0)) {
+            //        device.StretchRectangle(RenderSurface, rect, backbuff, rect, TextureFilter.None);
+            //        device.SetRenderTarget(0, backbuff);
+            //    }
+            //}
+            device.EndScene();
+            
+
+            long profile_sort = HighResolutionTimer.Ticks;
+            profile_final = profile_sort - profile_final;
+
+            
+            long profile_present = HighResolutionTimer.Ticks;
+            profile_sort = profile_present - profile_sort;
+
+            device.Present();
+            HighResolutionTimer.Instance.Set();
+            profile_present = HighResolutionTimer.Ticks - profile_present;
+
+            if (EnableProfiling)
+            {
+                // Average this frames times
+                Profile_Final += ((float)profile_final / (float)(HighResolutionTimer.Frequency) * 1000) / nProfileSamples;
+                Profile_PreFrame += ((float)profile_preframe / (float)(HighResolutionTimer.Frequency) * 1000) / nProfileSamples;
+                Profile_Render += ((float)profile_render / (float)(HighResolutionTimer.Frequency) * 1000) / nProfileSamples;
+                Profile_Sort += ((float)profile_sort / (float)(HighResolutionTimer.Frequency) * 1000) / nProfileSamples;
+                Profile_Present += ((float)profile_present / (float)(HighResolutionTimer.Frequency) * 1000) / nProfileSamples;
+                nProfileCount++;
+                // Sampling target hit?
+                if (nProfileCount == nProfileSamples)
+                {
+                    System.Console.WriteLine("Renderer times ({0}frame average):", nProfileSamples);
+                    System.Console.WriteLine("\tPreFrame:\t{0:0.00}ms\n\tRender:\t{1:0.00}ms\n\tSort:\t{2:0.00}ms\n\tFinal:\t{3:0.00}ms\nPresent:\t{4:0.00}ms\nTotal:\t{5:0.00}ms {6} rendercalls", Profile_PreFrame, Profile_Render, Profile_Sort, Profile_Final, Profile_Present, Profile_PreFrame + Profile_Render + Profile_Sort + Profile_Final + Profile_Present, nDrawCalls);
+                    System.Console.WriteLine("RenderCalls: {0} - nPossibleBatch: {1} - Waste: {2:0.0}%", currentdrawCalls.Count, nSameMaterial, ((float)nSameMaterial / (float)currentdrawCalls.Count) * 100f);
+                    // Reset variables
+                    nProfileCount = 0;
+                    Profile_Sort = Profile_Render = Profile_PreFrame = Profile_Final = Profile_Present = 0f;
+                }
+            }
+
+            
+        }
+
+        private void FlushDrawCalls()
+        {
+            // Switch over to new calllist
+            List<KeyValuePair<ulong, RenderDelegate>> tempDrawCalls = currentdrawCalls;
+            tempDrawCalls.Clear();
+            currentdrawCalls = drawCalls;
+            drawCalls = tempDrawCalls;
+        }
+
+        private void RenderDrawCalls()
+        {
+            SortItem.VPLayer currentVPLayer = SortItem.VPLayer.EFFECT;
+            SortItem.Viewport currentViewport = SortItem.Viewport.EIGHT;
+            SortItem.Translucency currentTrans = SortItem.Translucency.OPAQUE;
+            ushort currentIB = 65535;
+            ushort currentVB = 65535;
+            uint lastMaterial = 0;
+
+            Vector3 originalPosition = Camera.position;
+            List<KeyValuePair<ulong, RenderDelegate>> batchList = new List<KeyValuePair<ulong, RenderDelegate>>(); // state doesnt change, batch calls untill it does
+            nSameMaterial = 0;
+            
+            // Issue drawcalls
+            for (int i = 0; i < currentdrawCalls.Count; i++)
+            {
+                ulong key = currentdrawCalls[i].Key;
+                SortItem.VPLayer vpLayer = SortItem.GetVPLayer(key);
+                SortItem.Viewport vp = SortItem.GetViewport(key);
+                SortItem.Translucency trans = SortItem.GetTranslucency(key);
+
+                // Got statechange comming up
+                if (trans != currentTrans || vpLayer != currentVPLayer || vp != currentViewport)
+                {
+                    // Draw
+                    int numpasses = effect.Begin(FX.None);
+                    for (int j = 0; j < numpasses; j++)
+                    {
+                        effect.BeginPass(j);
+                        {
+                            // Empty batchlist
+                            for (int h = 0; h < batchList.Count; h++)
+                            {
+                                key = batchList[h].Key;
+                                ushort VB = SortItem.GetVBID(key);
+                                ushort IB = SortItem.GetIBID(key);
+                                uint materialID = SortItem.GetMaterial(key);
+
+                                // Vertex buffer change
+                                if (VB != currentVB && VB != 0)
+                                {
+                                    device.SetStreamSource(0, VertexBuffers[VB].VB, 0, D3DX.GetFVFVertexSize(VertexBuffers[VB].VF));
+                                    device.VertexDeclaration = VertexBuffers[VB].VD;
+                                    currentVB = VB;
+                                }
+
+                                // Index buffer change
+                                if (IB != currentIB && IB != 0)
+                                {
+                                    device.Indices = IndexBuffers[IB].IB;
+                                    currentIB = IB;
+                                }
+
+                                // Check for material change
+                                bool setMaterial = true;
+                                if (materialID == lastMaterial)
+                                {
+                                    setMaterial = false;
+                                    nSameMaterial++;
+                                }
+
+                                batchList[h].Value.Invoke(effect, device, setMaterial);
+                                lastMaterial = materialID;
+                            }
+                        }
+                        effect.EndPass();
+                    }
+                    effect.End();
+                    batchList.Clear();
+
+                    // Handle new change
+                    if (vpLayer != currentVPLayer)
+                    {
+                        if (currentVPLayer == SortItem.VPLayer.SKYBOX3D)
+                        {
+                            Camera.position = originalPosition;
+                            //Camera.PositionCamera();
+                            Matrix worldview = device.GetTransform(TransformState.View) * Camera.World;
+                            effect.SetValue("WorldViewProj", worldview * Camera.Projection);
+
+                            device.Clear(ClearFlags.ZBuffer, Color.FromArgb(0, Color.CornflowerBlue), 1.0f, 0);
+                        }
+                        else if (currentVPLayer == SortItem.VPLayer.SKYBOX)
+                        {
+                            device.SetRenderState(RenderState.ZWriteEnable, true);
+                            device.SetRenderState(RenderState.ZEnable, true);
+                        }
+                        else if (currentVPLayer == SortItem.VPLayer.HUD)
+                        {
+                            device.SetRenderState(RenderState.ZEnable, true);
+                        }
+                        currentVPLayer = vpLayer;
+                        // Layer change.
+                        switch (vpLayer)
+                        {
+                            case SortItem.VPLayer.SKYBOX3D:
+                                if (effect.Technique != technique)
+                                {
+                                    effect.Technique = technique;
+                                }
+                                if (SourceMap != null)
+                                {
+                                    SourceMap.SetupVertexBuffer(device);
+                                    Vector3 pos = SourceMap.skybox3d.GetSkyboxPosition(originalPosition);
+                                    Camera.position = pos;
+                                    //Camera.PositionCamera();
+                                    Matrix worldview = device.GetTransform(TransformState.View) * Camera.World;
+                                    effect.SetValue("WorldViewProj", worldview * Camera.Projection);
+                                }
+                                break;
+                            case SortItem.VPLayer.SKYBOX:
+                                effect.Technique = "Sky";
+                                //device.SetRenderState(RenderState.ZWriteEnable, false);
+                                if (SourceMap != null)
+                                    SourceMap.skybox.SetupRender(device);
+                                break;
+                            case SortItem.VPLayer.HUD:
+                                device.SetRenderState(RenderState.ZEnable, false);
+                                if (trans != SortItem.Translucency.OPAQUE)
+                                    effect.Technique = "GUIAlpha";
+                                else
+                                    effect.Technique = "FinalPass_RGBE8";
+                                break;
+                            case SortItem.VPLayer.WORLD:
+                                if (effect.Technique != technique)
+                                {
+                                    effect.Technique = technique;
+                                }
+                                if (SourceMap != null)
+                                    SourceMap.SetupVertexBuffer(device);
+                                break;
+                        }
+                    }
+
+                    // Handle viewport change
+                    if (vp != currentViewport)
+                    {
+                        if (currentViewport == SortItem.Viewport.INSTANCED)
+                        {
+                            // Disable frequency instancing
+                            device.ResetStreamSourceFrequency(0);
+                            device.SetStreamSource(1, null, 0, 0);
+                            effect.Technique = technique;
+                        }
+                        currentViewport = vp;
+                        switch (vp)
+                        {
+                            case SortItem.Viewport.INSTANCED:
+                                Matrix worldview = device.GetTransform(TransformState.View) * Camera.World;
+                                effect.SetValue("WorldViewProj", worldview * Camera.Projection);
+                                effect.Technique = "TexturedInstaced";
+                                break;
+                        }
+                    }
+
+                    // Handle transparency change
+                    if (trans != currentTrans)
+                    {
+                        if (currentTrans == SortItem.Translucency.NORMAL || currentTrans == SortItem.Translucency.ADDITIVE || currentTrans == SortItem.Translucency.SUBSTRACTIVE)
+                        {
+                            device.SetRenderState(RenderState.AlphaBlendEnable, false);
+                        }
+                        currentTrans = trans;
+                        switch (trans)
+                        {
+                            case SortItem.Translucency.OPAQUE:
+                                if (vpLayer != SortItem.VPLayer.HUD && currentViewport != SortItem.Viewport.INSTANCED)
+                                {
+                                    effect.Technique = technique;
+                                }
+                                else if (currentViewport != SortItem.Viewport.INSTANCED)
+                                {
+                                    effect.Technique = "FinalPass_RGBE8";
+                                }
+                                break;
+                            case SortItem.Translucency.ADDITIVE:
+                            case SortItem.Translucency.SUBSTRACTIVE:
+                            case SortItem.Translucency.NORMAL:
+                                if (vpLayer != SortItem.VPLayer.HUD && currentViewport != SortItem.Viewport.INSTANCED)
+                                {
+                                    effect.Technique = "TexturedLightmapAlpha";
+                                }
+                                else if (currentViewport != SortItem.Viewport.INSTANCED)
+                                {
+                                    effect.Technique = "GUIAlpha";
+                                }
+                                break;
+                        }
+                    }
+                    batchList.Add(currentdrawCalls[i]);
+                }
+                else
+                {
+                    // Just fill up the buffer
+                    batchList.Add(currentdrawCalls[i]);
+                }
+
+                
+                        // Empty batchlist
+                        for (int h = 0; h < batchList.Count; h++)
+                        {
+                            key = batchList[h].Key;
+                            ushort VB = SortItem.GetVBID(key);
+                            ushort IB = SortItem.GetIBID(key);
+                            uint materialID = SortItem.GetMaterial(key);
+
+                            // Vertex buffer change
+                            if (VB != currentVB && VB != 0)
+                            {
+                                device.SetStreamSource(0, VertexBuffers[VB].VB, 0, D3DX.GetFVFVertexSize(VertexBuffers[VB].VF));
+                                device.VertexDeclaration = VertexBuffers[VB].VD;
+                                currentVB = VB;
+                            }
+
+                            // Index buffer change
+                            if (IB != currentIB && IB != 0)
+                            {
+                                device.Indices = IndexBuffers[IB].IB;
+                                currentIB = IB;
+                            }
+
+                            // Check for material change
+                            bool setMaterial = true;
+                            if (materialID == lastMaterial)
+                            {
+                                setMaterial = false;
+                                nSameMaterial++;
+                            }
+                            // tail Draw
+                            int numpasses2 = effect.Begin(FX.None);
+                            for (int j = 0; j < numpasses2; j++)
+                            {
+                                effect.BeginPass(j);
+                                {
+                            batchList[h].Value.Invoke(effect, device, setMaterial);
+                                }
+                                effect.EndPass();
+                            }
+                            effect.End();
+                            lastMaterial = materialID;
+                        }
+                    
+
+                
+            }
+
+
+            if (currentViewport == SortItem.Viewport.INSTANCED)
+            {
+                // Disable frequency instancing
+                device.ResetStreamSourceFrequency(0);
+                device.SetStreamSource(1, null, 0, 0);
+                effect.Technique = technique;
+            }
+
+            //device.ResetStreamSourceFrequency(0);
+        }
+
+        private void RenderDrawCallsOld()
+        {
+            SortItem.VPLayer currentVPLayer = SortItem.VPLayer.EFFECT;
+            SortItem.Viewport currentViewport = SortItem.Viewport.EIGHT;
+            SortItem.Translucency currentTrans = SortItem.Translucency.OPAQUE;
+            ushort currentIB = 65535;
+            ushort currentVB = 65535;
+            uint lastMaterial = 0;
+
+            Vector3 originalPosition = Camera.position;
+
+            nSameMaterial = 0;
+
+            // Issue drawcalls from last frame
+            for (int i = 0; i < currentdrawCalls.Count; i++)
+            {
+                ulong key = currentdrawCalls[i].Key;
+                SortItem.VPLayer vpLayer = SortItem.GetVPLayer(key);
+                SortItem.Viewport vp = SortItem.GetViewport(key);
+                SortItem.Translucency trans = SortItem.GetTranslucency(key);
+                uint materialID = SortItem.GetMaterial(key);
+                ushort VB = SortItem.GetVBID(key);
+                ushort IB = SortItem.GetIBID(key);
+
+                if (vpLayer != currentVPLayer)
+                {
+                    if (currentVPLayer == SortItem.VPLayer.SKYBOX3D)
+                    {
+                        Camera.position = originalPosition;
+                        //Camera.PositionCamera();
+                        Matrix worldview = device.GetTransform(TransformState.View) * Camera.World;
+                        effect.SetValue("WorldViewProj", worldview * Camera.Projection);
+
+                        device.Clear(ClearFlags.ZBuffer, Color.FromArgb(0, Color.CornflowerBlue), 1.0f, 0);
+                    }
+                    else if (currentVPLayer == SortItem.VPLayer.SKYBOX)
+                    {
+                        device.SetRenderState(RenderState.ZWriteEnable, true);
+                        device.SetRenderState(RenderState.ZEnable, true);
+                    }
+                    else if (currentVPLayer == SortItem.VPLayer.HUD)
+                    {
+                        device.SetRenderState(RenderState.ZEnable, true);
+                    }
+                    currentVPLayer = vpLayer;
+                    // Layer change.
+                    switch (vpLayer)
+                    {
+                        case SortItem.VPLayer.SKYBOX3D:
+                            if (effect.Technique != technique)
+                                effect.Technique = technique;
+                            if (SourceMap != null)
+                            {
+                                SourceMap.SetupVertexBuffer(device);
+                                Vector3 pos = SourceMap.skybox3d.GetSkyboxPosition(originalPosition);
+                                Camera.position = pos;
+                                //Camera.PositionCamera();
+                                Matrix worldview = device.GetTransform(TransformState.View) * Camera.World;
+                                effect.SetValue("WorldViewProj", worldview * Camera.Projection);
+                            }
+                            break;
+                        case SortItem.VPLayer.SKYBOX:
+                            effect.Technique = "Sky";
+                            //device.SetRenderState(RenderState.ZWriteEnable, false);
+                            if (SourceMap != null)
+                                SourceMap.skybox.SetupRender(device);
+                            break;
+                        case SortItem.VPLayer.HUD:
+                            device.SetRenderState(RenderState.ZEnable, false);
+                            if (trans != SortItem.Translucency.OPAQUE)
+                                effect.Technique = "GUIAlpha";
+                            else
+                                effect.Technique = "FinalPass_RGBE8";
+                            break;
+                        case SortItem.VPLayer.WORLD:
+                            if (effect.Technique != technique)
+                                effect.Technique = technique;
+                            if (SourceMap != null)
+                                SourceMap.SetupVertexBuffer(device);
+                            break;
+                    }
+                }
+
+                // Handle viewport change
+                if (vp != currentViewport)
+                {
+                    if (currentViewport == SortItem.Viewport.INSTANCED)
+                    {
+                        // Disable frequency instancing
+                        device.ResetStreamSourceFrequency(0);
+                        device.SetStreamSource(1, null, 0, 0);
+                        //device.SetTexture(1, null);
+                        effect.Technique = technique;
+                    }
+                    currentViewport = vp;
+                    switch (vp)
+                    {
+                        case SortItem.Viewport.INSTANCED:
+                            Matrix worldview = device.GetTransform(TransformState.View) * Camera.World;
+                            effect.SetValue("WorldViewProj", worldview * Camera.Projection);
+                            effect.Technique = "TexturedInstaced";
+                            //device.SetTexture(1, SourceMap.ambientLightTexture);
+                            break;
+                    }
+                }
+
+                // Handle transparency change
+                if (trans != currentTrans)
+                {
+                    if (currentTrans == SortItem.Translucency.NORMAL || currentTrans == SortItem.Translucency.ADDITIVE || currentTrans == SortItem.Translucency.SUBSTRACTIVE)
+                    {
+                        device.SetRenderState(RenderState.AlphaBlendEnable, false);
+                    }
+                    currentTrans = trans;
+                    switch (trans)
+                    {
+                        case SortItem.Translucency.OPAQUE:
+                            if (vpLayer != SortItem.VPLayer.HUD && currentViewport != SortItem.Viewport.INSTANCED)
+                                effect.Technique = technique;
+                            else if (currentViewport != SortItem.Viewport.INSTANCED)
+                                effect.Technique = "FinalPass_RGBE8";
+                            break;
+                        case SortItem.Translucency.ADDITIVE:
+                        case SortItem.Translucency.SUBSTRACTIVE:
+                        case SortItem.Translucency.NORMAL:
+                            if (vpLayer != SortItem.VPLayer.HUD && currentViewport != SortItem.Viewport.INSTANCED)
+                                effect.Technique = "TexturedLightmapAlpha";
+                            else if (currentViewport != SortItem.Viewport.INSTANCED)
+                                effect.Technique = "GUIAlpha";
+                            break;
+                    }
+                }
+
+                // Vertex buffer change
+                if (VB != currentVB && VB != 0)
+                {
+
+                    device.SetStreamSource(0, VertexBuffers[VB].VB, 0, D3DX.GetFVFVertexSize(VertexBuffers[VB].VF));
+                    device.VertexDeclaration = VertexBuffers[VB].VD;
+                    currentVB = VB;
+                }
+
+                // Index buffer change
+                if (IB != currentIB && IB != 0)
+                {
+                    device.Indices = IndexBuffers[IB].IB;
+                    currentIB = IB;
+                }
+
+
+
+                // Check for material change
+                bool setMaterial = true;
+                if (materialID == lastMaterial)
+                {
+                    setMaterial = false;
+                    nSameMaterial++;
+                }
+
+                int numpasses = effect.Begin(FX.None);
+                for (int j = 0; j < numpasses; j++)
+                {
+                    effect.BeginPass(j);
+                    {
+                        currentdrawCalls[i].Value.Invoke(effect, device, setMaterial);
+                    }
+                    effect.EndPass();
+                }
+                effect.End();
+
+                lastMaterial = materialID;
+            }
+
+            if (currentViewport == SortItem.Viewport.INSTANCED)
+            {
+                // Disable frequency instancing
+                device.ResetStreamSourceFrequency(0);
+                device.SetStreamSource(1, null, 0, 0);
+                effect.Technique = technique;
+            }
+
+            //device.ResetStreamSourceFrequency(0);
+        }
+
+
+        // Inits shaders etc. when preparing to render a frame
+        private void SetupFrame()
+        {
+            long ElapsedTime = HighResolutionTimer.Ticks - LastFrameTime;
+            LastFrameTime = HighResolutionTimer.Ticks;
+            // Update shader constants
+
+            // Camera
+            //Camera.PositionCamera();
+            Matrix worldview = device.GetTransform(TransformState.View) * Camera.World;
+            effect.SetValue("WorldViewProj", worldview * Camera.Projection);
+            effect.SetValue("World", Matrix.Identity);
+            effect.SetValue<Vector4>("Eye", new Vector4(Camera.position,0f));
+            effect.SetValue("fTimeElap", (float)(((double)ElapsedTime) / (double)HighResolutionTimer.Frequency));
+            effect.SetValue("MIDDLE_GRAY", MIDDLE_GRAY);
+            effect.SetValue("LUM_WHITE", LUM_WHITE);
+            effect.SetValue("BRIGHT_THRESHOLD", BRIGHT_THRESHOLD);
+            effect.SetValue("bloomMulti", bloomMulti);
+            device.SetPixelShaderConstant(7, new bool[] {false});
+            effect.SetValue("g_OverbrightFactor", 1f);
+
+            // Log Luminance
+            float invLogLumRange = 1.0f / (tonemap.MaxLogLum + tonemap.MinLogLum);
+            float logLumOffset = tonemap.MinLogLum * invLogLumRange;
+            effect.SetValue("invLogLumRange", invLogLumRange);
+            effect.SetValue("logLumOffset", logLumOffset);
+            if (tonemap.ForceAvgLum)
+                effect.SetValue("avgLogLum", tonemap.ForcedAvgLum);
+
+            // Texture samplers
+            device.SetSamplerState(0, SamplerState.MipFilter, (int)TextureFilter.Linear);
+            device.SetSamplerState(0, SamplerState.MinFilter, (int)TextureFilter.Anisotropic);
+            device.SetSamplerState(0, SamplerState.MaxAnisotropy, 4);
+            device.SetRenderState(RenderState.SrgbWriteEnable, true);
+            device.SetSamplerState(0, SamplerState.SrgbTexture, 1);
+            device.SetSamplerState(0, SamplerState.MagFilter, (int)TextureFilter.Linear);
+            device.SetSamplerState(1, SamplerState.MipFilter, (int)TextureFilter.Linear);
+            device.SetSamplerState(1, SamplerState.MinFilter, (int)TextureFilter.Linear);
+            device.SetSamplerState(1, SamplerState.MagFilter, (int)TextureFilter.Linear);
+            effect.SetValue("detailMultiplier", DetailMultiplier);
+        }
+
+        private void FinalPass()
+        {
+            device.SetTexture(0, RenderTexture);
+            //device.SetTexture(2, bloom.BloomTexture);
+            //device.SetSamplerState(2, SamplerState.MagFilter, TextureFilter.Linear);
+            //device.SetSamplerState(2, SamplerState.MinFilter, TextureFilter.Linear);
+            effect.Technique = "FinalPass_RGBE8";
+
+            DrawFullScreenQuad();
+
+            device.SetTexture(0, null);
+            //device.SetTexture(2, null);
+        }
+
+        
+
+        public void Init(RenderForm form)
+        {
+            this.form = form;
+            
+            form.ResizeBegin += new EventHandler((o, e) => { formIsResizing = true; });
+            form.ResizeEnd += new EventHandler((o, e) => { formIsResizing = false; if(form.ClientSize != RenderSize) _sizeChanged = true; });
+            InitDevice();
+            
+            
+            // Init input
+            //Input.Instance.InitializeInput();
+            //testTex = TextureManager.Instance.LoadTexture("test.png");
+            Commands.Instance.AddCommand("r_mode", ToggleFillMode);
+            KeyHags.Instance.SetBind(Keys.F12, "r_mode");
+
+            
+        }
+
+        
+
+        private void InitDevice()
+        {
+            bool LoadMapb = false;
+            
+            currentWindowState = form.WindowState;
+            form.Resize += (o, args) =>
+            {
+                if (form.WindowState != currentWindowState)
+                {
+                    HandleResize(o, args);
+                }
+                currentWindowState = form.WindowState;
+            };
+            form.ResizeBegin += (o, args) => { formIsResizing = true; };
+            form.ResizeEnd += (o, args) =>
+            {
+                formIsResizing = false;
+                HandleResize(o, args);
+            };
+
+            form.Show();
+            _is3D9Ex = false;
+            
+            DeviceType devType = DeviceType.Hardware;
+            int adapterOrdinal = 0;
+            Direct3D d3d = new Direct3D();
+            // Look for PerfHUD
+            AdapterCollection adapters = d3d.Adapters;
+            foreach (AdapterInformation adap in adapters)
+            {
+                if (adap.Details.Description.Contains("PerfH"))
+                {
+                    adapterOrdinal = adap.Adapter;
+                    devType = DeviceType.Reference;
+                    LoadMapb = true;
+                }
+            }
+
+            // Set present parameters
+            _pp = new PresentParameters();
+            _pp.Windowed = Windowed;
+            _pp.SwapEffect = SwapEffect.Discard;
+            _pp.EnableAutoDepthStencil = true;
+            _pp.AutoDepthStencilFormat = Format.D24S8;
+            _pp.PresentationInterval = (VSync? PresentInterval.Default: PresentInterval.Immediate);
+            _pp.Multisample = MultiSampling;
+            _pp.BackBufferWidth = RenderSize.Width;
+            _pp.BackBufferHeight = RenderSize.Height;
+            _pp.BackBufferFormat = Format.X8R8G8B8;
+            _pp.DeviceWindowHandle = form.Handle;
+            
+            // Handle Capabilities
+            Capabilities caps =  adapters[adapterOrdinal].GetCaps(devType);
+            CreateFlags createFlags = CreateFlags.SoftwareVertexProcessing;
+
+            // Got hardare vertex?
+            if ((caps.DeviceCaps & DeviceCaps.HWTransformAndLight) == DeviceCaps.HWTransformAndLight)
+                createFlags = CreateFlags.HardwareVertexProcessing;
+            // Support pure device?
+            if ((caps.DeviceCaps & DeviceCaps.PureDevice) == DeviceCaps.PureDevice)
+                createFlags |= CreateFlags.PureDevice;
+            createFlags |= CreateFlags.FpuPreserve;
+            // Shader fallback
+            if (caps.VertexShaderVersion < new Version(3, 0) || caps.PixelShaderVersion < new Version(3,0))
+            {
+                devType = DeviceType.Reference;
+                System.Console.WriteLine("[Render] Using Reference Device! :(");
+            }
+            try
+            {
+                device = new Device(d3d, adapterOrdinal, devType, form.Handle, createFlags, _pp);
+            }
+            catch (Exception ex)
+            {
+                throw ex;
+            }
+            
+            
+            
+            // Load main shader
+            if (System.IO.File.Exists(System.Windows.Forms.Application.StartupPath+"/client/render/simple.fx"))
+            {
+                string shaderOutput = null;
+                SlimDX.Configuration.ThrowOnError = false;
+                effect = Effect.FromFile(device, System.Windows.Forms.Application.StartupPath + "/client/render/simple.fx", null, null, null, ShaderFlags.None, null, out shaderOutput);
+
+                if (shaderOutput != null && shaderOutput != "")
+                {
+                    // Shader problem :..(
+                    System.Windows.Forms.MessageBox.Show(shaderOutput, "Shader Compilation error :(", System.Windows.Forms.MessageBoxButtons.OK, System.Windows.Forms.MessageBoxIcon.Error);
+                    Shutdown();
+                    return;
+                }
+                SlimDX.Configuration.ThrowOnError = true;
+            }
+            else
+            {
+                System.Console.WriteLine("Could not find shader..");
+            }
+
+            //effect.
+
+            // Add fonts
+            if (Fonts.Count == 0)
+            {
+                // UI Title
+                System.Drawing.Font localFont = new System.Drawing.Font("Constantia", 10.5f, System.Drawing.FontStyle.Regular);
+                SlimDX.Direct3D9.Font font = new SlimDX.Direct3D9.Font(Renderer.Instance.device, localFont);
+                Fonts.Add("title", font);
+
+                // FPS, etc.
+                font = new SlimDX.Direct3D9.Font(device, new System.Drawing.Font("Lucidia Console", 10f, System.Drawing.FontStyle.Regular));
+                Fonts.Add("diag", font);
+
+                // Labels and UI elements
+                localFont = new System.Drawing.Font("Candara", 10f, System.Drawing.FontStyle.Regular);
+                font = new SlimDX.Direct3D9.Font(Renderer.Instance.device, localFont);
+                Fonts.Add("label", font);
+
+                // Textbox
+                System.Drawing.Text.PrivateFontCollection col = new System.Drawing.Text.PrivateFontCollection();
+                col.AddFontFile(System.Windows.Forms.Application.StartupPath + @"\data\gui\dina10px.ttf");
+                localFont = new System.Drawing.Font(col.Families[0], 12f, FontStyle.Regular);
+                font = new SlimDX.Direct3D9.Font(Renderer.Instance.device, localFont);
+                Fonts.Add("textbox", font);
+            }
+            //d3d.Dispose();
+            // Init backbuffers, etc.
+            OnResetDevice();
+
+            bloom = new Bloom(this);
+            tonemap = new ToneMap(this);
+
+            // Init windowing system
+            WindowManager.Instance.Init(device);
+            
+            Render();
+            
+            if (LoadMapb)
+            {
+                //LoadMap(@"C:\Users\mads\Desktop\Kode Stuff\Data\source-files\cstrike\maps\cs_office.bsp");
+                //LoadMap(@"C:\Users\mads\Desktop\Kode Stuff\Data\lighttest.bsp");
+                LoadMapb = false;
+            }
+        }
+
+        public Result OnLostDevice()
+        {
+            foreach (HagsIndexBuffer ib in IndexBuffers.Values)
+            {
+                if (ib.IB != null && !ib.IB.Disposed && ib.IB.IsDefaultPool)
+                {
+                    ib.IB.Dispose();
+                }
+            }
+            foreach (HagsVertexBuffer vb in VertexBuffers.Values)
+            {
+                if (vb.VB != null && !vb.VB.Disposed && vb.VB.IsDefaultPool)
+                {
+                    vb.VB.Dispose();
+                }
+            }
+            WindowManager.Instance.OnLostDevice();
+            //TextureManager.Instance.Dispose();
+            effect.OnLostDevice();
+            foreach (SlimDX.Direct3D9.Font font in Fonts.Values)
+            {
+                font.OnLostDevice();
+            }
+            sprite.OnLostDevice();
+            bloom.OnLostDevice();
+            tonemap.OnLostDevice();
+            RenderTextureSfc.Dispose();
+            RenderSurface.Dispose();
+            RenderTexture.Dispose();
+            RenderDepthSurface.Dispose();
+
+            return new Result();
+        }
+
+        public Result OnResetDevice()
+        {
+            //if(WindowManager.Instance != null)
+            //    WindowManager.Instance.OnResetDevice();
+            effect.OnResetDevice();
+            // Font init
+            if (sprite == null)
+                sprite = new Sprite(device);
+            else
+                sprite.OnResetDevice();
+            foreach (SlimDX.Direct3D9.Font font in Fonts.Values)
+            {
+                font.OnResetDevice();
+            }
+
+            if (bloom != null)
+                bloom.OnResetDevice();
+            if (tonemap != null)
+                tonemap.OnResetDevice();
+
+            float FOV = (float)(Math.PI / 180f) * 65;
+            // Set up view
+            float aspect = (float)RenderSize.Width / (float)RenderSize.Height;
+            projMatrix = Matrix.PerspectiveFovLH(FOV,
+                aspect, 1.0f, 10000.0f);
+            device.SetTransform(TransformState.Projection, projMatrix);
+            viewMatrix = Matrix.LookAtLH(new Vector3(0, 0, 5.0f), new Vector3(), new Vector3(0, 1, 0));
+            device.SetTransform(TransformState.View, viewMatrix);
+            Camera = new Camera(device);
+
+            RenderSurface = Surface.CreateRenderTarget(device, RenderSize.Width, RenderSize.Height, Format.A8R8G8B8, MultiSampling, 0, false);
+            RenderTexture = new Texture(device, RenderSize.Width, RenderSize.Height, 1, Usage.RenderTarget, Format.A8R8G8B8, Pool.Default);
+            RenderTextureSfc = RenderTexture.GetSurfaceLevel(0);
+            RenderDepthSurface = Surface.CreateDepthStencil(device, RenderSize.Width, RenderSize.Height, Format.D16, MultisampleType.None, 0, true);
+
+            form.FormBorderStyle = (Windowed ? System.Windows.Forms.FormBorderStyle.Sizable: System.Windows.Forms.FormBorderStyle.None);
+            form.TopMost = !Windowed;
+            form.MaximizeBox = Windowed;
+            return new Result();
+        }
+
+        public void DrawFullScreenQuad()
+        {
+            int nPass = effect.Begin(FX.DoNotSaveState);
+            for (int i = 0; i < nPass; i++)
+            {
+                effect.BeginPass(i);
+                DrawFullScreenQuad(0.0f, 1.0f, 1.0f, 0.0f);
+                effect.EndPass();
+            }
+            effect.End();
+        }
+
+        public void DrawFullScreenQuad(float fLeftU, float fTopV, float fRightU, float fBottomV)
+        {
+            Surface target = device.GetRenderTarget(0);
+            SurfaceDescription rtDescr = target.Description;
+            device.SetRenderState(RenderState.ZEnable, false);
+
+            // Ensure that we're directly mapping texels to pixels by offset by 0.5
+            // For more info see the doc page titled "Directly Mapping Texels to Pixels"
+            float fWidth5 = (1 / (float)rtDescr.Width);// (float)rtDescr.Width - 1f;
+            float fHeight5 = (-1 / (float)rtDescr.Height);//(float)rtDescr.Height -1f;
+
+            VertexPositionNormalTextured[] quad = new VertexPositionNormalTextured[4];
+            quad[0] = new VertexPositionNormalTextured(-1f - fWidth5, -1f - fHeight5, 0.5f, fLeftU, fTopV);
+            quad[1] = new VertexPositionNormalTextured(1f - fWidth5, -1f - fHeight5, 0.5f, fRightU, fTopV);
+            quad[2] = new VertexPositionNormalTextured(-1f - fWidth5, 1f - fHeight5, 0.5f, fLeftU, fBottomV);
+            quad[3] = new VertexPositionNormalTextured(1f - fWidth5, 1f - fHeight5, 0.5f, fRightU, fBottomV);
+
+            device.VertexFormat = VertexPositionNormalTextured.Format;
+            device.DrawUserPrimitives(PrimitiveType.TriangleStrip, 2, quad);
+            device.SetRenderState(RenderState.ZEnable, true);
+        }
+
+        void ToggleFillMode(string[] tokens)
+        {
+            // Toggle fillmode
+            if (FillMode.Equals(FillMode.Solid))
+                FillMode = FillMode.Wireframe;
+            else if (FillMode.Equals(FillMode.Wireframe))
+                FillMode = FillMode.Point;
+            else if (FillMode.Equals(FillMode.Point))
+                FillMode = FillMode.Solid;
+        }
+
+        private void HandleResize(object sender, EventArgs args)
+        {
+            if (form.WindowState == System.Windows.Forms.FormWindowState.Minimized)
+                return;
+
+            if (RenderSize.Equals(form.ClientSize))
+                return;
+
+            form.FormBorderStyle = (Windowed ? System.Windows.Forms.FormBorderStyle.Sizable : System.Windows.Forms.FormBorderStyle.None);
+            form.TopMost = !Windowed;
+            form.MaximizeBox = Windowed;
+            //form.Bounds = System.Windows.Forms.Screen.PrimaryScreen.Bounds;
+            //form.TopMost = !Windowed;
+            //form.MaximizeBox = Windowed;
+            
+
+            OnLostDevice();
+            lock (ObjectTable.SyncObject)
+            {
+                foreach (ComObject obj in ObjectTable.Objects)
+                {
+
+                    if (obj.IsDefaultPool)
+                    {
+                        string info = obj.ToString();
+
+                        //if (info == "SlimDX.Direct3D9.Surface")
+                        
+                        System.Console.WriteLine(info);
+                        obj.Dispose();
+                    }
+                }
+            }
+
+            RenderSize.Width = form.ClientSize.Width;
+            RenderSize.Height = form.ClientSize.Height;
+
+
+            _pp.BackBufferWidth = RenderSize.Width;
+            _pp.BackBufferHeight = RenderSize.Height;
+
+            device.Reset(_pp);
+
+            OnResetDevice();
+        }
+
+        public void ChangeShaderTechnique(int index, int value, float value2, string value3)
+        {
+            string val = value3.Trim();
+            technique = val;
+        }
+
+        public void Shutdown()
+        {
+            foreach (HagsIndexBuffer buf in IndexBuffers.Values)
+            {
+                buf.Dispose();
+            }
+            foreach (HagsVertexBuffer buf in VertexBuffers.Values)
+            {
+                buf.Dispose();
+            }
+            WindowManager.Instance.OnLostDevice();
+            foreach(SlimDX.Direct3D9.Font font in Fonts.Values) 
+                font.Dispose();
+            if(sprite != null)
+                sprite.Dispose();
+            if (SourceMap != null)
+            {
+                SourceMap.Dispose();
+            }
+            if(RenderTexture != null)
+                RenderTexture.Dispose();
+            if(RenderSurface != null)
+                RenderSurface.Dispose();
+            if(RenderDepthSurface != null)
+                RenderDepthSurface.Dispose();
+            if(bloom != null)
+                bloom.Dispose();
+            if(tonemap != null)
+                tonemap.Dispose();
+            VertexPosNorInstance.vd.Dispose();
+            TextureManager.Instance.Dispose();
+            if (effect != null)
+                effect.Dispose();
+            if (device != null)
+            {
+                device.Direct3D.Dispose();
+                device.Dispose();
+            }
+            Environment.Exit(0);
+        }
+
+        // Singleton public instance getter
+        public static Renderer Instance
+        {
+            get { return _instance; }
+        }
+
+        
+    }
+}
