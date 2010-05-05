@@ -1,6 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
-using System.Linq;
+ 
 using System.Text;
 using System.Net;
 using CubeHags.client.common;
@@ -261,46 +261,46 @@ namespace CubeHags.common
 
         public void Init()
         {
-            System.Net.NetworkInformation.NetworkInterface[] interfaces = System.Net.NetworkInformation.NetworkInterface.GetAllNetworkInterfaces();
+            //System.Net.NetworkInformation.NetworkInterface[] interfaces = System.Net.NetworkInformation.NetworkInterface.GetAllNetworkInterfaces();
 
-            foreach (System.Net.NetworkInformation.NetworkInterface iface in interfaces)
-            {
-                System.Net.NetworkInformation.IPInterfaceProperties properties = iface.GetIPProperties();
+            //foreach (System.Net.NetworkInformation.NetworkInterface iface in interfaces)
+            //{
+            //    System.Net.NetworkInformation.IPInterfaceProperties properties = iface.GetIPProperties();
 
-                foreach (System.Net.NetworkInformation.UnicastIPAddressInformation address in properties.UnicastAddresses)
-                {
-                    if (address.Address == null || address.IPv4Mask == null)
-                        continue;
-                    string mask = address.IPv4Mask.ToString();
-                    string ip = address.Address.ToString();
-                    if (!mask.Equals("0.0.0.0") && mask.Length > 0 && ip.Length > 0)
-                    {
-                        string[] tokens = mask.Split('.');
-                        string[] iptokens = ip.Split('.');
-                        if (tokens.Length != iptokens.Length)
-                            continue;
-                        bool val = true;
-                        string lanipval = "";
-                        for (int i = 0; i < tokens.Length; i++)
-                        {
-                            if (val)
-                            {
-                                if (tokens[i].Equals("255"))
-                                {
-                                    lanipval += iptokens[i] + '.';
-                                }
-                                else
-                                    break;
-                            }
-                        }
-                        if (!lanipval.Equals(""))
-                        {
-                            Common.Instance.WriteLine("Ips starting with '{0}' will be regarded as LAN clients", lanipval);
-                            lanStrings.Add(lanipval);
-                        }
-                    }
-                }
-            }
+            //    foreach (System.Net.NetworkInformation.UnicastIPAddressInformation address in properties.UnicastAddresses)
+            //    {
+            //        if (address.Address == null || address.IPv4Mask == null)
+            //            continue;
+            //        string mask = address.IPv4Mask.ToString();
+            //        string ip = address.Address.ToString();
+            //        if (!mask.Equals("0.0.0.0") && mask.Length > 0 && ip.Length > 0)
+            //        {
+            //            string[] tokens = mask.Split('.');
+            //            string[] iptokens = ip.Split('.');
+            //            if (tokens.Length != iptokens.Length)
+            //                continue;
+            //            bool val = true;
+            //            string lanipval = "";
+            //            for (int i = 0; i < tokens.Length; i++)
+            //            {
+            //                if (val)
+            //                {
+            //                    if (tokens[i].Equals("255"))
+            //                    {
+            //                        lanipval += iptokens[i] + '.';
+            //                    }
+            //                    else
+            //                        break;
+            //                }
+            //            }
+            //            if (!lanipval.Equals(""))
+            //            {
+            //                Common.Instance.WriteLine("Ips starting with '{0}' will be regarded as LAN clients", lanipval);
+            //                lanStrings.Add(lanipval);
+            //            }
+            //        }
+            //    }
+            //}
             qport = CVars.Instance.Get("net_qport", "" + (new Random().Next(0, 65535)&0xffff), CVarFlags.INIT);
             Config(true);
             Commands.Instance.AddCommand("net_restart", new CommandDelegate(Cmd_Restart));

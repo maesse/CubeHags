@@ -1,6 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
-using System.Linq;
+ 
 using System.Text;
 using SlimDX.Direct3D9;
 using System.IO;
@@ -46,13 +46,13 @@ namespace CubeHags.client
         {
             // Clean up name
             name = name.Replace('\\', '/').ToLower();
-            if (name.Contains('\0'))
+            if (name.Contains("" + '\0'))
                 name = name.Substring(0, name.IndexOf('\0'));
             if (name.StartsWith("materials/"))
                 name = name.Substring("materials/".Length);
 
             // Look in cache
-            if (name.Contains('.'))
+            if (name.Contains("" + '.'))
             {
                 if (materials.ContainsKey(name))
                     return materials[name];
@@ -67,7 +67,7 @@ namespace CubeHags.client
 
             // Look in FileCache
             FCFile file;
-            if(name.Contains('.'))
+            if (name.Contains("" + '.'))
                 file = FileCache.Instance.GetFile(name);
             else {
                 // No extension.. try vmt first, then vtf
@@ -105,7 +105,7 @@ namespace CubeHags.client
         {
             // Clean up name
             name.Replace('\\', '/');
-            if (name.Contains('\0'))
+            if (name.Contains("" + '\0'))
                 name = name.Substring(0, name.IndexOf('\0'));
             string cleanName = name;
 

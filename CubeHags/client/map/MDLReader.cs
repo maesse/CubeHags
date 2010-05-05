@@ -1,6 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
-using System.Linq;
+ 
 using System.Text;
 using SlimDX;
 using System.IO;
@@ -74,7 +74,7 @@ namespace CubeHags.client.map.Source
                         strBuilder.Append(curChar);
                     }
                     texturePaths[i] = strBuilder.ToString();
-                    strBuilder.Clear();
+                    strBuilder.Length = 0;
                 }
 
                 // Read MDLTextures
@@ -98,7 +98,7 @@ namespace CubeHags.client.map.Source
                     }
                     mdltexs[i] = mdltex;
                     materialNames[i] = strBuilder.ToString();
-                    strBuilder.Clear();
+                    strBuilder.Length = 0;
 
                     // Load material
                     SourceMaterial material = TextureManager.Instance.LoadMaterial(materialNames[i]);

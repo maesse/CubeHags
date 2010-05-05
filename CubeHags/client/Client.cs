@@ -1,6 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
-using System.Linq;
+ 
 using System.Text;
 using CubeHags.common;
 using SlimDX.Windows;
@@ -26,9 +26,9 @@ namespace CubeHags.client
         public CVar cl_sensitivity = CVars.Instance.Get("cl_sensitivity", "1", CVarFlags.ARCHIVE);
         public CVar cl_nodelta = CVars.Instance.Get("cl_nodelta", "0", CVarFlags.NONE);
 
-        public clientActive cl;
+        public clientActive cl = new clientActive();
         public clientStatic_t cls = new clientStatic_t();
-        public clientConnect clc;
+        public clientConnect clc = new clientConnect();
 
         public Client()
         {

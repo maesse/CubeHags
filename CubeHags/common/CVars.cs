@@ -1,6 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
-using System.Linq;
+ 
 using System.Text;
 
 namespace CubeHags.client.common
@@ -380,11 +380,11 @@ namespace CubeHags.client.common
         {
             if (s == null)
                 return false;
-            if (s.Contains('\\'))
+            if (s.Contains(""+'\\'))
                 return false;
-            if (s.Contains('\"'))
+            if (s.Contains("" + '\"'))
                 return false;
-            if (s.Contains(';'))
+            if (s.Contains("" + ';'))
                 return false;
 
             return true;

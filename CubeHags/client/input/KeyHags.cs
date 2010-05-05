@@ -1,6 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
-using System.Linq;
+ 
 using System.Text;
 using CubeHags.client.common;
 using System.IO;
@@ -212,9 +212,15 @@ namespace CubeHags.client.input
                     {
                         Keys key;
                         // Try direct parse
-                        if (Enum.TryParse<Keys>(str, out key))
+                        try
+                        {
+                            key = (Keys)Enum.Parse(typeof(Keys), str);
                             return key;
-                        else
+                        }
+                        catch { }
+                        //if (Enum.TryParse<Keys>(str, out key))
+                        //    return key;
+                        //else
                         {
                             // Else try looping through all keys and do case-insensitive compares
                             foreach (string keyStr in Enum.GetNames(typeof(Keys)))

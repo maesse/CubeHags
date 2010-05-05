@@ -1,6 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
-using System.Linq;
+ 
 using System.Text;
 
 namespace CubeHags.common
@@ -12,7 +12,7 @@ namespace CubeHags.common
             char[] blacklist = { '\\', ';', '"' };
             for (int i = 0; i < blacklist.Length; i++)
             {
-                if(value.Contains(blacklist[i]) || key.Contains(blacklist[i]))
+                if (value.Contains("" + blacklist[i]) || key.Contains("" + blacklist[i]))
                 {
                     Common.Instance.WriteLine("SetValueForKey: Can't use keys or values with '{0}' - {1}={2}", blacklist[i], key, value);
                     return "";
@@ -30,7 +30,7 @@ namespace CubeHags.common
 
         public static string RemoveKey(string source, string key)
         {
-            if (key.Contains('\\'))
+            if (key.Contains("" + '\\'))
             {
                 Common.Instance.WriteLine("RemoveKey: key contains invalid char '\\'");
                 return source;
@@ -86,7 +86,7 @@ namespace CubeHags.common
             char[] blacklist = { '\\', ';', '"' };
             for (int i = 0; i < blacklist.Length; i++)
             {
-                if (key.Contains(blacklist[i]))
+                if (key.Contains("" + blacklist[i]))
                 {
                     Common.Instance.WriteLine("ValueForKey: Can't get keys with '{0}'. ({1})", blacklist[i], key);
                     return null;
@@ -149,10 +149,10 @@ namespace CubeHags.common
         */
         public static bool Validate(string value)
         {
-            if (value.Contains('\"'))
+            if (value.Contains("" + '\"'))
                 return false;
 
-            if (value.Contains(';'))
+            if (value.Contains("" + ';'))
                 return false;
 
             return true;

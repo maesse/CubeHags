@@ -1,6 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
-using System.Linq;
+ 
 using System.Text;
 using SlimDX.Direct3D9;
 using SlimDX;
@@ -69,9 +69,20 @@ namespace CubeHags.client.render
                     DataStream ds = oldvb.Lock(0, oldvb.Description.SizeInBytes, LockFlags.ReadOnly);
                     DataStream datastream = _VB.Lock(0, oldvb.Description.SizeInBytes, (usage & Usage.Dynamic) == Usage.Dynamic ? LockFlags.NoOverwrite : LockFlags.None);
                     // Copy old data
-                    System.IO.MemoryStream ms = new System.IO.MemoryStream((int)ds.Length);
-                    ds.CopyTo(ms);
-                    ms.CopyTo(datastream);
+                    //System.IO.MemoryStream ms = new System.IO.MemoryStream((int)ds.Length);
+                    
+                    if (ds.Length <= int.MaxValue)
+                    {
+                        byte[] buf = new byte[ds.Length];
+                        ds.Read(buf, 0, (int)ds.Length);
+                        datastream.Write(buf, 0, buf.Length);
+                    }
+                    else
+                    {
+                        throw new Exception("Time to fix that buffer...");
+                    }
+                    //ds.CopyTo(ms);
+                    //ms.CopyTo(datastream);
                     
                     // Cleanup
                     _VB.Unlock();
