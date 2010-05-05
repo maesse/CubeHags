@@ -551,11 +551,11 @@ namespace CubeHags.server
             svs.time += 100;
 
             // save systeminfo and serverinfo strings
-            string sysInfo = CVars.Instance.InfoString(CVarFlags.SYSTEM_INFO);
+            string systemInfo = CVars.Instance.InfoString(CVarFlags.SYSTEM_INFO);
             CVars.Instance.modifiedFlags &= ~CVarFlags.SYSTEM_INFO;
-            SetConfigString(1, sysInfo);
+            SetConfigString((int)ConfigString.CS_SYSTEMINFO, systemInfo);
 
-            SetConfigString(0, CVars.Instance.InfoString(CVarFlags.SERVER_INFO));
+            SetConfigString((int)ConfigString.CS_SERVERINFO, CVars.Instance.InfoString(CVarFlags.SERVER_INFO));
             CVars.Instance.modifiedFlags &= ~CVarFlags.SERVER_INFO;
 
             // any media configstring setting now should issue a warning
@@ -680,13 +680,13 @@ namespace CubeHags.server
 
             // if it isn't time for the next frame, do nothing
             if (sv_fps.Integer < 1)
-                CVars.Instance.Set2("sv_fps", "10", true);
+                CVars.Instance.Set("sv_fps", "10");
 
             float frameMsec = 1000f / sv_fps.Integer * Common.Instance.timescale.Value;
             // don't let it scale below 1ms
             if (frameMsec < 1)
             {
-                CVars.Instance.Set2("timescale", string.Format("{0}", sv_fps.Integer / 1000f), true);
+                CVars.Instance.Set("timescale", string.Format("{0}", sv_fps.Integer / 1000f));
                 frameMsec = 1;
             }
 
@@ -1068,6 +1068,9 @@ namespace CubeHags.server
 
             Commands.Instance.AddCommand("map", new CommandDelegate(SV_Map_f));
 
+            
+
+
         }
 
         void SV_Map_f(string[] tokens)
@@ -1181,7 +1184,7 @@ namespace CubeHags.server
             public clientState_t state;
             public string userinfo;		// 1024 name, etc
 
-            public string[] reliableCommands; // 64 - 1024 max len
+            public string[] reliableCommands = new string[64]; // 64 - 1024 max len
             public int reliableSequence;		// last added reliable message, not necesarily sent or acknowledged yet
             public int reliableAcknowledge;	// last acknowledged reliable message
             public int reliableSent;			// last sent reliable message, not necesarily acknowledged yet

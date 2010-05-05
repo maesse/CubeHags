@@ -357,6 +357,29 @@ namespace CubeHags.client
             frame.numEntities++;
         }
 
+
+        /*
+        =====================
+        CL_ParseCommandString
+
+        Command strings are just saved off until cgame asks for them
+        when it transitions a snapshot
+        =====================
+        */
+        void ParseCommandString(NetBuffer buf)
+        {
+            int seq = buf.ReadInt32();
+            string s = buf.ReadString();
+
+            // see if we have already executed stored it off
+            if (clc.serverCommandSequence >= seq)
+                return;
+
+            clc.serverCommandSequence = seq;
+            int index = seq & 63;
+            clc.serverCommands[index] = s;
+        }
+
         void ParseServerMessage(Net.Packet packet)
         {
             // get the reliable sequence acknowledge number
@@ -396,7 +419,7 @@ namespace CubeHags.client
                 switch (cmd)
                 {
                     case (int)svc_ops_e.svc_serverCommand:
-                        //ParseCommandString(buf);
+                        ParseCommandString(buf);
                         break;
                     case (int)svc_ops_e.svc_gamestate:
                         ParseGameState(buf);
@@ -408,10 +431,6 @@ namespace CubeHags.client
                         //ParseDownload(buf);
                         break;
                     case (int)svc_ops_e.svc_nop:
-                        break;
-                    case (int)svc_ops_e.svc_configstring:
-                        break;
-                    case (int)svc_ops_e.svc_baseline:
                         break;
                     default:
                         Common.Instance.Error("Illegible server message");

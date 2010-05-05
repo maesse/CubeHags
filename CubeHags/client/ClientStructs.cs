@@ -328,7 +328,7 @@ namespace CubeHags.client
 
     } 
 
-    public struct clientConnect
+    public class clientConnect
     {
         public int clientNum;
         public int lastPacketSentTime;  // for retransmits during connection
@@ -344,7 +344,7 @@ namespace CubeHags.client
         // these are our reliable messages that go to the server
         public int reliableSequence;
         public int reliableAcknowledge; // the last one the server has executed
-        public string[] reliableCommands; // 64
+        public string[] reliableCommands = new string[64]; // 64
 
         // server message (unreliable) and command (reliable) sequence
         // numbers are NOT cleared at level changes, but continue to
@@ -357,7 +357,7 @@ namespace CubeHags.client
         // reliable messages received from server
         public int serverCommandSequence;
         public int lastExecutedServerCommand;		// last server command grabbed or executed with CL_GetServerCommand
-        public string[] serverCommands; // 64
+        public string[] serverCommands = new string[64]; // 64
         public Net.netchan_t netchan;
     }
 

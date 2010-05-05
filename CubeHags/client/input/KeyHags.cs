@@ -177,6 +177,23 @@ namespace CubeHags.client.input
                 binds[key] = binding;
             else
                 binds.Add(key, binding);
+
+            // consider this like modifying an archived cvar, so the
+            // file write will be triggered at the next oportunity
+            CVars.Instance.modifiedFlags |= CVarFlags.ARCHIVE;
+        }
+
+        // Writes lines containing "bind key value"
+        public void WriteBinds(StreamWriter writer)
+        {
+            writer.WriteLine("unbindall");
+            foreach (Keys key in binds.Keys)
+            {
+                string bind = binds[key];
+                if (bind == null || bind.Length == 0)
+                    continue;
+                writer.WriteLine("bind {0} \"{1}\"", GetStringFromKey(key, false), bind);
+            }
         }
 
         // Translate string to Keys

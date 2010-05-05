@@ -383,9 +383,9 @@ namespace CubeHags.client
                 return true;
 
             if (Client.Instance.cl_maxpackets.Integer < 15)
-                CVars.Instance.Set2("cl_maxpackets", "15", true);
+                CVars.Instance.Set("cl_maxpackets", "15");
             else if (Client.Instance.cl_maxpackets.Integer > 125)
-                CVars.Instance.Set2("cl_maxpackets", "125", true);
+                CVars.Instance.Set("cl_maxpackets", "125");
 
             int oldpacketNum = (Client.Instance.clc.netchan.outgoingSequence - 1) & 31;
             int delta = Client.Instance.cls.realtime - Client.Instance.cl.outPackets[oldpacketNum].p_realtime;

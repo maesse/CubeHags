@@ -2,6 +2,8 @@
 using System.Collections.Generic;
  
 using System.Text;
+using System.IO;
+using CubeHags.common;
 
 namespace CubeHags.client.common
 {
@@ -42,6 +44,7 @@ namespace CubeHags.client.common
     {
         Dictionary<string, CVar> vars = new Dictionary<string, CVar>();
         public CVarFlags modifiedFlags = CVarFlags.NONE;
+
         CVars()
         {
         }
@@ -54,6 +57,7 @@ namespace CubeHags.client.common
             return null;
         }
 
+        // Returns float value of cvar
         public float VariableValue(string name)
         {
             CVar var = FindVar(name);
@@ -63,6 +67,7 @@ namespace CubeHags.client.common
             return var.Value;
         }
 
+        // Returns integer value of cvar
         public int VariableIntegerValue(string name)
         {
             CVar var = FindVar(name);
@@ -72,6 +77,7 @@ namespace CubeHags.client.common
             return var.Integer;
         }
 
+        // Returns string value of cvar
         public string VariableString(string name)
         {
             CVar var = FindVar(name);
@@ -81,12 +87,28 @@ namespace CubeHags.client.common
             return var.String;
         }
 
+        // Returns flags of cvar
         public CVarFlags Flags(string name)
         {
             CVar var = FindVar(name);
             if (var == null)
                 return CVarFlags.NONEXISTANT;
             return var.Flags;
+        }
+
+        // Create an infostring with cvars the fulfill the cVarFlags attribute
+        public string InfoString(CVarFlags cVarFlags)
+        {
+            StringBuilder str = new StringBuilder();
+
+            foreach (CVar var in vars.Values)
+            {
+                if (var.Name != null && var.Name.Length > 0 && (var.Flags & cVarFlags) == cVarFlags)
+                {
+                    str.Append(string.Format("\\{0}\\{1}", var.Name, var.String));
+                }
+            }
+            return str.ToString();
         }
 
         // Handles variable inspection and changing from the console
@@ -189,6 +211,7 @@ namespace CubeHags.client.common
             return value;
         }
 
+        // Gets a cvar. If it doesn't exist, it will be created
         public CVar Get(string name, string value, CVarFlags flags)
         {
             if (name == null || value == null || name.Equals(""))
@@ -244,6 +267,10 @@ namespace CubeHags.client.common
                     Set(name, s);
                 }
 
+                // ZOID--needs to be set so that cvars the game sets as 
+                // SERVERINFO get sent to clients
+                modifiedFlags |= flags;
+
                 return var;
             }
 
@@ -265,13 +292,16 @@ namespace CubeHags.client.common
             cvar.ResetString = value;
             cvar.Validate = false;
             cvar.Flags = flags;
+            // note what types of cvars have been modified (userinfo, archive, serverinfo, systeminfo)
+            modifiedFlags |= cvar.Flags;
 
             vars.Add(name, cvar);
 
             return cvar;
         }
 
-        public CVar Set2(string name, string value, bool force)
+        // Sets value of a cvar
+        private CVar Set2(string name, string value, bool force)
         {
             if (!ValidateString(name))
             {
@@ -312,6 +342,9 @@ namespace CubeHags.client.common
             }
             else if (value.Equals(var.String))
                 return var;
+
+            // note what types of cvars have been modified (userinfo, archive, serverinfo, systeminfo)
+            modifiedFlags |= var.Flags;
 
             if (!force)
             {
@@ -371,6 +404,23 @@ namespace CubeHags.client.common
             return var;
         }
 
+        // Append lines containing "set variable value" for all variables
+        // with the archive flag set to true
+        public void WriteVariables(StreamWriter writer)
+        {
+            foreach (CVar cvar in vars.Values)
+            {
+                if ((cvar.Flags & CVarFlags.ARCHIVE) != CVarFlags.ARCHIVE)
+                    continue;
+
+                // write the latched value, even if it hasn't taken effect yet
+                if (cvar.LatchedString != null)
+                    writer.WriteLine("seta {0} \"{1}\"", cvar.Name, cvar.LatchedString);
+                else
+                    writer.WriteLine("seta {0} \"{1}\"", cvar.Name, cvar.String);
+            }
+        }
+
         public CVar Set(string name, string value)
         {
             return Set2(name, value, true);
@@ -380,11 +430,11 @@ namespace CubeHags.client.common
         {
             if (s == null)
                 return false;
-            if (s.Contains(""+'\\'))
+            if (s.Contains("\\"))
                 return false;
-            if (s.Contains("" + '\"'))
+            if (s.Contains("\""))
                 return false;
-            if (s.Contains("" + ';'))
+            if (s.Contains(";"))
                 return false;
 
             return true;
@@ -400,7 +450,197 @@ namespace CubeHags.client.common
             Set2(name, null, true);
         }
 
+        void Print_f(string[] tokens)
+        {
+            if (tokens.Length != 2)
+            {
+                Common.Instance.WriteLine("usage: print <variable>");
+                return;
+            }
 
+            string name = tokens[1];
+            CVar cv = FindVar(name);
+            if (cv != null)
+                Print(cv);
+            else
+                Common.Instance.WriteLine("Cvar {0} doesn't exist.", name);
+        }
+
+        /*
+        ============
+        Cvar_Print
+
+        Prints the value, default, and latched string of the given variable
+        ============
+        */
+        public void Print(CVar var)
+        {
+            Common.Instance.Write("\"{0}\" is \"{1}\"", var.Name, var.String);
+            if ((var.Flags & CVarFlags.ROM) != CVarFlags.ROM)
+            {
+                if (var.String.Equals(var.ResetString))
+                    Common.Instance.Write(", the default");
+                else
+                    Common.Instance.Write(" default: \"{0}\"", var.ResetString);
+            }
+
+            Common.Instance.Write("\n");
+            if (var.LatchedString != null)
+                Common.Instance.WriteLine("latched: \"{0}\"", var.LatchedString);
+        }
+
+        /*
+        ============
+        Cvar_Toggle_f
+
+        Toggles a cvar for easy single key binding, optionally through a list of
+        given values
+        ============
+        */
+        void Toggle_f(string[] tokens)
+        {
+            if (tokens.Length < 2)
+            {
+                Common.Instance.WriteLine("usage: toggle <variable> [value1, value2, ...]");
+                return;
+            }
+
+            if (tokens.Length == 2)
+            {
+                Set2(tokens[1], "" + VariableValue(tokens[1]), false);
+                return;
+            }
+
+            if (tokens.Length == 3)
+            {
+                Common.Instance.WriteLine("toggle: nothing to toggle to.");
+                return;
+            }
+
+            string curval = VariableString(tokens[1]);
+            // don't bother checking the last arg for a match since the desired
+            // behaviour is the same as no match (set to the first argument)
+            int c = tokens.Length;
+            for (int i = 2; i + 1 < c; i++)
+            {
+                if (curval.Equals(tokens[i]))
+                {
+                    Set2(tokens[1], tokens[i + 1], false);
+                    return;
+                }
+            }
+
+            // fallback
+            Set2(tokens[1], tokens[2], false);
+        }
+
+
+        /*
+        ============
+        Cvar_Set_f
+
+        Allows setting and defining of arbitrary cvars from console, even if they
+        weren't declared in C code.
+        ============
+        */
+        void Set_f(string[] tokens)
+        {
+            string cmd = tokens[0];
+
+            if (tokens.Length < 2)
+            {
+                Common.Instance.WriteLine("usage: {0} <variable> <value>", cmd);
+                return;
+            }
+
+            if (tokens.Length == 2)
+            {
+                Print_f(tokens);
+                return;
+            }
+
+            CVar v = Set2(tokens[1], Commands.ArgsFrom(tokens, 2), false);
+            if (v == null)
+                return;
+
+            if (cmd.Length < 4)
+                return;
+
+            switch (cmd[3])
+            {
+                case 'a':
+                    if ((v.Flags & CVarFlags.ARCHIVE) != CVarFlags.ARCHIVE)
+                    {
+                        v.Flags |= CVarFlags.ARCHIVE;
+                        modifiedFlags |= CVarFlags.ARCHIVE;
+                    }
+                    break;
+                case 'u':
+                    if ((v.Flags & CVarFlags.USER_INFO) != CVarFlags.USER_INFO)
+                    {
+                        v.Flags |= CVarFlags.USER_INFO;
+                        modifiedFlags |= CVarFlags.USER_INFO;
+                    }
+                    break;
+                case 's':
+                    if ((v.Flags & CVarFlags.SERVER_INFO) != CVarFlags.SERVER_INFO)
+                    {
+                        v.Flags |= CVarFlags.SERVER_INFO;
+                        modifiedFlags |= CVarFlags.SERVER_INFO;
+                    }
+                    break;
+            }
+        }
+
+        void Reset_f(string[] tokens)
+        {
+            if (tokens.Length != 2)
+            {
+                Common.Instance.WriteLine("usage: reset <variable>");
+                return;
+            }
+
+            Reset(tokens[1]);
+        }
+
+        void Unset_f(string[] tokens)
+        {
+            if (tokens.Length != 2)
+            {
+                Common.Instance.WriteLine("usage: unset <variable>");
+                return;
+            }
+
+            CVar cv = FindVar(tokens[1]);
+            if (cv == null)
+                return;
+
+            if ((cv.Flags & CVarFlags.USER_CREATED) == CVarFlags.USER_CREATED)
+            {
+                Unset(cv);
+            }
+            else
+                Common.Instance.WriteLine("Error: {0}: Variable {1} is not user created.", tokens[0], cv.Name);
+        }
+
+        public void Unset(CVar var)
+        {
+            // remove from dictionary
+            if (vars.ContainsKey(var.Name))
+                vars.Remove(var.Name);
+        }
+
+        public void Init()
+        {
+            Commands.Instance.AddCommand("print", new CommandDelegate(Print_f));
+            Commands.Instance.AddCommand("toggle", new CommandDelegate(Toggle_f));
+            Commands.Instance.AddCommand("set", new CommandDelegate(Set_f));
+            Commands.Instance.AddCommand("seta", new CommandDelegate(Set_f));
+            Commands.Instance.AddCommand("setu", new CommandDelegate(Set_f));
+            Commands.Instance.AddCommand("sets", new CommandDelegate(Set_f));
+            Commands.Instance.AddCommand("reset", new CommandDelegate(Reset_f));
+            Commands.Instance.AddCommand("unset", new CommandDelegate(Unset_f));
+        }
 
         // Singleton implementation
         private static readonly CVars _Instance = new CVars();
@@ -410,20 +650,6 @@ namespace CubeHags.client.common
             {
                 return _Instance;
             }
-        }
-
-        public string InfoString(CVarFlags cVarFlags)
-        {
-            StringBuilder str = new StringBuilder();
-
-            foreach (CVar var in vars.Values)
-            {
-                if (var.Name != null && var.Name != "" && (var.Flags & cVarFlags) == cVarFlags)
-                {
-                    str.Append(string.Format("\\{0}\\{1}", var.Name, var.String));
-                }
-            }
-            return str.ToString();
         }
 
         

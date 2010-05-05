@@ -181,8 +181,6 @@ namespace CubeHags.client
             }
         }
 
-        
-
         public string[] GetServerCommand(int serverCommandNumber)
         {
             // if we have irretrievably lost a reliable command, drop the connection
@@ -192,7 +190,7 @@ namespace CubeHags.client
                 return null;
             }
 
-            if (serverCommandNumber >= clc.serverCommandSequence)
+            if (serverCommandNumber > clc.serverCommandSequence)
             {
                 Common.Instance.Error("GetServerCommand: requested a command not received");
                 return null;
