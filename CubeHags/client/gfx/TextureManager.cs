@@ -29,7 +29,7 @@ namespace CubeHags.client
             hagsTextures = new List<HagsTexture>();
             textures = new Dictionary<string, Texture>();
             materials = new Dictionary<string, SourceMaterial>();
-            //NoTexture = LoadTexture("gfx/checkerboard.dds");
+            NoTexture = LoadTexture("gfx/checkerboard.dds");
             FileCache.Instance.ToString();
         }
 

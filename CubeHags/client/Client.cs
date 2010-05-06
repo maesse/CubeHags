@@ -10,6 +10,7 @@ using System.Net;
 using SlimDX;
 using Lidgren.Network;
 using CubeHags.client.render;
+using CubeHags.client.gfx;
 
 namespace CubeHags.client
 {
@@ -29,6 +30,8 @@ namespace CubeHags.client
         public clientActive cl = new clientActive();
         public clientStatic_t cls = new clientStatic_t();
         public clientConnect clc = new clientConnect();
+
+        public Cinematic cin;
 
         public Client()
         {
@@ -192,6 +195,9 @@ namespace CubeHags.client
             // update the screen
             UpdateScreen();
             EndFrame();
+
+            cin.RunCinematic();
+            cls.framecount++;
         }
 
         
@@ -201,7 +207,7 @@ namespace CubeHags.client
         public void Init()
         {
             Common.Instance.WriteLine("------- Client initialization --------");
-            KeyHags.Instance.Init();
+            
             // Console init
 
 
@@ -220,12 +226,15 @@ namespace CubeHags.client
 
             CVars.Instance.Set("cl_running", "1");
             Common.Instance.WriteLine("------- Client initialization Complete --------");
-
+            cin = new Cinematic();
+            cin.AlterGameState = true;
+            cin.PlayCinematic("testvid.avi", 0, 0, Renderer.Instance.RenderSize.Width, Renderer.Instance.RenderSize.Height);
+            CVars.Instance.Set("nextmap", "map cs_office");
         }
 
         void CheckTimeout()
         {
-            if (cls.state >= connstate_t.CONNECTED && cls.realtime - clc.lastPacketTime > cl_timeout.Value * 1000)
+            if (cls.state >= connstate_t.CONNECTED && cls.state != connstate_t.CINEMATIC && cls.realtime - clc.lastPacketTime > cl_timeout.Value * 1000)
             {
                 if (++cl.timeoutCount > 5)
                 {

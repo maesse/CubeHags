@@ -55,7 +55,7 @@ namespace CubeHags.client.map.Source
             //ambientLightTexture = new Texture(Renderer.Instance.device, 256, 256, 0, Usage.Dynamic | Usage.WriteOnly, Format.A16B16G16R16F, Pool.Default);
         }
 
-        public void Init()
+        public new void Init()
         {
             this.SharedTexture2 = true;
             this.tex2 = world.LightmapTexture;

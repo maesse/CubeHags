@@ -748,6 +748,7 @@ namespace CubeHags.common
     	LOADING,			// only during cgame initialization, never during main loop
     	PRIMED,			// got gamestate, waiting for first frame
     	ACTIVE,			// game views should be displayed
+        CINEMATIC
     }
 
 

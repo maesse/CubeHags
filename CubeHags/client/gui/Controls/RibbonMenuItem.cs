@@ -10,7 +10,6 @@ namespace CubeHags.client.gui
     class RibbonMenuItem : Label
     {
         // Drawing
-        private Sprite sprite;
         private bool _Showing = false;
         public bool Showing { get { return _Showing; } set { _Showing = value; } }
 

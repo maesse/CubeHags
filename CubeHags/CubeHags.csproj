@@ -69,6 +69,10 @@
     <CodeAnalysisRuleSet>AllRules.ruleset</CodeAnalysisRuleSet>
   </PropertyGroup>
   <ItemGroup>
+    <Reference Include="DirectShowLib-2005, Version=2.1.0.0, Culture=neutral, PublicKeyToken=67e7b740cdfc2d3f, processorArchitecture=MSIL">
+      <SpecificVersion>False</SpecificVersion>
+      <HintPath>.\DirectShowLib-2005.dll</HintPath>
+    </Reference>
     <Reference Include="Ionic.Zip.Reduced, Version=1.8.4.26, Culture=neutral, PublicKeyToken=edbe51ad942a3f5c, processorArchitecture=MSIL" />
     <Reference Include="Lidgren.Network, Version=1.0.0.0, Culture=neutral, processorArchitecture=MSIL">
       <SpecificVersion>False</SpecificVersion>
@@ -96,6 +100,7 @@
     <Compile Include="client\ClientParse.cs" />
     <Compile Include="client\ClientScreen.cs" />
     <Compile Include="client\ClientStructs.cs" />
+    <Compile Include="client\gfx\Cinematic.cs" />
     <Compile Include="client\gui\ConnectGUI.cs" />
     <Compile Include="client\gui\Controls\Scrollbar.cs" />
     <Compile Include="client\gui\Misc\ScrollbarStyle.cs" />
@@ -168,6 +173,7 @@
     <Compile Include="common\ClipMap.cs" />
     <Compile Include="common\GameCommon.cs" />
     <Compile Include="common\Net.cs" />
+    <Compile Include="server\ServerCmds.cs" />
     <Compile Include="server\game\Game.cs" />
     <Compile Include="server\game\GameLocal.cs" />
     <Compile Include="server\game\GameSession.cs" />
@@ -279,6 +285,9 @@
     </Content>
     <Content Include="data\gui\window-theme\window-borders.png">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+    <Content Include="DirectShowLib-2005.dll">
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
     </Content>
     <Content Include="Ionic.Zip.Reduced.dll" />
     <Content Include="Lidgren.Network.dll" />

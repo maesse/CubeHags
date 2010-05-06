@@ -46,6 +46,9 @@ namespace CubeHags.client
                     WindowManager.Instance.connectGUI.DrawConnect();
                     CGame.Instance.DrawActiveFrame(cl.serverTime);
                     break;
+                case connstate_t.CINEMATIC:
+
+                    break;
             }
 
 

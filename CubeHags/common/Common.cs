@@ -38,7 +38,7 @@ namespace CubeHags.common
         Queue<sysEvent_t> pushedEventQueue = new Queue<sysEvent_t>(256);
         Queue<sysEvent_t> eventQueue = new Queue<sysEvent_t>(256);
 
-
+        List<string> commandLines = new List<string>();
 
         public Common()
         {
@@ -222,16 +222,95 @@ namespace CubeHags.common
             writer.Close();
         }
 
+        void Quit_f(string[] tokens)
+        {
+            Shutdown();
+        }
+
+        void ParseCommandLine(string commandLine)
+        {
+            bool inq = false; // in quote
+            int pos = 0;
+            StringBuilder strBuilder = new StringBuilder();
+            while (pos < commandLine.Length)
+            {
+                if (commandLine[pos].Equals('"'))
+                {
+                    inq = !inq;
+                }
+                // look for a + seperating character
+                // if commandLine came from a file, we might have real line seperators
+                if ((commandLine[pos].Equals('+') && !inq) || commandLine[pos].Equals('\n') || commandLine[pos].Equals('\r'))
+                {
+                    commandLines.Add(strBuilder.ToString());
+                    strBuilder.Length = 0;
+                }
+                else
+                {
+                    strBuilder.Append(commandLine[pos]);
+                    pos++;
+                }
+            }
+            if (strBuilder.Length > 0)
+                commandLines.Add(strBuilder.ToString());
+        }
+
+        /*
+        ===============
+        Com_StartupVariable
+
+        Searches for command line parameters that are set commands.
+        If match is not NULL, only that cvar will be looked for.
+        That is necessary because cddir and basedir need to be set
+        before the filesystem is started, but all other sets should
+        be after execing the config and default.
+        ===============
+        */
+        void StartupVariable(string match)
+        {
+            foreach (string str in commandLines)
+            {
+                string[] tokens = Commands.TokenizeString(str);
+                if (!tokens[0].Equals("set"))
+                    continue;
+
+                if (match == null || match.Equals(tokens[1]))
+                {
+                    CVars.Instance.Set(tokens[1], tokens[2]);
+                    CVar cv = CVars.Instance.Get(tokens[1], "", CVarFlags.NONE);
+                    cv.Flags |= CVarFlags.USER_CREATED;
+                }
+            }
+        }
+
         public void Init(string commandline)
         {
             System.Console.WriteLine("Cubehags os:{0} cpus:{1}", Environment.OSVersion, Environment.ProcessorCount);
 
             CVars.Instance.Init();
 
+            // prepare enough of the subsystems to handle
+            // cvar and command buffer management
+            ParseCommandLine(commandline);
+            StartupVariable(null);
+
+            // done early so bind command exists
+            KeyHags.Instance.Init();
+
+            FileCache.Instance.Init();
+
+            Commands.Instance.AddCommand("quit", new CommandDelegate(Quit_f));
 
             ExecuteCfg();
+            StartupVariable(null);
 
+            // if any archived cvars are modified after this, we will trigger a writing
+            // of the config file
+            CVars.Instance.modifiedFlags &= ~CVarFlags.ARCHIVE;
 
+            //
+            // init commands and vars
+            //
             maxfps = CVars.Instance.Get("maxfps", "85", CVarFlags.ARCHIVE);
             logfile = CVars.Instance.Get("logfile", "0", CVarFlags.TEMP);
             cl_running = CVars.Instance.Get("cl_running", "0", CVarFlags.ROM);
@@ -240,10 +319,48 @@ namespace CubeHags.common
 
             FileStream stream  = File.OpenWrite("cubehagslog.txt");
             logWriter = new StreamWriter(stream);
+
             Server.Instance.Init();
             Client.Instance.Init();
 
+            // set com_frameTime so that if a map is started on the
+            // command line it will still be able to count on com_frameTime
+            // being random enough for a serverid
             frameTime = (int)Milliseconds();
+
+            // add + commands from command line
+            if (!AddStartupCommands())
+            {
+
+            }
+        }
+
+        /*
+        =================
+        Com_AddStartupCommands
+
+        Adds command line parameters as script statements
+        Commands are seperated by + signs
+
+        Returns qtrue if any late commands were added, which
+        will keep the demoloop from immediately starting
+        =================
+        */
+        bool AddStartupCommands()
+        {
+            bool added = false;
+            // quote every token, so args with semicolons can work
+            foreach (string str in commandLines)
+            {
+                if (str.StartsWith("set"))
+                    continue;
+
+                added = true;
+                Commands.Instance.AddText(str);
+                Commands.Instance.AddText("\n");
+            }
+
+            return added;
         }
 
         public float Milliseconds()

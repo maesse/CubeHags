@@ -181,6 +181,9 @@ namespace CubeHags.client
 
         public void WritePacket()
         {
+            if (Client.Instance.cls.state == connstate_t.CINEMATIC)
+                return;
+
             NetBuffer buffer = new NetBuffer();
 
             // write the current serverId so the server
@@ -371,6 +374,9 @@ namespace CubeHags.client
 
         bool ReadyToSendPacket()
         {
+            if (Client.Instance.cls.state == connstate_t.CINEMATIC)
+                return false;
+
             // if we don't have a valid gamestate yet, only send
             // one packet a second
             if (Client.Instance.cls.state != connstate_t.ACTIVE &&
@@ -678,7 +684,7 @@ namespace CubeHags.client
                 evt.Pressed = true;
                 evt.time = HighResolutionTimer.Ticks;
                 compatNewKeyEvents.Add(evt);
-                System.Console.WriteLine(KeyHags.GetStringFromKey(e.KeyCode, true));
+                //System.Console.WriteLine(KeyHags.GetStringFromKey(e.KeyCode, true));
                 e.Handled = true;
             }
         }
@@ -712,13 +718,23 @@ namespace CubeHags.client
                     {
                         pressedKeys.Add(key);
                         // Test
-                        if (key == System.Windows.Forms.Keys.Escape)
+                        if (Client.Instance.cls.state == connstate_t.CINEMATIC)
+                            {
+                                // Exit cinematic
+                                Client.Instance.cin.StopCinematic();
+                            }
+                        else if (key == System.Windows.Forms.Keys.Escape)
                         {
-                            if (MouseState == client.MouseState.GAME)
-                                MouseState = client.MouseState.GUI;
-                            else if (MouseState == client.MouseState.GUI)
-                                MouseState = client.MouseState.GAME;
-                            Commands.Instance.ExecuteText(Commands.EXECTYPE.EXEC_NOW, "toggleui");
+                            
+                            {
+                                // Toggle between gui and game
+                                if (MouseState == client.MouseState.GAME)
+                                    MouseState = client.MouseState.GUI;
+                                else if (MouseState == client.MouseState.GUI)
+                                    MouseState = client.MouseState.GAME;
+                                Commands.Instance.ExecuteText(Commands.EXECTYPE.EXEC_NOW, "toggleui");
+                            }
+                            
                         }
                         else if (key == Keys.F4 && evt.Args.Alt)
                         {

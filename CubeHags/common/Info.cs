@@ -7,6 +7,38 @@ namespace CubeHags.common
 {
     class Info
     {
+        public static void Print(string s)
+        {
+            int of = 0;
+            if (s[of] == '\\')
+                of++;
+
+            while (of < s.Length)
+            {
+                int keystart = of;
+                while (of < s.Length && s[of] != '\\')
+                    of++;
+
+                Common.Instance.Write("{0,20}", s.Substring(keystart, of));
+
+                if (of == s.Length)
+                {
+                    Common.Instance.Write("MISSING VALUE\n");
+                    return;
+                }
+
+                of++;
+                int valstart = of;
+                while (of < s.Length && s[of] != '\\')
+                    of++;
+
+                Common.Instance.Write("{0}\n", s.Substring(valstart, of));
+
+                if (of < s.Length)
+                    of++;
+            }
+        }
+
         public static string SetValueForKey(string source, string key, string value)
         {
             char[] blacklist = { '\\', ';', '"' };

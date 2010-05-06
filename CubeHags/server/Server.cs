@@ -482,7 +482,7 @@ namespace CubeHags.server
 
             CVars.Instance.Set("cl_paused", "0");
 
-            ClipMap.Instance.LoadMap(server, false);
+            ClipMap.Instance.LoadMap(string.Format("maps/{0}.bsp", server), false);
 
             // set serverinfo visible name
             CVars.Instance.Set("mapname", server);
@@ -711,6 +711,7 @@ namespace CubeHags.server
                 CVars.Instance.modifiedFlags &= ~CVarFlags.SYSTEM_INFO;
             }
 
+            // update ping based on the all received frames
             CalcPings();
 
             // run the game simulation in chunks
@@ -1056,6 +1057,8 @@ namespace CubeHags.server
 
         public void Init()
         {
+            AddOperatorCommands();
+
             sv_fps = CVars.Instance.Get("sv_fps", "30", CVarFlags.TEMP);
             sv_timeout = CVars.Instance.Get("sv_timeout", "200", CVarFlags.TEMP);
             sv_hostname = CVars.Instance.Get("sv_hostname", "noname", CVarFlags.SERVER_INFO | CVarFlags.ARCHIVE);
@@ -1065,29 +1068,6 @@ namespace CubeHags.server
             sv_maxclients = CVars.Instance.Get("sv_maxclients", "32", CVarFlags.SERVER_INFO | CVarFlags.LATCH);
             sv_zombietime = CVars.Instance.Get("sv_zombietime", "2", CVarFlags.TEMP);
             CVars.Instance.Get("sv_serverid", "0", CVarFlags.SERVER_INFO | CVarFlags.ROM);
-
-            Commands.Instance.AddCommand("map", new CommandDelegate(SV_Map_f));
-
-            
-
-
-        }
-
-        void SV_Map_f(string[] tokens)
-        {
-            if (tokens.Length < 2)
-                return;
-
-            // make sure the level exists before trying to change, so that
-            // a typo at the server console won't end the game
-            string expanded = string.Format("maps/{0}.bsp", tokens[1]);
-            if (!FileCache.Instance.Contains(expanded))
-            {
-                Common.Instance.WriteLine("Can't find map {0}", tokens[1]);
-                return;
-            }
-
-            SpawnServer(expanded);
         }
 
 

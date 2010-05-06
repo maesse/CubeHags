@@ -37,7 +37,7 @@ namespace CubeHags.client.cgame
         {
             string info = cgs.gameState.data[(int)ConfigString.CS_SERVERINFO];
             cgs.maxclients = int.Parse(Info.ValueForKey(info, "sv_maxclients"));
-            cgs.mapname = Info.ValueForKey(info, "mapname");
+            cgs.mapname = string.Format("maps/{0}.bsp", Info.ValueForKey(info, "mapname"));
         }
     }
 }

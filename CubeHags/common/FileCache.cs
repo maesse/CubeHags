@@ -13,18 +13,17 @@ namespace CubeHags.client.common
         FileCache()
         {
             Base = new FCDictionary("Base");
-            Init();
         }
 
         // Add paths
-        private void Init()
+        public void Init()
         {
             long startTime = HighResolutionTimer.Ticks;
             Insert(System.Windows.Forms.Application.StartupPath+"/data/");
             Insert(System.Windows.Forms.Application.StartupPath+"/data/gui/");
             Insert(@"C:\Users\mads\Desktop\Kode Stuff\Data\source-files\cstrike\");
             //Insert(@"C:\Users\mads\Desktop\Kode Stuff\Data\source-files\cstrike\materials");
-            //Insert(@"C:\Users\mads\Desktop\Kode Stuff\Data\");
+            Insert(@"C:\Users\mads\Desktop\Kode Stuff\Data\");
             //Insert(@"C:\Users\mads\Desktop\Kode Stuff\Data\materials");
             Insert(System.Windows.Forms.Application.StartupPath);
             startTime = HighResolutionTimer.Ticks - startTime;
