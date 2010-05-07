@@ -430,7 +430,7 @@ namespace CubeHags.client
             CmdButtons(ref cmd);
             KeyMove(ref cmd);
             MouseMove(ref cmd);
-
+            
             // check to make sure the angles haven't wrapped
             if (Client.Instance.cl.viewAngles[0] - oldAngles[0] > 90)
             {
@@ -673,6 +673,7 @@ namespace CubeHags.client
         {
             if (hasFocus)
             {
+                
                 // Recieved a Keys.None press
                 if (e.KeyCode == 0)
                     return;
@@ -684,7 +685,7 @@ namespace CubeHags.client
                 evt.Pressed = true;
                 evt.time = HighResolutionTimer.Ticks;
                 compatNewKeyEvents.Add(evt);
-                //System.Console.WriteLine(KeyHags.GetStringFromKey(e.KeyCode, true));
+                //System.Console.Write(KeyHags.GetStringFromKey(e.KeyCode, true));
                 e.Handled = true;
             }
         }

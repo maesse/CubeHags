@@ -1059,7 +1059,7 @@ namespace CubeHags.server
         {
             AddOperatorCommands();
 
-            sv_fps = CVars.Instance.Get("sv_fps", "30", CVarFlags.TEMP);
+            sv_fps = CVars.Instance.Get("sv_fps", "40", CVarFlags.TEMP);
             sv_timeout = CVars.Instance.Get("sv_timeout", "200", CVarFlags.TEMP);
             sv_hostname = CVars.Instance.Get("sv_hostname", "noname", CVarFlags.SERVER_INFO | CVarFlags.ARCHIVE);
             sv_mapname = CVars.Instance.Get("mapname", "nomap", CVarFlags.SERVER_INFO | CVarFlags.ARCHIVE);

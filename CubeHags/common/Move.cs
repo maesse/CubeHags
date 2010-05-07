@@ -17,6 +17,8 @@ namespace CubeHags.common
         float pm_accelerate = 8f;
         float pm_friction = 6f;
 
+        int c_pmove = 0;
+
         /*
         ================
         Pmove
@@ -26,6 +28,7 @@ namespace CubeHags.common
         */
         public void Pmove(pmove_t pm)
         {
+            //this.pm = pm;
             int finalTime = pm.cmd.serverTime;
 
             if (finalTime < pm.ps.commandTime)
@@ -64,6 +67,10 @@ namespace CubeHags.common
         void PmoveSingle(pmove_t pmove)
         {
             pm = pmove;
+            // this counter lets us debug movement problems with a journal
+            // by setting a conditional breakpoint fot the previous frame
+            c_pmove++;
+
             // clear results
             pm.numtouch = 0;
 
@@ -75,6 +82,7 @@ namespace CubeHags.common
             pml.forward = Vector3.Zero;
             pml.up = Vector3.Zero;
             pml.right = Vector3.Zero;
+
             // determine the time
             pml.msec = pm.cmd.serverTime - pm.ps.commandTime;
             if (pml.msec < 1)
@@ -130,9 +138,9 @@ namespace CubeHags.common
             {
                 for (int i = 0; i < 3; i++)
                 {
-                    wishvel[i] = (scale * pml.forward[i] * Input.Instance.UserCmd.forwardmove) + (scale * pml.right[i] * Input.Instance.UserCmd.rightmove);
+                    wishvel[i] = (scale * pml.forward[i] * pm.cmd.forwardmove) + (scale * pml.right[i] * pm.cmd.rightmove);
                 }
-                wishvel[2] += scale * Input.Instance.UserCmd.upmove;
+                wishvel[2] += scale * pm.cmd.upmove;
             }
 
             Vector3 wishdir = new Vector3(wishvel.X, wishvel.Y, wishvel.Z);
@@ -156,7 +164,7 @@ namespace CubeHags.common
             // q2 style
             float currentspeed = Vector3.Dot(pm.ps.velocity, wishdir);
             float addspeed = wishspeed - currentspeed;
-            if (addspeed <= 0)
+            if (addspeed <= 0f)
                 return;
 
             float accelspeed = accel * pml.frametime * wishspeed;
@@ -164,11 +172,11 @@ namespace CubeHags.common
                 accelspeed = addspeed;
 
             //System.Console.WriteLine("Acceleration += " + accelspeed);
-
-            for (int i = 0; i < 3; i++)
-            {
-                pm.ps.velocity[i] += accelspeed * wishdir[i];
-            }
+            pm.ps.velocity += accelspeed * wishdir;
+            //for (int i = 0; i < 3; i++)
+            //{
+            //    pm.ps.velocity[i] += accelspeed * wishdir[i];
+            //}
         }
 
         private void StepSlideMove(bool gravity)
@@ -182,7 +190,7 @@ namespace CubeHags.common
             Vector3 down = start_o;
             down[2] -= 18;
             trace_t trace = new trace_t();
-            trace = pm.DoTrace(trace, start_o, pm.mins, pm.maxs, down, pm.ps.clientNum, pm.tracemask);
+            trace = pm.DoTrace(start_o, pm.mins, pm.maxs, down, pm.ps.clientNum, pm.tracemask);
 
             Vector3 up = new Vector3(0, 0, 1);
             // never step up when you still have up velocity
@@ -197,7 +205,7 @@ namespace CubeHags.common
             up[2] += 18;
 
             // test the player position if they were a stepheight higher
-            trace = pm.DoTrace(trace, start_o, pm.mins, pm.maxs, up, pm.ps.clientNum, pm.tracemask);
+            trace = pm.DoTrace(start_o, pm.mins, pm.maxs, up, pm.ps.clientNum, pm.tracemask);
             if (trace.allsolid)
             {
                 return; // can't step up
@@ -213,7 +221,7 @@ namespace CubeHags.common
             // push down the final amount
             down = pm.ps.origin;
             down[2] -= 18;
-            trace = pm.DoTrace(trace, pm.ps.origin, pm.mins, pm.maxs, down, pm.ps.clientNum, pm.tracemask);
+            trace = pm.DoTrace(pm.ps.origin, pm.mins, pm.maxs, down, pm.ps.clientNum, pm.tracemask);
             if (!trace.allsolid)
                 pm.ps.origin = trace.endpos;
             if (trace.fraction < 1.0f)
@@ -299,7 +307,7 @@ namespace CubeHags.common
                 //if(end.Z > -110)
                 //    trace.endpos = end;
                 //else
-                    trace = pm.DoTrace(trace, pm.ps.origin, pm.mins, pm.maxs, end, pm.ps.clientNum, pm.tracemask);
+                    trace = pm.DoTrace( pm.ps.origin, pm.mins, pm.maxs, end, pm.ps.clientNum, pm.tracemask);
 
                 //trace.fraction = 1f;
                 
@@ -490,7 +498,7 @@ namespace CubeHags.common
                 return 0f;
 
             float total = (float)Math.Sqrt(cmd.forwardmove * cmd.forwardmove + cmd.rightmove * cmd.rightmove + cmd.upmove * cmd.upmove);
-            float scale = (float)pm.ps.speed * max / (127f * total);
+            float scale = (float)400 * max / (127f * total);
             return scale;
         }
 
@@ -502,7 +510,7 @@ namespace CubeHags.common
 
             //frametime /= 1000;
             float speed = velocity.Length();
-            if (speed < 1)
+            if (speed < 1f)
             {
                 velocity[0] = 0;
                 velocity[1] = 0;
@@ -518,7 +526,7 @@ namespace CubeHags.common
             //System.Console.WriteLine("Friction speed drop: " + drop + " - delta: " + frametime);
 
             float newspeed = speed - drop;
-            if (newspeed < 0)
+            if (newspeed < 0f)
                 newspeed = 0;
             newspeed /= speed;
 

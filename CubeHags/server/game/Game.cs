@@ -588,8 +588,8 @@ namespace CubeHags.server
                 pm.ps = client.ps;
                 pm.cmd = ucmd;
                 pm.tracemask = 0;
-                pm.Trace += new TraceDelegate(Server.Instance.Trace);
-                pm.PointContents += new TraceContentsDelegate(Server.Instance.PointContents);
+                //pm.Trace += new TraceDelegate(Server.Instance.Trace);
+                //pm.PointContents += new TraceContentsDelegate(Server.Instance.PointContents);
 
                 // perform a pmove
                 Common.Instance.Pmove(pm);

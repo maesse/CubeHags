@@ -338,11 +338,11 @@ namespace CubeHags.server
 
         }
 
-        public trace_t Trace(trace_t results, Vector3 start, Vector3 mins, Vector3 maxs, Vector3 end, int passEntityNum, int contentmask)
+        public trace_t Trace(Vector3 start, Vector3 mins, Vector3 maxs, Vector3 end, int passEntityNum, int contentmask)
         {
             //results.fraction = 1f;
             //trace_t t  = new trace_t();
-            return ClipMap.Instance.Box_Trace(results, start, end, mins, maxs, 0, contentmask, 0);
+            return ClipMap.Instance.Box_Trace( start, end, mins, maxs, 0, contentmask, 0);
         }
 
         public void PointContents(Vector3 p, int passEntityNum)

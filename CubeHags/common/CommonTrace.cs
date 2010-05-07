@@ -12,28 +12,32 @@ namespace CubeHags.common
     public sealed partial class ClipMap
     {
         leafList_t ll = new leafList_t();
+        traceWork_t tw = new traceWork_t();
+        int[] lleafs = new int[1024];
 
-        public trace_t Box_Trace(trace_t results, Vector3 start, Vector3 end, Vector3 mins, Vector3 maxs, int model, int brushmask, int capsule)
+        public trace_t Box_Trace( Vector3 start, Vector3 end, Vector3 mins, Vector3 maxs, int model, int brushmask, int capsule)
         {
-            return Trace(results, start, end, mins, maxs, model, Vector3.Zero, brushmask, capsule, null);
+            return Trace(start, end, mins, maxs, model, Vector3.Zero, brushmask, capsule, null);
         }
 
-        trace_t Trace(trace_t results, Vector3 start, Vector3 end, Vector3 mins, Vector3 maxs, int model, Vector3 origin, int brushmask, int capsule, sphere_t sphere)
+        trace_t Trace(Vector3 start, Vector3 end, Vector3 mins, Vector3 maxs, int model, Vector3 origin, int brushmask, int capsule, sphere_t sphere)
         {
-            cmodel_t cmod = ClipHandleToModel(model);
+            //cmodel_t cmod = ClipHandleToModel(model);
             // for multi-check avoidance
             checkcount++;
             // for statistics, may be zeroed
             c_traces++;
 
-            traceWork_t tw = new traceWork_t();
+            //traceWork_t tw = new traceWork_t();
+            traceWork_t tw = this.tw;
+
             tw.trace.fraction = 1; // assume it goes the entire distance until shown otherwise
             tw.modelOrigin = origin;
 
             if (nodes == null || nodes.Length == 0)
             {
-                results = tw.trace;
-                return results; // map not loaded, shouldn't happen
+                //results = tw.trace;
+                return tw.trace; // map not loaded, shouldn't happen
             }
 
             // allow NULL to be passed in for 0,0,0
@@ -62,7 +66,7 @@ namespace CubeHags.common
                 tw.sphere.use = capsule==1?true:false;
                 tw.sphere.radius = (tw.size[1][0] > tw.size[1][2]) ? tw.size[1][2] : tw.size[1][0];
                 tw.sphere.halfheight = tw.size[1][2];
-                tw.sphere.offset = new Vector3(0, 0, tw.size[1][2] - tw.sphere.radius);
+                //tw.sphere.offset = new Vector3(0, 0, tw.size[1][2] - tw.sphere.radius);
             }
 
             tw.maxOffset = tw.size[1][0] + tw.size[1][1] + tw.size[1][2];
@@ -233,10 +237,11 @@ namespace CubeHags.common
 
         void TraceThroughLeaf(traceWork_t tw, dleaf_t leaf)
         {
+            dbrush_t b;
             // trace line against all brushes in the leaf
             for (int k = 0; k < leaf.numleafbrushes; k++)
             {
-                dbrush_t b = brushes[leafbrushes[leaf.firstleafbrush + k]];
+                b = brushes[leafbrushes[leaf.firstleafbrush + k]];
                 if (b.checkcount == checkcount)
                     continue;   // already checked this brush in another leaf
                 b.checkcount = checkcount;
@@ -496,7 +501,7 @@ namespace CubeHags.common
 
         void PositionTest(traceWork_t tw)
         {
-            int[] lleafs = new int[1024];
+            
             // identify the leafs we are touching
             
             ll.bounds[0] = tw.start - tw.size[0];

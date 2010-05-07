@@ -13,7 +13,7 @@ namespace CubeHags.client.gui
         private Label infoLabel;
         private Button cancelButton;
         private Label clStats;
-        private Label svStats;
+        public Label svStats;
 
         public ConnectGUI()
         {

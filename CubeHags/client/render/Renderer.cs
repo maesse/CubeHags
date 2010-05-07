@@ -60,7 +60,7 @@ namespace CubeHags.client
         // Display options 
         public Size RenderSize = new Size(1280, 800);
         public bool Windowed = true;
-        public bool VSync = true;
+        public bool VSync = false;
         public MultisampleType MultiSampling = MultisampleType.TwoSamples;
         private FillMode _fillMode = FillMode.Solid;
         public FillMode FillMode { get { return _fillMode; } set { _fillMode = value; device.SetRenderState<FillMode>(RenderState.FillMode, value); } }
@@ -112,8 +112,15 @@ namespace CubeHags.client
 
         public int viewCluster;
 
-        
-
+        // Rendering
+        SortItem.VPLayer currentVPLayer = SortItem.VPLayer.EFFECT;
+        SortItem.Viewport currentViewport = SortItem.Viewport.EIGHT;
+        SortItem.Translucency currentTrans = SortItem.Translucency.OPAQUE;
+        ushort currentIB = 65535;
+        ushort currentVB = 65535;
+        uint lastMaterial = 0;
+        bool setMaterial = true;
+        bool[] setmaterialbatch = new bool[1024];
 
         // Constructor
         Renderer()
@@ -276,14 +283,14 @@ namespace CubeHags.client
             FlushDrawCalls();
             int nDrawCalls = currentdrawCalls.Count;
             // Render drawcalls
-            RenderDrawCallsOld();
+            RenderDrawCallsNew();
 
             // Render UI
             WindowManager.Instance.Render();
             FlushDrawCalls();
             nDrawCalls += currentdrawCalls.Count;
             // Do unsorted UI render (Added to drawcalls list back to front)
-            RenderDrawCallsOld();
+            RenderDrawCallsNew();
             
             long profile_final = HighResolutionTimer.Ticks;
             profile_render = profile_final - profile_render;
@@ -353,6 +360,234 @@ namespace CubeHags.client
             tempDrawCalls.Clear();
             currentdrawCalls = drawCalls;
             drawCalls = tempDrawCalls;
+        }
+
+        private void RenderDrawCallsNew()
+        {
+            // Reset stuff
+            currentVPLayer = SortItem.VPLayer.EFFECT;
+            currentViewport = SortItem.Viewport.EIGHT;
+            currentTrans = SortItem.Translucency.OPAQUE;
+            currentIB = 65535;
+            currentVB = 65535;
+            lastMaterial = 0;
+            setMaterial = true;
+            //Vector3 originalPosition = Camera.position;
+
+            //nSameMaterial = 0;
+            int drawOffset = 0;
+            int nDrawGroup = 0;
+            // Issue drawcalls from last frame
+            ulong oldKey = 0;
+            uint oldMaterial = 0;
+            int endcase = currentdrawCalls.Count;
+            ulong key = 0;
+            for (int i = 0; i < currentdrawCalls.Count+1; i++)
+            {
+                if (i == endcase)
+                    key = 0;
+                else
+                    key = currentdrawCalls[i].Key;
+                
+                
+
+                // Check for statechange - ignore material/depth change
+                if ((uint)(key>>32) != (uint)(oldKey>>32))
+                {
+                    int numpasses = effect.Begin(FX.None);
+                    for (int j = 0; j < numpasses; j++)
+                    {
+                        effect.BeginPass(j);
+                        {
+                            for (int h = 0; h < nDrawGroup; h++)
+                            {
+                                currentdrawCalls[drawOffset+h].Value.Invoke(effect, device, setmaterialbatch[h]);
+                            }
+                            
+                        }
+                        effect.EndPass();
+                    }
+                    effect.End();
+
+                    // Draw grouped calls
+                    HandleDrawCallChange(key);
+
+
+                    // Reset key
+                    oldKey = key;
+                    setmaterialbatch[0] = true;
+                    nDrawGroup = 1;
+                    drawOffset = i;
+                }
+                else
+                {
+                    // Save result for material change
+                    uint materialID = SortItem.GetMaterial(key);
+                    setmaterialbatch[nDrawGroup] = materialID != oldMaterial;
+                    oldMaterial = materialID;
+
+                    // Store up calls
+                    nDrawGroup++;
+                }
+                oldKey = key;
+                
+            }
+
+            if (currentViewport == SortItem.Viewport.INSTANCED)
+            {
+                // Disable frequency instancing
+                device.ResetStreamSourceFrequency(0);
+                device.SetStreamSource(1, null, 0, 0);
+                effect.Technique = technique;
+            }
+
+            //device.ResetStreamSourceFrequency(0);
+        }
+
+        void HandleDrawCallChange(ulong key)
+        {
+            SortItem.VPLayer vpLayer = SortItem.GetVPLayer(key);
+            SortItem.Viewport vp = SortItem.GetViewport(key);
+            SortItem.Translucency trans = SortItem.GetTranslucency(key);
+            
+            ushort VB = SortItem.GetVBID(key);
+            ushort IB = SortItem.GetIBID(key);
+
+            if (vpLayer != currentVPLayer)
+            {
+                if (currentVPLayer == SortItem.VPLayer.SKYBOX3D)
+                {
+                    //Camera.position = originalPosition;
+                    //Camera.PositionCamera();
+                    Matrix worldview = device.GetTransform(TransformState.View) * Camera.World;
+                    effect.SetValue("WorldViewProj", worldview * Camera.Projection);
+
+                    device.Clear(ClearFlags.ZBuffer, Color.FromArgb(0, Color.CornflowerBlue), 1.0f, 0);
+                }
+                else if (currentVPLayer == SortItem.VPLayer.SKYBOX)
+                {
+                    device.SetRenderState(RenderState.ZWriteEnable, true);
+                    device.SetRenderState(RenderState.ZEnable, true);
+                }
+                else if (currentVPLayer == SortItem.VPLayer.HUD)
+                {
+                    device.SetRenderState(RenderState.ZEnable, true);
+                }
+                currentVPLayer = vpLayer;
+                // Layer change.
+                switch (vpLayer)
+                {
+                    case SortItem.VPLayer.SKYBOX3D:
+                        if (effect.Technique != technique)
+                            effect.Technique = technique;
+                        if (SourceMap != null)
+                        {
+                            SourceMap.SetupVertexBuffer(device);
+                            //Vector3 pos = SourceMap.skybox3d.GetSkyboxPosition(originalPosition);
+                            //Camera.position = pos;
+                            //Camera.PositionCamera();
+                            Matrix worldview = device.GetTransform(TransformState.View) * Camera.World;
+                            effect.SetValue("WorldViewProj", worldview * Camera.Projection);
+                        }
+                        break;
+                    case SortItem.VPLayer.SKYBOX:
+                        effect.Technique = "Sky";
+                        //device.SetRenderState(RenderState.ZWriteEnable, false);
+                        if (SourceMap != null)
+                            SourceMap.skybox.SetupRender(device);
+                        break;
+                    case SortItem.VPLayer.HUD:
+                        device.SetRenderState(RenderState.ZEnable, false);
+                        if (trans != SortItem.Translucency.OPAQUE)
+                            effect.Technique = "GUIAlpha";
+                        else
+                            effect.Technique = "FinalPass_RGBE8";
+                        break;
+                    case SortItem.VPLayer.WORLD:
+                        if (effect.Technique != technique)
+                            effect.Technique = technique;
+                        if (SourceMap != null)
+                            SourceMap.SetupVertexBuffer(device);
+                        break;
+                }
+            }
+
+            // Handle viewport change
+            if (vp != currentViewport)
+            {
+                if (currentViewport == SortItem.Viewport.INSTANCED)
+                {
+                    // Disable frequency instancing
+                    device.ResetStreamSourceFrequency(0);
+                    device.SetStreamSource(1, null, 0, 0);
+                    //device.SetTexture(1, null);
+                    effect.Technique = technique;
+                }
+                currentViewport = vp;
+                switch (vp)
+                {
+                    case SortItem.Viewport.INSTANCED:
+                        Matrix worldview = device.GetTransform(TransformState.View) * Camera.World;
+                        effect.SetValue("WorldViewProj", worldview * Camera.Projection);
+                        effect.Technique = "TexturedInstaced";
+                        //device.SetTexture(1, SourceMap.ambientLightTexture);
+                        break;
+                }
+            }
+
+            // Handle transparency change
+            if (trans != currentTrans)
+            {
+                if (currentTrans == SortItem.Translucency.NORMAL || currentTrans == SortItem.Translucency.ADDITIVE || currentTrans == SortItem.Translucency.SUBSTRACTIVE)
+                {
+                    device.SetRenderState(RenderState.AlphaBlendEnable, false);
+                }
+                currentTrans = trans;
+                switch (trans)
+                {
+                    case SortItem.Translucency.OPAQUE:
+                        if (vpLayer != SortItem.VPLayer.HUD && currentViewport != SortItem.Viewport.INSTANCED)
+                            effect.Technique = technique;
+                        else if (currentViewport != SortItem.Viewport.INSTANCED)
+                            effect.Technique = "FinalPass_RGBE8";
+                        break;
+                    case SortItem.Translucency.ADDITIVE:
+                    case SortItem.Translucency.SUBSTRACTIVE:
+                    case SortItem.Translucency.NORMAL:
+                        if (vpLayer != SortItem.VPLayer.HUD && currentViewport != SortItem.Viewport.INSTANCED)
+                            effect.Technique = "TexturedLightmapAlpha";
+                        else if (currentViewport != SortItem.Viewport.INSTANCED)
+                            effect.Technique = "GUIAlpha";
+                        break;
+                }
+            }
+
+            // Vertex buffer change
+            if (VB != currentVB && VB != 0)
+            {
+
+                device.SetStreamSource(0, VertexBuffers[VB].VB, 0, D3DX.GetFVFVertexSize(VertexBuffers[VB].VF));
+                device.VertexDeclaration = VertexBuffers[VB].VD;
+                currentVB = VB;
+            }
+
+            // Index buffer change
+            if (IB != currentIB && IB != 0)
+            {
+                device.Indices = IndexBuffers[IB].IB;
+                currentIB = IB;
+            }
+
+
+
+            // Check for material change
+            //setMaterial = true;
+            //if (materialID == lastMaterial)
+            //{
+            //    setMaterial = false;
+            //    nSameMaterial++;
+            //}
+            //lastMaterial = materialID;
         }
 
         private void RenderDrawCalls()

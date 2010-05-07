@@ -21,7 +21,7 @@ namespace CubeHags.client
         public RenderForm form;
 
         public CVar cl_timeout = CVars.Instance.Get("cl_timeout", "200", CVarFlags.NONE);
-        public CVar cl_maxpackets = CVars.Instance.Get("cl_maxpackets", "30", CVarFlags.ARCHIVE);
+        public CVar cl_maxpackets = CVars.Instance.Get("cl_maxpackets", "116", CVarFlags.ARCHIVE);
         public CVar cl_packetdup = CVars.Instance.Get("cl_packetdup", "1", CVarFlags.ARCHIVE);
         public CVar cl_timeNudge = CVars.Instance.Get("cl_timeNudge", "0", CVarFlags.TEMP);
         public CVar cl_sensitivity = CVars.Instance.Get("cl_sensitivity", "1", CVarFlags.ARCHIVE);
@@ -183,6 +183,7 @@ namespace CubeHags.client
             CheckTimeout();
 
             // send intentions now
+            //Renderer.Instance.form.
             Input.Instance.Update();
             Input.Instance.SendCmd();
 
@@ -220,7 +221,7 @@ namespace CubeHags.client
             CVars.Instance.Get("name", "UnknownCube", CVarFlags.USER_INFO | CVarFlags.ARCHIVE);
             CVars.Instance.Get("rate", "25000", CVarFlags.USER_INFO | CVarFlags.ARCHIVE);
             CVars.Instance.Get("model", "unknown", CVarFlags.USER_INFO | CVarFlags.ARCHIVE);
-            CVars.Instance.Get("snaps", "60", CVarFlags.USER_INFO | CVarFlags.ARCHIVE);
+            CVars.Instance.Get("snaps", "40", CVarFlags.USER_INFO | CVarFlags.ARCHIVE);
 
             Renderer.Instance.Init(form);
 
@@ -228,8 +229,9 @@ namespace CubeHags.client
             Common.Instance.WriteLine("------- Client initialization Complete --------");
             cin = new Cinematic();
             cin.AlterGameState = true;
-            cin.PlayCinematic("testvid.avi", 0, 0, Renderer.Instance.RenderSize.Width, Renderer.Instance.RenderSize.Height);
             CVars.Instance.Set("nextmap", "map cs_office");
+            cin.PlayCinematic("testvid.avi", 0, 0, Renderer.Instance.RenderSize.Width, Renderer.Instance.RenderSize.Height);
+            
         }
 
         void CheckTimeout()

@@ -54,7 +54,7 @@ namespace CubeHags.client.gfx
             {
                 Client.Instance.cls.state = CubeHags.common.connstate_t.DISCONNECTED;
                 string s = CVars.Instance.VariableString("nextmap");
-                if (s != null && s.Length > 0)
+                if (s.Length > 0)
                 {
                     Commands.Instance.ExecuteText(Commands.EXECTYPE.EXEC_APPEND, s+"\n");
                     CVars.Instance.Set("nextmap", "");
@@ -99,7 +99,14 @@ namespace CubeHags.client.gfx
             if (FileCache.Instance.Contains(file))
                 file = FileCache.Instance.GetFile(file).FullName;
             else
+            {
+                if (AlterGameState)
+                {
+                    playing = true;
+                    StopCinematic();
+                }
                 return;
+            }
 
             int hr = graphBuilder.RenderFile(file, null);
 

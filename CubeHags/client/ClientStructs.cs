@@ -7,6 +7,7 @@ using CubeHags.common;
 using SlimDX;
 using CubeHags.client.map.Source;
 using CubeHags.client.render;
+using CubeHags.server;
 
 namespace CubeHags.client
 {
@@ -161,7 +162,7 @@ namespace CubeHags.client
         ALL_TIMES = (TIME_WATERJUMP | TIME_LAND | TIME_KNOCKBACK)
     }
 
-    public delegate trace_t TraceDelegate(trace_t results, Vector3 start, Vector3 mins, Vector3 macs, Vector3 end, int passEntityNum, int contentMask);
+    //public delegate trace_t TraceDelegate(Vector3 start, Vector3 mins, Vector3 macs, Vector3 end, int passEntityNum, int contentMask);
     public delegate void TraceContentsDelegate(Vector3 point, int passEntityNum);
 
     public class pmove_t
@@ -195,11 +196,11 @@ namespace CubeHags.client
 
         // callbacks to test the world
         // these will be different functions during game and cgame
-        //public TraceDelegate Trace;
-        public event TraceDelegate Trace;
-        public event TraceContentsDelegate PointContents;
-        public trace_t DoTrace(trace_t results, Vector3 start, Vector3 mins, Vector3 macs, Vector3 end, int passEntityNum, int contentMask) { return Trace(results, start, mins, macs, end, passEntityNum, contentMask); }
-        public void DoPointContents(Vector3 point, int passEntityNum) { PointContents( point,  passEntityNum); }
+        public trace_t DoTrace( Vector3 start, Vector3 mins, Vector3 macs, Vector3 end, int passEntityNum, int contentMask) 
+        {
+            return Server.Instance.Trace( start, mins, macs, end, passEntityNum, contentMask); 
+        }
+        //public void DoPointContents(Vector3 point, int passEntityNum) { PointContents( point,  passEntityNum); }
     }
 
     // a trace is returned when a box is swept through the world

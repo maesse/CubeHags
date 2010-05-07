@@ -7,6 +7,7 @@ using CubeHags.client.map.Source;
 using CubeHags.client.render;
 using CubeHags.client.common;
 using SlimDX;
+using CubeHags.client.gui;
 
 namespace CubeHags.client.cgame
 {
@@ -50,9 +51,7 @@ namespace CubeHags.client.cgame
             // update cg.predictedPlayerState
             PredictPlayerState();
 
-
             ViewParams view = CalcViewValues();
-
             view.time = cg.time;
 
             Renderer.Instance.Render(view);
@@ -75,7 +74,6 @@ namespace CubeHags.client.cgame
             view.vieworg = ps.origin;
             cg.refdefViewAngles = ps.viewangles;
             view.viewangles = ps.viewangles;
-            //Common.Instance.WriteLine("Origin2 {0}", ps.origin.Y);
             // OffsetFirstperonView();
 
             if (cg_errorDecay.Value > 0)
@@ -195,7 +193,8 @@ namespace CubeHags.client.cgame
 
         void LoadString(string s)
         {
-
+            WindowManager.Instance.connectGUI.svStats.Text = s;
+            Client.Instance.EndFrame();
         }
 
         void RegisterCVars()

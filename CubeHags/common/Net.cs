@@ -242,6 +242,7 @@ namespace CubeHags.common
             svConfig.Port = port;
             server = new NetServer(svConfig);
             server.EnabledMessageTypes |= NetMessageType.OutOfBandData;
+            //server.SimulatedMinimumLatency = 0.7f;
             server.SetMessageTypeEnabled(NetMessageType.ConnectionApproval, true);
             server.Start();
             client = new NetClient(clConfig);

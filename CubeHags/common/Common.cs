@@ -311,7 +311,7 @@ namespace CubeHags.common
             //
             // init commands and vars
             //
-            maxfps = CVars.Instance.Get("maxfps", "85", CVarFlags.ARCHIVE);
+            maxfps = CVars.Instance.Get("maxfps", "115", CVarFlags.ARCHIVE);
             logfile = CVars.Instance.Get("logfile", "0", CVarFlags.TEMP);
             cl_running = CVars.Instance.Get("cl_running", "0", CVarFlags.ROM);
             sv_running = CVars.Instance.Get("sv_running", "0", CVarFlags.ROM);
