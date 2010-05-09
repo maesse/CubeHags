@@ -24,7 +24,7 @@ namespace CubeHags.client.gui
         public int ControlCount { get { return _Controls.Count; } }
 
         public new Dimension Position { get { return base.Position; } set { base.Position = value; } }
-        public new Size Size { get { if (ScrollbarStyle == Misc.ScrollbarStyle.NONE) return base.Size; return Scrollbar.ContentSize; } set { if (ScrollbarStyle == Misc.ScrollbarStyle.NONE) base.Size = value; else Scrollbar.ContentSize = value; } }
+        //public new Size Size { get { if (ScrollbarStyle == Misc.ScrollbarStyle.NONE) return base.Size; return Scrollbar.ContentSize; } set { if (ScrollbarStyle == Misc.ScrollbarStyle.NONE) base.Size = value; else Scrollbar.ContentSize = value; } }
 
         // Scrollbar implementation
         public ScrollbarStyle ScrollbarStyle { get { return _ScrollbarStyle; } set { if (_ScrollbarStyle != value) SetScrollbar(value); } }
@@ -239,6 +239,8 @@ namespace CubeHags.client.gui
         public override void Render()
         {
             // Draw Controls
+            if (ScrollbarStyle != Misc.ScrollbarStyle.NONE && Scrollbar != null)
+                Scrollbar.RenderClipRect();
             foreach (Control control in Controls)
             {
                 control.Render();

@@ -21,7 +21,7 @@ namespace CubeHags.server
 
         public Game()
         {
-
+            spawns  = new spawn_t[] { new spawn_t{Name = "info_player_start", Spawn = new SpawnDelegate(SP_info_player_start)} };
         }
 
         public Server.svEntity_t SvEntityForGentity(Common.sharedEntity_t gEnt) 
@@ -267,7 +267,7 @@ namespace CubeHags.server
 
             // let the server system know that there are more entities
             Server.Instance.LocateGameData(level.gentities, level.clients);
-
+            e = g_entities[level.num_entities - 1];
             InitGentity(e, level.num_entities-1);
             return e;
         }
@@ -587,7 +587,7 @@ namespace CubeHags.server
                 pmove_t pm = new pmove_t();
                 pm.ps = client.ps;
                 pm.cmd = ucmd;
-                pm.tracemask = 0;
+                pm.tracemask = 1;
                 //pm.Trace += new TraceDelegate(Server.Instance.Trace);
                 //pm.PointContents += new TraceContentsDelegate(Server.Instance.PointContents);
 
@@ -664,6 +664,8 @@ namespace CubeHags.server
         Initializes all non-persistant parts of playerState
         ============
         */
+        static Vector3 playerMins = new Vector3( -15, -15, -24 );
+        static Vector3 playerMaxs = new Vector3(15, 15, 32);
         void ClientSpawn(gentity_t ent)
         {
             int index = ent.s.clientNum;
@@ -677,10 +679,24 @@ namespace CubeHags.server
             // find a spawn point
             // do it before setting health back up, so farthest
             // ranging doesn't count this client
-            //if (client.sess.sessionTeam == team_t.TEAM_SPECTATOR)
-            //{
-            //    spawnpoint = SelectSpectatorSpawnPoint(spawn_origin, spawn_angles);
-            //}
+            if (client.sess.sessionTeam == team_t.TEAM_SPECTATOR)
+            {
+                spawnpoint = SelectSpectatorSpawnPoint(ref spawn_origin, ref spawn_angles);
+            }
+            else
+            {
+                // the first spawn should be at a good looking spot
+                if (!client.pers.initialSpawn && client.pers.localClient)
+                {
+                    client.pers.initialSpawn = true;
+                    spawnpoint = SelectInitialSpawnPoint(ref spawn_origin, ref spawn_angles);
+                }
+                else
+                {
+                    // don't spawn near existing origin if possible
+                    spawnpoint = SelectRandomFurthestSpawnPoint(client.ps.origin, ref spawn_origin, ref spawn_angles);
+                }
+            }
 
             client.pers.teamState.state = playerTeamStateState_t.TEAM_ACTIVE;
 
@@ -736,7 +752,8 @@ namespace CubeHags.server
             ent.waterlevel = 0;
             ent.flags = 0;
             ent.watertype = 0;
-            //ent.r.mins = player
+            ent.r.mins = playerMins;
+            ent.r.maxs = playerMaxs;
 
             client.ps.clientNum = index;
             client.ps.stats[2] = 1 << 2;
@@ -751,14 +768,17 @@ namespace CubeHags.server
             client.ps.pm_flags |= PMFlags.RESPAWNED; // Respawned
 
             ent.client.pers.cmd =  GetUserCommand(index);
-            if (ent.client.sess.sessionTeam == team_t.TEAM_SPECTATOR)
-            {
+            SetClientViewAngle(ent, spawn_angles);
 
-            }
-            else
+            if (ent.client.sess.sessionTeam != team_t.TEAM_SPECTATOR)
             {
+                KillBox(ent);
                 Server.Instance.LinkEntity(GEntityToSharedEntity(ent));
             }
+
+            // don't allow full run speed for a bit
+            client.ps.pm_flags |= PMFlags.TIME_KNOCKBACK;
+            client.ps.pm_time = 100;
 
             client.respawnTime = (int)level.time;
             client.inactivityTime = (int)level.time + 10000;
@@ -771,14 +791,14 @@ namespace CubeHags.server
             else
             {
                 // fire the targets of the spawn point
-                //UseTargets(spawnpoint, ent);
+                UseTargets(spawnpoint, ent);
             }
 
             // run a client frame to drop exactly to the floor,
             // initialize animations and other things
             client.ps.commandTime = (int)level.time - 100;
             ent.client.pers.cmd.serverTime = (int)level.time;
-            //Client_Think(ent);
+            Client_Think(ent);
 
             // positively link the client, even if the command times are weird
             if (ent.client.sess.sessionTeam != team_t.TEAM_SPECTATOR)
@@ -794,6 +814,89 @@ namespace CubeHags.server
 
             // clear entity state values
             CGame.PlayerStateToEntityState(client.ps, ent.s, true);
+        }
+
+        /*
+        ==============================
+        G_UseTargets
+
+        "activator" should be set to the entity that initiated the firing.
+
+        Search for (string)targetname in all entities that
+        match (string)self.target and call their .use function
+
+        ==============================
+        */
+        void UseTargets(gentity_t ent, gentity_t activator)
+        {
+            if (ent == null)
+                return;
+
+            if (ent.target == null)
+                return;
+
+            gentity_t t = null;
+            int tc = 0;
+            while ((t = Find(tc++, "targetname", ent.target)) != null)
+            {
+                if (t == ent)
+                {
+                    Common.Instance.WriteLine("WARNING: Entity used itself. :O");
+                }
+                else
+                {
+                    if (t.use != null)
+                    {
+                        t.use(t, ent, activator);
+                    }
+                }
+                if (!ent.inuse)
+                {
+                    Common.Instance.WriteLine("entity was removed while using targets");
+                    return;
+                }
+            }
+        }
+
+        /*
+        =================
+        G_KillBox
+
+        Kills all entities that would touch the proposed new positioning
+        of ent.  Ent should be unlinked before calling this!
+        =================
+        */
+        void KillBox(gentity_t ent)
+        {
+            Vector3 mins, maxs;
+            mins = Vector3.Add(ent.client.ps.origin, ent.r.mins);
+            maxs = Vector3.Add(ent.client.ps.origin, ent.r.maxs);
+            int[] touch = new int[1024];
+            int num = 0;//EntitiesInBox(mins, maxs, ref touch);
+
+            gentity_t hit;
+            for (int i = 0; i < num; i++)
+            {
+                hit = g_entities[touch[i]];
+                if (hit.client == null)
+                    continue;
+
+                // nail it
+                //Damage(hit, ent, ent, null, null, 100000);
+            }
+        }
+
+        void SetClientViewAngle(gentity_t ent, Vector3 angle)
+        {
+            // set the delta angle
+            int cmdAngle = (((int)angle[0] * 65535 / 360) & 65535);
+            ent.client.ps.delta_angles[0] = cmdAngle - ent.client.pers.cmd.anglex;
+            cmdAngle = (((int)angle[1] * 65535 / 360) & 65535);
+            ent.client.ps.delta_angles[1] = cmdAngle - ent.client.pers.cmd.angley;
+            cmdAngle = (((int)angle[2] * 65535 / 360) & 65535);
+            ent.client.ps.delta_angles[2] = cmdAngle - ent.client.pers.cmd.anglez;
+            ent.s.angles = angle;
+            ent.client.ps.viewangles = ent.s.angles;
         }
 
         Input.UserCommand GetUserCommand(int index)
@@ -873,6 +976,8 @@ namespace CubeHags.server
             level.num_entities = 64;
             
             Server.Instance.LocateGameData(level.gentities, level.clients);
+
+            SpawnEntitiesFromString();
 
             FindTeams();
         }

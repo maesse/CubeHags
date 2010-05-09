@@ -142,8 +142,8 @@ namespace CubeHags.client.gui
                 int nPrimitives = (WindowManager.Instance.VertexList.Count - vertStartOffset) / 3;
                 RenderDelegate del = new RenderDelegate((effect, device, setMaterial) =>
                 {
-                    Rectangle oldrect = device.ScissorRect;
-                    device.ScissorRect = Bound;
+                    //Rectangle oldrect = device.ScissorRect;
+                    //device.ScissorRect = Bound;
                     if (setMaterial)
                         device.SetTexture(0, atlas.Texture.Texture);
 
@@ -156,7 +156,7 @@ namespace CubeHags.client.gui
                     Renderer.Instance.Fonts["title"].DrawString(sprite, Title, new Rectangle(Position.X + atlas["topleft"].Width - 9, Position.Y + yOffset + 1, Size.Width - (2 * 32), TitleSize.Height), DrawTextFormat.SingleLine | DrawTextFormat.NoClip | DrawTextFormat.Center, Color.FromArgb((int)(Opacity * 255), Color.FromArgb(50, 50, 50)));
                     Renderer.Instance.Fonts["title"].DrawString(sprite, Title, new Rectangle(Position.X + atlas["topleft"].Width - 10, Position.Y + yOffset, Size.Width - (2 * 32), TitleSize.Height), DrawTextFormat.SingleLine | DrawTextFormat.NoClip | DrawTextFormat.Center, Color);
                     sprite.End();
-                    device.ScissorRect = oldrect;
+                    //device.ScissorRect = oldrect;
                 });
 
                 WindowManager.Instance.renderCalls.Add(new KeyValuePair<ulong, RenderDelegate>(key, del));

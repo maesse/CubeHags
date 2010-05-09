@@ -29,79 +29,46 @@ namespace CubeHags.client.map.Source
             }
         }
 
-        public static Entity ParseRawString(string rawString)
-        {
-            Dictionary<string, string> values = new Dictionary<string, string>();
+        
 
-            string[] lines = rawString.Split('\n');
-            bool expectKey;
-            string key = "", value = "";
-            foreach (string line in lines)
-            {
-                expectKey = true;
-                string[] splitted = line.Split('"');
-                foreach (string linepart in splitted)
-                {
-                    string cleanLine = linepart.Replace("\"", "").Trim();
-                    if (cleanLine.Length > 0)
-                    {
-                        if (expectKey)
-                        {
-                            key = cleanLine;
-                        }
-                        else
-                        {
-                            value = cleanLine;
-                            if(!values.ContainsKey(key))
-                                values.Add(key, value);
-                            break;
-                        }
-                        expectKey = !expectKey;
-                    }
-                }
-            }
+        //public static List<Entity> CreateEntities(string lumpString)
+        //{
+        //    List<Entity> entities = new List<Entity>();
+        //    string[] lines = lumpString.Split('\n');
 
-            return new Entity(values);
-        }
+        //    bool inEntity = false;
+        //    StringBuilder currentEnt = new StringBuilder();
+        //    // Get entity from {} markers
+        //    foreach (string line in lines)
+        //    {
+        //        if (!inEntity)
+        //        {
+        //            // Check for beginning entity
+        //            if (line == "{")
+        //            {
+        //                inEntity = true;
+        //                currentEnt.Length = 0;
+        //                continue;
+        //            }
 
-        public static List<Entity> CreateEntities(string lumpString)
-        {
-            List<Entity> entities = new List<Entity>();
-            string[] lines = lumpString.Split('\n');
+        //        }
+        //        else
+        //        {
+        //            // Check for ending entity
+        //            if (line == "}")
+        //            {
+        //                inEntity = false;
+        //                entities.Add(ParseRawString(currentEnt.ToString()));
+        //            }
+        //            else
+        //            {
+        //                currentEnt.AppendLine(line);
+        //            }
+        //        }
+        //    }
 
-            bool inEntity = false;
-            StringBuilder currentEnt = new StringBuilder();
-            // Get entity from {} markers
-            foreach (string line in lines)
-            {
-                if (!inEntity)
-                {
-                    // Check for beginning entity
-                    if (line == "{")
-                    {
-                        inEntity = true;
-                        currentEnt = new StringBuilder();
-                        continue;
-                    }
-
-                }
-                else
-                {
-                    // Check for ending entity
-                    if (line == "}")
-                    {
-                        inEntity = false;
-                        entities.Add(ParseRawString(currentEnt.ToString()));
-                    }
-                    else
-                    {
-                        currentEnt.AppendLine(line);
-                    }
-                }
-            }
-
-            return entities;
-        }
+        //    return entities;
+        //}
 
         public override string ToString()
         {

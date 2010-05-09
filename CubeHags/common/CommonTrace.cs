@@ -30,6 +30,7 @@ namespace CubeHags.common
 
             //traceWork_t tw = new traceWork_t();
             traceWork_t tw = this.tw;
+            tw.trace = new trace_t();
 
             tw.trace.fraction = 1; // assume it goes the entire distance until shown otherwise
             tw.modelOrigin = origin;
@@ -220,7 +221,7 @@ namespace CubeHags.common
             }
             else
             {
-                tw.trace.endpos = start + tw.trace.fraction * (end - start);
+                tw.trace.endpos = start + (tw.trace.fraction * (end - start));
 
                 //for (int i = 0; i < 3; i++)
                 //{

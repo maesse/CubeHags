@@ -325,6 +325,16 @@ namespace CubeHags.server
             sv.gameClients = clients;
         }
 
+        //public bool GetEntityToken(ref string result)
+        //{
+        //    string s = Common.Parse(sv.entityParseString, sv.entityParsePoint);
+        //    result = s;
+        //    if (sv.entityParsePoint >= sv.entityParseString.Length)
+        //        return false;
+        //    else
+        //        return true;
+        //}
+
         void UserInfoChanged(client_t cl)
         {
             cl.name = Info.ValueForKey(cl.userinfo, "name");
@@ -1095,7 +1105,8 @@ namespace CubeHags.server
         	public Dictionary<int, string>			configstrings = new Dictionary<int, string>(); // 1024
         	public svEntity_t[]		svEntities = new svEntity_t[1024]; // 1024
 
-        	//public char			*entityParsePoint;	// used during game VM init
+        	public int			entityParsePoint;	// used during game VM init
+            public string[] entityParseString;
 
         	// the game virtual machine will update these on init and changes
         	public List<Common.sharedEntity_t>	gentities;

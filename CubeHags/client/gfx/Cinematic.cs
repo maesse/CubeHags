@@ -5,6 +5,7 @@ using DirectShowLib;
 using System.Windows.Forms;
 using CubeHags.client.common;
 using System.Runtime.InteropServices;
+using CubeHags.common;
 
 namespace CubeHags.client.gfx
 {
@@ -15,10 +16,12 @@ namespace CubeHags.client.gfx
         IVideoWindow videoWindow;
         IBasicVideo basicVideo;
         IMediaControl mediaControl;
+
         bool playing = false;
         public bool AlterGameState = false; // If true, will trigget nextmap command when cinematic is finished
 
-        void PlayCinematic_f(string[] tokens)
+        // cinematic command implementation
+        public void PlayCinematic_f(string[] tokens)
         {
             if (Client.Instance.cls.state == CubeHags.common.connstate_t.CINEMATIC)
             {
@@ -26,20 +29,30 @@ namespace CubeHags.client.gfx
             }
 
             string arg = tokens[1];
-            string s = tokens[2];
+            //string s = tokens[2];
 
             PlayCinematic(arg, 0, 0, Renderer.Instance.RenderSize.Width, Renderer.Instance.RenderSize.Height);
         }
 
+        // Stops a running cinematic
         public void StopCinematic()
         {
-            if (playing && mediaControl != null)
+            if (!playing)
+                return;
+
+            Common.Instance.WriteLine("Stopping cinematic...");
+
+            // Stop DirectShow
+            if (mediaControl != null)
             {
+                // Stop playback
                 mediaControl.Stop();
+                // Remove overlay
                 int hr = this.videoWindow.put_Visible(OABool.False);
                 DsError.ThrowExceptionForHR(hr);
                 hr = this.videoWindow.put_Owner(IntPtr.Zero);
                 DsError.ThrowExceptionForHR(hr);
+                // Clean up
                 if (this.mediaEventEx != null)
                     this.mediaEventEx = null;
                 if (this.mediaControl != null)
@@ -50,10 +63,12 @@ namespace CubeHags.client.gfx
                     this.videoWindow = null;
                 Marshal.ReleaseComObject(this.graphBuilder); this.graphBuilder = null;
             }
-            if (playing && AlterGameState)
+
+            // If cinematic alters gamestate, go ahead and do that..
+            if (AlterGameState)
             {
                 Client.Instance.cls.state = CubeHags.common.connstate_t.DISCONNECTED;
-                string s = CVars.Instance.VariableString("nextmap");
+                string s = CVars.Instance.VariableString("nextmap"); // next gamestate contained in nextmap
                 if (s.Length > 0)
                 {
                     Commands.Instance.ExecuteText(Commands.EXECTYPE.EXEC_APPEND, s+"\n");
@@ -61,9 +76,11 @@ namespace CubeHags.client.gfx
                 }
                 AlterGameState = false;
             }
+
             playing = false;
         }
 
+        // Cinematic eventloop, checks if the video has ended
         public void RunCinematic()
         {
             if (!playing)
@@ -92,10 +109,10 @@ namespace CubeHags.client.gfx
             }
         }
 
+        // Starts playing a new cinematic
         public void PlayCinematic(string file, int x, int y, int w, int h)
         {
-            this.graphBuilder = (IGraphBuilder)new FilterGraph();
-            // Have the graph builder construct its the appropriate graph automatically
+            // Check if file exists
             if (FileCache.Instance.Contains(file))
                 file = FileCache.Instance.GetFile(file).FullName;
             else
@@ -105,11 +122,13 @@ namespace CubeHags.client.gfx
                     playing = true;
                     StopCinematic();
                 }
+                Common.Instance.WriteLine("PlayCinematic: Could not find video: {0}", file);
                 return;
             }
 
+            // Have the graph builder construct its the appropriate graph automatically
+            this.graphBuilder = (IGraphBuilder)new FilterGraph();
             int hr = graphBuilder.RenderFile(file, null);
-
             DsError.ThrowExceptionForHR(hr);
 
             mediaControl = (IMediaControl)this.graphBuilder;
@@ -120,13 +139,12 @@ namespace CubeHags.client.gfx
             // Setup the video window
             hr = this.videoWindow.put_Owner(Renderer.Instance.form.Handle);
             DsError.ThrowExceptionForHR(hr);
-
             hr = this.videoWindow.put_WindowStyle(WindowStyle.Child | WindowStyle.ClipSiblings | WindowStyle.ClipChildren);
             DsError.ThrowExceptionForHR(hr);
 
-            // Read the default video size
-            int lWidth, lHeight;
-            hr = this.basicVideo.GetVideoSize(out lWidth, out lHeight);
+            // Set the video size
+            //int lWidth, lHeight;
+            //hr = this.basicVideo.GetVideoSize(out lWidth, out lHeight);
             hr = this.videoWindow.SetWindowPosition(x, y, w, h);
             DsError.ThrowExceptionForHR(hr);
 
@@ -136,6 +154,7 @@ namespace CubeHags.client.gfx
             playing = true;
             if (AlterGameState)
                 Client.Instance.cls.state = CubeHags.common.connstate_t.CINEMATIC;
+            Common.Instance.WriteLine("Playing cinematic: {0}", file);
         }
     }
 }

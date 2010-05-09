@@ -44,11 +44,15 @@ namespace CubeHags.client.cgame
             // if we don't have the commands right after the snapshot, we
             // can't accurately predict a current position, so just freeze at
             // the last good position we had
-            if (current < 64)
-                return;
+            //if (current < 64)
+            //    return;
             int cmdNum = current - 63;
+            if (cmdNum < 0)
+                cmdNum = 1;
 
             Input.UserCommand oldestCmd = Client.Instance.GetUserCommand(cmdNum);
+            if (oldestCmd == null)
+                return;
             if (oldestCmd.serverTime > cg.snap.ps.commandTime
                 && oldestCmd.serverTime < cg.time)  // special check for map_restart
             {
@@ -78,6 +82,7 @@ namespace CubeHags.client.cgame
             pmove.pmove_msec = pmove_msec.Integer;
             Common.playerState_t oldPlayerState = cg.predictedPlayerState.Clone();
             pmove.ps = cg.predictedPlayerState;
+            pmove.tracemask = 1;
             
             //pmove.mins = new Vector3(-25, -25, -25);
             //pmove.maxs = new Vector3(25, 25, 25);
@@ -86,7 +91,8 @@ namespace CubeHags.client.cgame
             bool moved = false;
             for (cmdNum = current - 63; cmdNum <= current; cmdNum++)
             {
-
+                if (cmdNum <= 0)
+                    continue;
                 // get the command
                 pmove.cmd = Client.Instance.GetUserCommand(cmdNum);
 
@@ -153,6 +159,13 @@ namespace CubeHags.client.cgame
                 Vector3 oldOrigin = cg.predictedPlayerState.origin;
 
                 Common.Instance.Pmove(pmove);
+
+                //// Test for stuck
+                //trace_t trace = pmove.DoTrace(cg.predictedPlayerState.origin, pmove.mins, pmove.maxs, oldOrigin, 0, 1);
+                //if (trace.fraction != 1.0f)
+                //{
+                //    int test = 2;
+                //}
                 
                 moved = true;
             }

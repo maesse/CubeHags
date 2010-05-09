@@ -247,7 +247,7 @@ namespace CubeHags.client.map.Source
             StringBuilder entitiesBuilder = new StringBuilder(nEntities);
             entitiesBuilder.Append(br.ReadChars(nEntities));
             world.EntityString = entitiesBuilder.ToString();
-            world.Entities = Entity.CreateEntities(world.EntityString);
+            //world.Entities = Entity.CreateEntities(world.EntityString);
         }
 
         static void LoadTextures(BinaryReader br, Header header)

@@ -20,13 +20,12 @@ namespace CubeHags.client.cgame
         public cg_t cg;
         public centity_t[] Entities;
 
-        
-
         CVar cg_nopredict = CVars.Instance.Get("cg_nopredict", "0", CVarFlags.TEMP);
         CVar cg_synchronousClients = CVars.Instance.Get("cg_synchronousClients", "0", CVarFlags.TEMP);
         CVar pmove_fixed = CVars.Instance.Get("pmove_fixed", "0", CVarFlags.SYSTEM_INFO);
         CVar pmove_msec = CVars.Instance.Get("pmove_msec", "8", CVarFlags.SYSTEM_INFO);
         CVar cg_errorDecay = CVars.Instance.Get("cg_errorDecay", "100", CVarFlags.TEMP);
+
         CGame()
         {
         }

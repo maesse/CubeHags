@@ -40,6 +40,8 @@ namespace CubeHags.common
 
         List<string> commandLines = new List<string>();
 
+        public static Random Rand = new Random();
+
         public Common()
         {
         }
@@ -331,7 +333,11 @@ namespace CubeHags.common
             // add + commands from command line
             if (!AddStartupCommands())
             {
-
+                // if the user didn't give any commands, run default action
+                Client.Instance.cin.AlterGameState = true;
+                Commands.Instance.AddText("cinematic cube.avi\n");
+                CVars.Instance.Set("nextmap", "map cs_office");
+                Commands.Instance.Execute();
             }
         }
 
@@ -391,6 +397,76 @@ namespace CubeHags.common
             Environment.Exit(0);
         }
 
+        //public static string Parse(string data, bool allowLineBreaks, ref int nRead)
+        //{
+        //    if (data == null)
+        //    {
+        //        return com_token;
+        //    }
+
+        //    bool hasnewLines = false;
+        //    int i = 0;
+        //    while (true)
+        //    {
+        //        // skip whitespace
+        //        data = data.Trim();
+        //        while (data.Length > 0 && data[0].Equals('\n'))
+        //        {
+        //            data = data.Substring(1);
+        //            data = data.Trim();
+        //            hasnewLines = true;
+        //        }
+        //        if (data.Length == 0)
+        //            return com_token;
+        //        if (hasnewLines && !allowLineBreaks)
+        //            return com_token;
+
+                
+        //        // skip double slash comments
+        //        if (data[i] == '/' && data[i + 1] == '/')
+        //        {
+        //            i += 2;
+        //            while (i < data.Length && data[i] != '\n')
+        //            {
+        //                i++;
+        //            }
+        //        }
+        //        // skip /* */ comments
+        //        else if (data[i] == '/' && data[i + 1] == '*')
+        //        {
+        //            i += 2;
+        //            while (i < data.Length && (data[i] != '*' || data[i + 1] != '/'))
+        //            {
+        //                i++;
+        //            }
+        //            if (i < data.Length)
+        //                i += 2;
+        //        }
+        //        else
+        //            break;
+
+        //    }
+
+        //    // handle quoted strings
+        //    if (data[i] == '"')
+        //    {
+        //        i++;
+        //        int end = data.IndexOf('"', i);
+        //        if (end < 0)
+        //        {
+        //            com_token = data.Substring(i);
+        //        }
+        //        else
+        //        {
+        //            com_token = data.Substring(i, end-i);
+        //        }
+        //    }
+        //    // parse a regular word
+        //    do {
+        //        string.
+        //    } while(
+        //}
+        //static string com_token = "";
         public void Write(string str, params object[] args)
         {
             string formatted = string.Format(str, args);

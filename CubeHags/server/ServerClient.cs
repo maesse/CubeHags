@@ -338,6 +338,8 @@ namespace CubeHags.server
 
         }
 
+        
+
         public trace_t Trace(Vector3 start, Vector3 mins, Vector3 maxs, Vector3 end, int passEntityNum, int contentmask)
         {
             //results.fraction = 1f;

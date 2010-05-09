@@ -6,6 +6,7 @@ using CubeHags.client.map.Source;
 using SlimDX;
 using System.IO;
 using CubeHags.client.common;
+using CubeHags.server;
 
 namespace CubeHags.common
 {
@@ -416,12 +417,15 @@ namespace CubeHags.common
         {
             // Entities
             br.BaseStream.Seek(header.lumps[0].fileofs, SeekOrigin.Begin);
-            int nEntities = header.lumps[0].filelen / 2;
+            int nEntities = header.lumps[0].filelen;
             StringBuilder entitiesBuilder = new StringBuilder(nEntities);
             entitiesBuilder.Append(br.ReadChars(nEntities));
             entityString = entitiesBuilder.ToString();
-
-            // map.entities = Entity.CreateEntities(entitiesBuilder.ToString());
+            //Server.Instance.sv.entityParseString = entityString;
+            string[] lines = entityString.Split('\n');
+            Server.Instance.sv.entityParsePoint = 0;
+            Server.Instance.sv.entityParseString = lines;
+             //map.entities = Entity.CreateEntities(entitiesBuilder.ToString());
         }
 
         void ReadNodes(Header header, BinaryReader br)

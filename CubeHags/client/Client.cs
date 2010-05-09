@@ -226,11 +226,14 @@ namespace CubeHags.client
             Renderer.Instance.Init(form);
 
             CVars.Instance.Set("cl_running", "1");
-            Common.Instance.WriteLine("------- Client initialization Complete --------");
             cin = new Cinematic();
-            cin.AlterGameState = true;
-            CVars.Instance.Set("nextmap", "map cs_office");
-            cin.PlayCinematic("testvid.avi", 0, 0, Renderer.Instance.RenderSize.Width, Renderer.Instance.RenderSize.Height);
+            Commands.Instance.AddCommand("cinematic", new CommandDelegate(cin.PlayCinematic_f));
+            
+            Common.Instance.WriteLine("------- Client initialization Complete --------");
+            
+            //cin.AlterGameState = true;
+            //
+            //cin.PlayCinematic("testvid.avi", 0, 0, Renderer.Instance.RenderSize.Width, Renderer.Instance.RenderSize.Height);
             
         }
 

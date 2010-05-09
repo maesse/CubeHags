@@ -5,6 +5,7 @@ using System.Text;
 using CubeHags.common;
 using CubeHags.client.gui;
 using CubeHags.client.cgame;
+using SlimDX;
 
 namespace CubeHags.client
 {
@@ -44,6 +45,17 @@ namespace CubeHags.client
                     break;
                 case CubeHags.common.connstate_t.ACTIVE:
                     WindowManager.Instance.connectGUI.DrawConnect();
+
+                    ////{X:20,79979 Y:-37,60673 Z:-63,16185}
+                    //Vector3 start = new Vector3(20.79979f, -37.60673f, -63.16185f);
+                    ////{X:22,03559 Y:-37,33163 Z:-63,875}
+                    //Vector3 end = new Vector3(22.03559f, -37.33163f, -63.875f);
+                    //Vector3 playerMins = new Vector3( -15, -15, -24 );
+                    //Vector3 playerMaxs = new Vector3(15, 15, 32);
+                    //pmove_t move = new pmove_t();
+                    //trace_t trace = move.DoTrace(end, playerMins, playerMaxs, start, 0, 1);
+
+                    //trace_t trace2 = move.DoTrace(start, playerMins, playerMaxs, end, 0, 1);
                     CGame.Instance.DrawActiveFrame(cl.serverTime);
                     break;
                 case connstate_t.CINEMATIC:

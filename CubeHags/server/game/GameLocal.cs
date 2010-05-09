@@ -66,6 +66,8 @@ namespace CubeHags.server
     	// spawn variables
     	public bool	spawning;				// the G_Spawn*() functions are valid
         public List<KeyValuePair<string, string>> spawnVars;
+        public int numSpawnVars;
+        public int numSpawnVarChars;
 
     	// intermission state
     	public int			intermissionQueued;		// intermission was qualified, but
@@ -112,7 +114,7 @@ namespace CubeHags.server
         public Common.entityState_t s;  // communicated by server to clients
         public Common.entityShared_t r;     // shared by both the server system and game
     }
-
+    public delegate void UseHandler(gentity_t self, gentity_t other, gentity_t activator);
     public class gentity_t {
         public gentity_t()
         {
@@ -186,6 +188,8 @@ namespace CubeHags.server
     	public int			nextthink;
         public event        ThinkDelegate think;
         public void RunThink(gentity_t ent) { think(ent); }
+
+        public UseHandler use;
         //void		(*reached)(gentity_t *self);	// movers call this when hitting endpoint
         //void		(*blocked)(gentity_t *self, gentity_t *other);
         //void		(*touch)(gentity_t *self, gentity_t *other, trace_t *trace);

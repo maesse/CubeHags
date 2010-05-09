@@ -180,8 +180,8 @@ namespace CubeHags.client.gui.Controls
             //sprite.Draw2D(textboxTexture, regions[8], regions[8].Size, new PointF(Position.X + Size.Width - regions[8].Width, Position.Y + Size.Height - regions[8].Height), Color.FromArgb((int)(Window.Opacity * 255), Color.White));
             //sprite.End();
             // Start clipping
-            Renderer.Instance.device.SetRenderState(RenderState.ScissorTestEnable, true);
-            Renderer.Instance.device.ScissorRect = DrawRect;
+            //Renderer.Instance.device.SetRenderState(RenderState.ScissorTestEnable, true);
+            //Renderer.Instance.device.ScissorRect = DrawRect;
             // Draw text
             Renderer.Instance.sprite.Begin(SpriteFlags.AlphaBlend);
             //Font.DrawText(textSprite, _Text, new Rectangle(new Point(Position.X + regions[3].Width + OverflowOffset, Position.Y + regions[1].Height), new Size(Size.Width - regions[3].Width - regions[5].Width, Size.Height - regions[1].Height - regions[6].Height)), DrawTextFormat.None, (Enabled? Color: Color.FromArgb(128, Color)));
@@ -201,7 +201,7 @@ namespace CubeHags.client.gui.Controls
             //sprite.End();
 
             // End clipping
-            Renderer.Instance.device.SetRenderState(RenderState.ScissorTestEnable, false);
+            //Renderer.Instance.device.SetRenderState(RenderState.ScissorTestEnable, false);
         }
 
         private void RemoveSelection()

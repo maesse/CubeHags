@@ -22,7 +22,7 @@ namespace CubeHags.client.gui.Controls
         private Container Parent;
         
         HagsAtlas atlas;
-
+        Rectangle oldrect;
         public Scrollbar(Container parent)
         {
             this.Parent = parent;
@@ -54,6 +54,20 @@ namespace CubeHags.client.gui.Controls
             atlas["hsliderbr"] = new System.Drawing.Rectangle(46, 30, 2, 2);
         }
 
+        public void RenderClipRect()
+        {
+            if (ScrollbarStyle == Misc.ScrollbarStyle.NONE)
+                return;
+            oldrect = Renderer.Instance.device.ScissorRect;
+            ulong key = SortItem.GenerateBits(SortItem.FSLayer.HUD, SortItem.Viewport.DYNAMIC, SortItem.VPLayer.HUD, SortItem.Translucency.NORMAL, atlas.Texture.MaterialID, 0, 0, WindowManager.Instance.vb.VertexBufferID);
+            RenderDelegate del = new RenderDelegate((effect, device, setMaterial) =>
+            {
+                device.ScissorRect = new Rectangle(new Point(Parent.Position.X, Parent.Position.Y), ViewSize);
+            });
+
+            WindowManager.Instance.renderCalls.Add(new KeyValuePair<ulong, RenderDelegate>(key, del));
+        }
+
         public void Render()
         {
             if (ScrollbarStyle == Misc.ScrollbarStyle.NONE)
@@ -62,8 +76,11 @@ namespace CubeHags.client.gui.Controls
             int vertStartOffset = WindowManager.Instance.VertexList.Count;
             Dimension pos = Parent.Position;
             ViewSize = Parent.Size;
-            float VisibleFrac = ViewSize.Height / ContentSize.Height;
-            int slidermax = ViewSize.Height - atlas["toparrow"].Height - (atlas["bottomarrow"].Height * 2);
+            float VisibleFrac = (float)(ViewSize.Height + atlas["bottomarrow"].Height) / (float)ContentSize.Height;
+            if (VisibleFrac > 1.0f)
+                VisibleFrac = 1.0f;
+
+            int slidermax = ViewSize.Height - atlas["toparrow"].Height - (atlas["bottomarrow"].Height *2);
             Size sliderSize = new Size(atlas["vslidertl"].Width + atlas["vslidert"].Width + atlas["vslidertr"].Width, (int)(slidermax * VisibleFrac));
             Point sliderpos = new Point(pos.X + ViewSize.Width - atlas["bottomarrow"].Width, pos.Y + atlas["toparrow"].Height + (int)(((float)ViewPoint.Y / ViewSize.Height)*slidermax));
             if (ScrollbarStyle == ScrollbarStyle.BOTH)
@@ -77,30 +94,12 @@ namespace CubeHags.client.gui.Controls
                 // VSlider
                 WindowManager.Instance.VertexList.AddRange(MiscRender.GetQuadPoints(new Rectangle(new Point(sliderpos.X + atlas["vsliderml"].Width, sliderpos.Y + atlas["vslidert"].Height), new Size(sliderSize.Width - atlas["vsliderml"].Width - atlas["vslidermr"].Width, sliderSize.Height - atlas["vslidert"].Height - atlas["vsliderb"].Height)), atlas["vsliderm"], atlas.Texture.Size));
             }
-            // Top
-            //WindowManager.Instance.VertexList.AddRange(MiscRender.GetQuadPoints(new Rectangle(new Point(Position.X, Position.Y), new Size(atlas["topleft"].Width, atlas["topleft"].Height)), atlas["topleft"], atlas.Texture.Size));
-            //WindowManager.Instance.VertexList.AddRange(MiscRender.GetQuadPoints(new Rectangle(new Point(Position.X + atlas["topleft"].Width, Position.Y), new Size(Size.Width - atlas["topleft"].Width - atlas["topright"].Width, atlas["top"].Height)), atlas["top"], atlas.Texture.Size));
-            //WindowManager.Instance.VertexList.AddRange(MiscRender.GetQuadPoints(new Rectangle(new Point(Position.X + Size.Width - atlas["topright"].Width, Position.Y), new Size(atlas["topright"].Width, atlas["topright"].Height)), atlas["topright"], atlas.Texture.Size));
-
-            //// Bottom
-            //WindowManager.Instance.VertexList.AddRange(MiscRender.GetQuadPoints(new Rectangle(new Point(Position.X, Position.Y + Size.Height - atlas["bottomleft"].Height), atlas["bottomleft"].Size), atlas["bottomleft"], atlas.Texture.Size));
-            //WindowManager.Instance.VertexList.AddRange(MiscRender.GetQuadPoints(new Rectangle(new Point(Position.X + atlas["bottomleft"].Width, Position.Y + Size.Height - atlas["bottom"].Height), new Size(Size.Width - atlas["bottomleft"].Width - atlas["bottomright"].Width, atlas["bottom"].Height)), atlas["bottom"], atlas.Texture.Size));
-            //WindowManager.Instance.VertexList.AddRange(MiscRender.GetQuadPoints(new Rectangle(new Point(Position.X + Size.Width - atlas["bottomright"].Width, Position.Y + Size.Height - atlas["bottomright"].Height), atlas["bottomright"].Size), atlas["bottomright"], atlas.Texture.Size));
-
-            //// Middle
-            //WindowManager.Instance.VertexList.AddRange(MiscRender.GetQuadPoints(new Rectangle(new Point(Position.X, Position.Y + atlas["topleft"].Height), new Size(atlas["left"].Width, Size.Height - atlas["topleft"].Height - atlas["bottomleft"].Height)), atlas["left"], atlas.Texture.Size));
-            //WindowManager.Instance.VertexList.AddRange(MiscRender.GetQuadPoints(new Rectangle(new Point(Position.X + atlas["left"].Width, Position.Y + atlas["top"].Height), new Size(Size.Width - atlas["left"].Width - atlas["right"].Width, Size.Height - atlas["top"].Height - atlas["bottom"].Height)), atlas["middle"], atlas.Texture.Size));
-            //WindowManager.Instance.VertexList.AddRange(MiscRender.GetQuadPoints(new Rectangle(new Point(Position.X + Size.Width - atlas["right"].Width, Position.Y + atlas["topright"].Height), new Size(atlas["right"].Width, Size.Height - atlas["top"].Height - atlas["bottomright"].Height)), atlas["right"], atlas.Texture.Size));
-
-            //// Resizeable
-            //if (Resizeable)
-            //    WindowManager.Instance.VertexList.AddRange(MiscRender.GetQuadPoints(new Rectangle(new Point(Position.X + Size.Width - atlas["scale"].Width - 2, Position.Y + Size.Height - atlas["scale"].Height - 2), atlas["scale"].Size), atlas["scale"], atlas.Texture.Size));
-
+            
             ulong key = SortItem.GenerateBits(SortItem.FSLayer.HUD, SortItem.Viewport.DYNAMIC, SortItem.VPLayer.HUD, SortItem.Translucency.NORMAL, atlas.Texture.MaterialID, 0, 0, WindowManager.Instance.vb.VertexBufferID);
             int nPrimitives = (WindowManager.Instance.VertexList.Count - vertStartOffset) / 3;
             RenderDelegate del = new RenderDelegate((effect, device, setMaterial) =>
             {
-                //Rectangle oldrect = device.ScissorRect;
+                
                 //device.ScissorRect = Bound;
                 if (setMaterial)
                     device.SetTexture(0, atlas.Texture.Texture);
@@ -108,7 +107,7 @@ namespace CubeHags.client.gui.Controls
                 // Draw UI elements
                 device.DrawPrimitives(PrimitiveType.TriangleList, vertStartOffset, nPrimitives);
 
-                //device.ScissorRect = oldrect;
+                device.ScissorRect = oldrect;
             });
 
             WindowManager.Instance.renderCalls.Add(new KeyValuePair<ulong, RenderDelegate>(key, del));

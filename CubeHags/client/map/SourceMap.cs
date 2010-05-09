@@ -112,33 +112,33 @@ namespace CubeHags.client.map.Source
             vb.SetVB<VertexPositionNormalTexturedLightmap>(world.verts.ToArray(), vertexBytes, VertexPositionNormalTexturedLightmap.Format, Usage.WriteOnly);
             ib = new HagsIndexBuffer();
             
-            Entity light_environment = null;
-            foreach (Entity ent in world.Entities)
-            {
-                //System.Console.WriteLine("\n"+ ent.ClassName);
-                foreach (string val in ent.Values.Keys)
-                {
-                    //System.Console.WriteLine("\t"+val + ": " + ent.Values[val]);
-                }
-                if (ent.ClassName == "light_environment")
-                {
-                    light_environment = ent;
-                }
-                else if (ent.ClassName.Equals("sky_camera"))
-                {
-                    skybox3d = new SkyBox3D(this, ent);
-                }
-            }
+            //Entity light_environment = null;
+            //foreach (Entity ent in world.Entities)
+            //{
+            //    //System.Console.WriteLine("\n"+ ent.ClassName);
+            //    foreach (string val in ent.Values.Keys)
+            //    {
+            //        //System.Console.WriteLine("\t"+val + ": " + ent.Values[val]);
+            //    }
+            //    if (ent.ClassName == "light_environment")
+            //    {
+            //        light_environment = ent;
+            //    }
+            //    else if (ent.ClassName.Equals("sky_camera"))
+            //    {
+            //        skybox3d = new SkyBox3D(this, ent);
+            //    }
+            //}
 
-            // Handle worldspawn entity (skybox)
-            if (world.Entities[0].ClassName == "worldspawn")
-            {
-                if (world.Entities[0].Values.ContainsKey("skyname"))
-                {
-                    string skyname = world.Entities[0].Values["skyname"];
-                    skybox = new SkyBox(this, skyname, light_environment);
-                }
-            }
+            //// Handle worldspawn entity (skybox)
+            //if (world.Entities[0].ClassName == "worldspawn")
+            //{
+            //    if (world.Entities[0].Values.ContainsKey("skyname"))
+            //    {
+            //        string skyname = world.Entities[0].Values["skyname"];
+            //        skybox = new SkyBox(this, skyname, light_environment);
+            //    }
+            //}
 
             
 

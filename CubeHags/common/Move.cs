@@ -5,6 +5,7 @@ using System.Text;
 using CubeHags.client;
 using SlimDX;
 using CubeHags.client.render;
+using CubeHags.client.cgame;
 
 namespace CubeHags.common
 {
@@ -15,8 +16,9 @@ namespace CubeHags.common
 
         float pm_maxspeed = 400f;
         float pm_accelerate = 8f;
+        float pm_airaccelerate = 1.0f;
         float pm_friction = 6f;
-
+        float pm_duckScale = 0.25f;
         int c_pmove = 0;
 
         /*
@@ -122,6 +124,300 @@ namespace CubeHags.common
                 //DropTimers();
                 return;
             }
+
+            // set groundentity
+            GroundTrace();
+
+            if (pml.walking)
+            {
+                // walking on ground
+                WalkMove();
+            }
+            else
+            {
+                // airborne
+                AirMove();
+            }
+
+            // set groundentity, watertype, and waterlevel
+            GroundTrace();
+
+            // snap some parts of playerstate to save network bandwidth
+            CGame.SnapVector(pm.ps.velocity);
+        }
+
+        bool CheckJump()
+        {
+            if ((pm.ps.pm_flags & PMFlags.RESPAWNED) == PMFlags.RESPAWNED)
+            {
+                return false;   // don't allow jump until all buttons are up
+            }
+
+            if (pm.cmd.upmove < 10)
+            {
+                // not holding jump
+                return false;
+            }
+
+            // must wait for jump to be released
+            if ((pm.ps.pm_flags & PMFlags.JUMP_HELD) == PMFlags.JUMP_HELD)
+            {
+                // clear upmove so cmdscale doesn't lower running speed
+                pm.cmd.upmove = 0;
+                return false;
+            }
+
+            pml.groundPlane = false;    // jumping away
+            pml.walking = false;
+            pm.ps.pm_flags |= PMFlags.JUMP_HELD;
+            pm.ps.groundEntityNum = 1023;
+            pm.ps.velocity[2] = 270;
+
+            if (pm.cmd.forwardmove >= 0)
+            {
+                pm.ps.pm_flags &= ~PMFlags.BACKWARDS_JUMP;
+            }
+            else
+            {
+                pm.ps.pm_flags |= PMFlags.BACKWARDS_JUMP;
+            }
+
+            return true;
+        }
+
+        void AirMove()
+        {
+            Friction();
+
+            float fmove = pm.cmd.forwardmove;
+            float smove = pm.cmd.rightmove;
+            Input.UserCommand cmd = pm.cmd;
+            float scale = CommandScale(cmd);
+
+
+            // project moves down to flat plane
+            pml.forward[2] = 0;
+            pml.right[2] = 0;
+            pml.forward.Normalize();
+            pml.right.Normalize();
+
+            Vector3 wishvel = pml.forward * fmove + pml.right * smove;
+            wishvel[2] = 0;
+
+            Vector3 wishdir = wishvel;
+            float wishspeed = wishdir.Length();
+            wishdir.Normalize();
+            wishspeed *= scale;
+
+            // not on ground, so little effect on velocity
+            Accelerate(wishdir, wishspeed, pm_airaccelerate);
+
+            // we may have a ground plane that is very steep, even
+            // though we don't have a groundentity
+            // slide along the steep plane
+            if (pml.groundPlane)
+            {
+                ClipVelocity(pm.ps.velocity, pml.groundTrace.plane.normal, ref pm.ps.velocity, 1.001f);
+            }
+
+            StepSlideMove(true);
+        }
+
+        void WalkMove()
+        {
+            if (CheckJump())
+            {
+                // jumped away
+                AirMove();
+                return;
+            }
+
+            Friction();
+
+            float fmove = pm.cmd.forwardmove;
+            float smove = pm.cmd.rightmove;
+            Input.UserCommand cmd = pm.cmd;
+            float scale = CommandScale(cmd);
+
+            // set the movementDir so clients can rotate the legs for strafing
+            //SetMovementDir();
+
+            // project moves down to flat plane
+            pml.forward[2] = 0;
+            pml.right[2] = 0;
+
+            // project the forward and right directions onto the ground plane
+            ClipVelocity(pml.forward, pml.groundTrace.plane.normal, ref pml.forward, 1.001f);
+            ClipVelocity(pml.right, pml.groundTrace.plane.normal, ref pml.right, 1.001f);
+            pml.forward.Normalize();
+            pml.right.Normalize();
+
+            Vector3 wishvel = pml.forward * fmove + pml.right * smove;
+            Vector3 wishdir = wishvel;
+            float wishpeed = wishdir.Length();
+            wishdir.Normalize();
+            wishpeed *= scale;
+
+            // clamp the speed lower if ducking
+            if ((pm.ps.pm_flags & PMFlags.DUCKED) == PMFlags.DUCKED)
+            {
+                if (wishpeed > pm.ps.speed * pm_duckScale)
+                {
+                    wishpeed = pm.ps.speed * pm_duckScale;
+                }
+            }
+
+            Accelerate(wishdir, wishpeed, pm_accelerate);
+
+            float vel = pm.ps.velocity.Length();
+            // slide along the ground plane
+            ClipVelocity(pm.ps.velocity, pml.groundTrace.plane.normal, ref pm.ps.velocity, 1.001f);
+
+            // don't decrease velocity when going up or down a slope
+            pm.ps.velocity.Normalize();
+            pm.ps.velocity = Vector3.Multiply(pm.ps.velocity, vel);
+
+            // don't do anything if standing still
+            if (pm.ps.velocity[0] == 0 && pm.ps.velocity[1] == 0)
+                return;
+
+            StepSlideMove(false);
+        }
+
+        void GroundTrace()
+        {
+            Vector3 point = pm.ps.origin;
+            point[2] -= 0.25f;
+            trace_t trace = pm.DoTrace(pm.ps.origin, pm.mins, pm.maxs, point, pm.ps.clientNum, pm.tracemask);
+            pml.groundTrace = trace;
+
+            // do something corrective if the trace starts in a solid...
+            if (trace.allsolid)
+            {
+                if (!CorrectAllSolid(trace))
+                    return;
+            }
+
+            // if the trace didn't hit anything, we are in free fall
+            if (trace.fraction == 1.0f)
+            {
+                GroundTraceMissed();
+                pml.groundPlane = false;
+                pml.walking = false;
+                return;
+            }
+
+            // check if getting thrown off the ground
+            if (pm.ps.velocity[2] > 0 && Vector3.Dot(pm.ps.velocity, trace.plane.normal) > 10f)
+            {
+                pm.ps.groundEntityNum = 1023;
+                pml.groundPlane = false;
+                pml.walking = false;
+                return;
+            }
+
+            // slopes that are too steep will not be considered onground
+            if (trace.plane.normal[2] < 0.7f)
+            {
+                // FIXME: if they can't slide down the slope, let them
+                // walk (sharp crevices)
+                pm.ps.groundEntityNum = 1023;
+                pml.groundPlane = true;
+                pml.walking = false;
+                return;
+            }
+
+            pml.groundPlane = true;
+            pml.walking = true;
+
+            if (pm.ps.groundEntityNum == 1023)
+            {
+                // just hit the ground
+                //CrashLand();
+
+                // don't do landing time if we were just going down a slope
+                if (pml.previous_velocity[2] < -200)
+                {
+                    // don't allow another jump for a little while
+                    pm.ps.pm_flags |= PMFlags.TIME_LAND;
+                    pm.ps.pm_time = 250;
+                }
+            }
+
+            pm.ps.groundEntityNum = trace.entityNum;
+            //AddTouchEnt(trace.entityNum);
+        }
+
+        /*
+        =============
+        PM_GroundTraceMissed
+
+        The ground trace didn't hit a surface, so we are in freefall
+        =============
+        */
+        void GroundTraceMissed()
+        {
+            if (pm.ps.groundEntityNum != 1023)
+            {
+                // we just transitioned into freefall
+
+                // if they aren't in a jumping animation and the ground is a ways away, force into it
+                // if we didn't do the trace, the player would be backflipping down staircases
+                Vector3 point = pm.ps.origin;
+                point[2] -= 0.25f;
+
+                trace_t trace = pm.DoTrace(pm.ps.origin, pm.mins, pm.maxs, point, pm.ps.clientNum, pm.tracemask);
+                if (trace.fraction == 1.0f)
+                {
+                    if(pm.cmd.forwardmove >= 0)
+                        pm.ps.pm_flags &= ~PMFlags.BACKWARDS_JUMP;
+                    else
+                    {
+                        pm.ps.pm_flags |= PMFlags.BACKWARDS_JUMP;
+                    }
+                }
+                
+            }
+
+            pm.ps.groundEntityNum = 1023;
+            pml.groundPlane = false;
+            pml.walking = false;
+        }
+
+        bool CorrectAllSolid(trace_t trace)
+        {
+            Vector3 point;
+
+            // jitter around
+            for (int i = -1; i <= 1; i++)
+            {
+                for (int j = -1; j <= 1; j++)
+                {
+                    for (int k = -1; k <= 1; k++)
+                    {
+                        point = pm.ps.origin;
+                        point[0] += (float)i;
+                        point[1] += (float)j;
+                        point[2] += (float)k;
+                        trace = pm.DoTrace(point, pm.mins, pm.maxs, point, pm.ps.clientNum, pm.tracemask);
+                        if (!trace.allsolid)
+                        {
+                            point = pm.ps.origin;
+                            point[2] -= 0.25f;
+
+                            trace = pm.DoTrace(pm.ps.origin, pm.mins, pm.maxs, point, pm.ps.clientNum, pm.tracemask);
+                            pml.groundTrace = trace;
+                            return true;
+                        }
+                    }
+                }
+            }
+
+            pm.ps.groundEntityNum = 1023;
+            pml.groundPlane = false;
+            pml.walking = false;
+
+            return false;
         }
 
         void FlyMove()
@@ -185,8 +481,28 @@ namespace CubeHags.common
             Vector3 start_v = pm.ps.velocity;
 
             if (!SlideMove(gravity))
+            {
+                //// Test for stuck
+                //trace_t traces = pm.DoTrace(start_o, pm.mins, pm.maxs, pm.ps.origin, 0, 1);
+                //if (traces.fraction != 1.0f)
+                //{
+                //    int test = 2;
+                //}
+                //traces = pm.DoTrace(pm.ps.origin, pm.mins, pm.maxs, start_o, 0, 1);
+                //if (traces.fraction != 1.0f)
+                //{
+                //    int test = 2;
+                //}
                 return; // we got exactly where we wanted to go first try	
+            }
 
+            //trace_t tracess = pm.DoTrace(pm.ps.origin, pm.mins, pm.maxs, start_o, 0, 1);
+            //if (tracess.fraction != 1.0f)
+            //{
+            //    int test = 2;
+            //    pm.ps.origin = start_o;
+            //}
+            //return;
             Vector3 down = start_o;
             down[2] -= 18;
             trace_t trace = new trace_t();
@@ -248,6 +564,12 @@ namespace CubeHags.common
                 }
             }
 
+            //tracess = pm.DoTrace(pm.ps.origin, pm.mins, pm.maxs, start_o, 0, 1);
+            //if (tracess.fraction != 1.0f)
+            //{
+            //    int test = 2;
+            //}
+
         }
 
         /*
@@ -266,7 +588,7 @@ namespace CubeHags.common
             if (gravity)
             {
                 endVelocity = pm.ps.velocity;
-                endVelocity[2] -= pm.ps.gravity * pml.frametime;
+                endVelocity[2] -= 800f * pml.frametime;
                 pm.ps.velocity[2] = (pm.ps.velocity[2] + endVelocity[2]) * 0.5f;
                 primal_velocity[2] = endVelocity[2];
                 if (pml.groundPlane)
@@ -321,11 +643,20 @@ namespace CubeHags.common
                 if (trace.fraction > 0f)
                 {
                     // actually covered some distance
-                    pm.ps.origin = trace.endpos;
+                    Vector3 save = trace.endpos;
+                    //trace_t trc = pm.DoTrace(trace.endpos, pm.mins, pm.maxs, pm.ps.origin, 0, 1);
+                    //if (trc.fraction < 1.0f)
+                    //{
+                    //    int test = 2;
+                    //}
+                    pm.ps.origin = save;
+                    
                 }
 
                 if (trace.fraction == 1)
                     break;  // moved the entire distance
+
+                
 
                 // save entity for contact
                 //AddTouchEnt(trace.entityNum);
