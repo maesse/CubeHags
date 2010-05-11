@@ -123,6 +123,7 @@ namespace CubeHags.client.map.Source
             LoadDisplacement(br, sHeader);
             LoadFaces(br, sHeader); // Req: planes & texinfos & light & displacemtn
             LoadLeafBrushes(br, sHeader);
+            LoadBrushes(br, sHeader);
             LoadLeafFaces(br, sHeader);
             LoadNodesAndLeafs(br, sHeader); // Req: planes
             LoadGameAndProps(br, sHeader); // Req: leafs
@@ -146,7 +147,7 @@ namespace CubeHags.client.map.Source
             //System.Console.WriteLine("#-------------------------------");
         }
 
-        static void ReadBrushes(BinaryReader br, Header header)
+        static void LoadBrushes(BinaryReader br, Header header)
         {
             // read brushsides
             br.BaseStream.Seek(header.lumps[19].fileofs, SeekOrigin.Begin);
@@ -332,6 +333,10 @@ namespace CubeHags.client.map.Source
             // Read nodes
             br.BaseStream.Seek(header.lumps[5].fileofs, SeekOrigin.Begin);
             int nNodes = header.lumps[5].filelen / 32;
+            if (header.lumps[5].filelen % 32 > 0)
+            {
+                Common.Instance.Error("LoadNodesAndLeafs: Weird node lumpsize");
+            }
             world.nodes = new dnode_t[nNodes];
             for (int i = 0; i < nNodes; i++)
             {
@@ -409,6 +414,10 @@ namespace CubeHags.client.map.Source
             // read leafFaces
             br.BaseStream.Seek(header.lumps[16].fileofs, SeekOrigin.Begin);
             world.leafFaces = new List<int>(header.lumps[16].filelen / 2);
+            if (header.lumps[16].filelen % 2 > 0)
+            {
+                Common.Instance.Error("Weird leafFace lumpsize");
+            }
             for (int i = 0; i < header.lumps[16].filelen / 2; i++)
             {
                 world.leafFaces.Add(br.ReadUInt16());
@@ -419,7 +428,12 @@ namespace CubeHags.client.map.Source
         {
             // read leafBrushes
             br.BaseStream.Seek(header.lumps[17].fileofs, SeekOrigin.Begin);
-            int numLeafBrushes = header.lumps[17].filelen;
+            int numLeafBrushes = header.lumps[17].filelen/2;
+            if (header.lumps[17].filelen % 2 > 0)
+            {
+                Common.Instance.Error("LoadLeafBrushes: Weird leafBrush lumpsize");
+            }
+            world.leafbrushes = new List<int>();
             for (int i = 0; i < numLeafBrushes; i++)
             {
                 world.leafbrushes.Add((int)br.ReadInt16());
@@ -463,6 +477,10 @@ namespace CubeHags.client.map.Source
             // Read faces
             br.BaseStream.Seek(header.lumps[7].fileofs, SeekOrigin.Begin);
             int nFaces = header.lumps[7].filelen / 56;
+            if (header.lumps[7].filelen % 56 > 0)
+            {
+                Common.Instance.Error("Weird faces lumpsize");
+            }
             world.faces_t = new face_t[nFaces];
             world.faces = new Face[world.faces_t.Length];
             for (int i = 0; i < nFaces; i++)
@@ -918,16 +936,21 @@ namespace CubeHags.client.map.Source
             // Read planes
             br.BaseStream.Seek(header.lumps[1].fileofs, SeekOrigin.Begin);
             int numPlanes = header.lumps[1].filelen / 20;
+            if (header.lumps[1].filelen % 20 > 0)
+            {
+                Common.Instance.Error("LoadPlanes: Weird plane lumpsize");
+            }
             for (int i = 0; i < numPlanes; i++)
             {
                 cplane_t plane = new cplane_t();
-                plane.normal = SourceParser.SwapZY(new Vector3(br.ReadSingle(), br.ReadSingle(), br.ReadSingle()));
+                plane.normal = new Vector3(br.ReadSingle(), br.ReadSingle(), br.ReadSingle());
                 plane.dist = br.ReadSingle();
                 plane.type = br.ReadInt32();
+                plane.type = plane.normal[0] == 1.0 ? 0 : (plane.normal[1] == 1.0 ? 1 : (plane.normal[2] == 1.0 ? 2 : 3));
                 int bits = 0;
                 for (int j = 0; j < 3; j++)
                 {
-                    if (plane.normal[j] < 0)
+                    if (plane.normal[j] < 0.0f)
                         bits |= 1 << j;
                 }
                 plane.signbits = (byte)bits;

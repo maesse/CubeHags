@@ -582,12 +582,14 @@ namespace CubeHags.server
             {
                 client.ps.pm_type = Common.PMType.SPECTATOR;
                 client.ps.speed = 400;  // faster than normal
-
+                
                 // set up for pmove
                 pmove_t pm = new pmove_t();
                 pm.ps = client.ps;
                 pm.cmd = ucmd;
                 pm.tracemask = 1;
+                pm.mins = new Vector3(-15, -15, -24);
+                pm.maxs = new Vector3(15, 15, 32);
                 //pm.Trace += new TraceDelegate(Server.Instance.Trace);
                 //pm.PointContents += new TraceContentsDelegate(Server.Instance.PointContents);
 

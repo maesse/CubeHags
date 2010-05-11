@@ -336,7 +336,7 @@ namespace CubeHags.common
                 // if the user didn't give any commands, run default action
                 Client.Instance.cin.AlterGameState = true;
                 Commands.Instance.AddText("cinematic cube.avi\n");
-                CVars.Instance.Set("nextmap", "map cs_office");
+                CVars.Instance.Set("nextmap", "map menu");
                 Commands.Instance.Execute();
             }
         }

@@ -478,10 +478,7 @@ namespace CubeHags.common
                 frac = 1;
 
             float midf = p1f + (p2f - p1f) * frac;
-            Vector3 mid = Vector3.Zero;
-            mid[0] = p1[0] + frac * (p2[0] - p1[0]);
-            mid[1] = p1[1] + frac * (p2[1] - p1[1]);
-            mid[2] = p1[2] + frac * (p2[2] - p1[2]);
+            Vector3 mid = p1 - frac * (p2 - p1);
 
             TraceThroughTree(tw, node.children[side], p1f, midf, p1, mid);
 
@@ -492,10 +489,7 @@ namespace CubeHags.common
                 frac2 = 1f;
 
             midf = p1f + (p2f - p1f) * frac2;
-
-            mid[0] = p1[0] + frac2 * (p2[0] - p1[0]);
-            mid[1] = p1[1] + frac2 * (p2[1] - p1[1]);
-            mid[2] = p1[2] + frac2 * (p2[2] - p1[2]);
+            mid = p1 + frac2 * (p2 - p1);
 
             TraceThroughTree(tw, node.children[side ^ 1], midf, p2f, mid, p2);
         }

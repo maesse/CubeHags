@@ -83,9 +83,9 @@ namespace CubeHags.client.cgame
             Common.playerState_t oldPlayerState = cg.predictedPlayerState.Clone();
             pmove.ps = cg.predictedPlayerState;
             pmove.tracemask = 1;
-            
-            //pmove.mins = new Vector3(-25, -25, -25);
-            //pmove.maxs = new Vector3(25, 25, 25);
+
+            pmove.mins = new Vector3( -15, -15, -24 );
+            pmove.maxs = new Vector3(15, 15, 32);
             
             // run cmds
             bool moved = false;
