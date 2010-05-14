@@ -122,6 +122,8 @@ namespace CubeHags.client
         {
             SlimDX.RawInput.Device.RegisterDevice(SlimDX.Multimedia.UsagePage.Generic, SlimDX.Multimedia.UsageId.Mouse, DeviceFlags.None);
             SlimDX.RawInput.Device.MouseInput += new EventHandler<MouseInputEventArgs>(RawInputEvent);
+            MouseState = client.MouseState.GUI;
+            Commands.Instance.ExecuteText(Commands.EXECTYPE.EXEC_NOW, "toggleui");
         }
 
         // Implement +-movement commands
@@ -926,6 +928,7 @@ namespace CubeHags.client
             KeyHags.Instance.SetBind(Keys.S, "+back");
             KeyHags.Instance.SetBind(Keys.A, "+moveleft");
             KeyHags.Instance.SetBind(Keys.D, "+moveright");
+            HiddenMousePosition = new Point(Renderer.Instance.form.DesktopLocation.X + (Renderer.Instance.form.DesktopBounds.Width / 2), Renderer.Instance.form.DesktopLocation.Y + (Renderer.Instance.form.DesktopBounds.Height / 2));
         }
 
         // Method used to fire event to all listeners

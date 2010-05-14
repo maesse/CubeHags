@@ -24,7 +24,6 @@ namespace CubeHags.client
     {
         // Singleton stuff
         private static readonly Renderer _instance = new Renderer();
-        Texture testTex;
 
         // Device
         public Device device = null;
@@ -122,6 +121,13 @@ namespace CubeHags.client
         bool setMaterial = true;
         bool[] setmaterialbatch = new bool[1024];
 
+        CVar r_vsync = CVars.Instance.Get("r_vsync", "1", CVarFlags.ARCHIVE);
+        CVar r_fs = CVars.Instance.Get("r_fs", "0", CVarFlags.ARCHIVE);
+        CVar r_resulution = CVars.Instance.Get("r_res", "1280x800", CVarFlags.ARCHIVE);
+        CVar r_showfps = CVars.Instance.Get("r_showfps", "1", CVarFlags.ARCHIVE);
+
+        public List<string> ValidResolutions = new List<string>();
+
         // Constructor
         Renderer()
         {
@@ -145,9 +151,6 @@ namespace CubeHags.client
         */
         void RenderView(ViewParams view) 
         {
-
-            
-
             if (view.viewportWidth <= 0 || view.viewportHeight <= 0)
             {
                 return;
@@ -160,24 +163,9 @@ namespace CubeHags.client
             // SetFarClip()
 
             view.SetupProjectionZ();
-
-            // Sort calls for next frame
-            //drawCalls.Sort((firstPair, secondPair) =>
-            //{
-            //    return secondPair.Key.CompareTo(firstPair.Key);
-            //});
-
-            RotateForViewer();
-            //Camera.Update(HighResolutionTimer.Instance.FrameTime);
             Camera.RotateForViewer();
         }
 
-        void RotateForViewer()
-        {
-            
-
-            
-        }
 
         void myGlMultMatrix( Matrix a, Matrix b, out Matrix c ) 
         {
@@ -256,22 +244,8 @@ namespace CubeHags.client
                 OnResetDevice();
                 return;
             }
-                
-
-            //Commands.Instance.Execute();
-            
-            //if (SourceMap != null)
-            //    SourceMap.Render(device);
-
-            //device.SetRenderTarget(0, RenderSurface);
             
             SetupFrame();
-
-            // Sort calls for next frame
-            //drawCalls.Sort((firstPair, secondPair) =>
-            //{
-            //    return secondPair.Key.CompareTo(firstPair.Key);
-            //});
 
             // Begin drawing
             device.BeginScene();
@@ -295,11 +269,6 @@ namespace CubeHags.client
             long profile_final = HighResolutionTimer.Ticks;
             profile_render = profile_final - profile_render;
 
-            // Stretch to texture
-            //Rectangle rect = new Rectangle(new Point(), Renderer.Instance.RenderSize);
-            //Rectangle destRect = new Rectangle(new Point(), new Size(RenderTextureSfc.Description.Width, RenderTextureSfc.Description.Height));
-            //device.StretchRectangle(RenderSurface, rect, RenderTextureSfc, destRect, TextureFilter.Point);
-
             //tonemap.MeasureLuminance(effect, device);
             //bloom.RenderBloom(device, effect);
             //FinalPass();
@@ -308,13 +277,6 @@ namespace CubeHags.client
             // Draw FPS
             MiscRender.DrawRenderStats(this);
 
-            //if (window == null)
-            //{
-            //    using(Surface backbuff = device.GetBackBuffer(0, 0)) {
-            //        device.StretchRectangle(RenderSurface, rect, backbuff, rect, TextureFilter.None);
-            //        device.SetRenderTarget(0, backbuff);
-            //    }
-            //}
             device.EndScene();
             
 
@@ -348,9 +310,7 @@ namespace CubeHags.client
                     nProfileCount = 0;
                     Profile_Sort = Profile_Render = Profile_PreFrame = Profile_Final = Profile_Present = 0f;
                 }
-            }
-
-            
+            }   
         }
 
         private void FlushDrawCalls()
@@ -388,8 +348,6 @@ namespace CubeHags.client
                     key = 0;
                 else
                     key = currentdrawCalls[i].Key;
-                
-                
 
                 // Check for statechange - ignore material/depth change
                 if ((uint)(key>>32) != (uint)(oldKey>>32))
@@ -440,8 +398,6 @@ namespace CubeHags.client
                 device.SetStreamSource(1, null, 0, 0);
                 effect.Technique = technique;
             }
-
-            //device.ResetStreamSourceFrequency(0);
         }
 
         void HandleDrawCallChange(ulong key)
@@ -579,9 +535,6 @@ namespace CubeHags.client
             }
         }
 
-        
-
-
         // Inits shaders etc. when preparing to render a frame
         private void SetupFrame()
         {
@@ -629,18 +582,12 @@ namespace CubeHags.client
         private void FinalPass()
         {
             device.SetTexture(0, RenderTexture);
-            //device.SetTexture(2, bloom.BloomTexture);
-            //device.SetSamplerState(2, SamplerState.MagFilter, TextureFilter.Linear);
-            //device.SetSamplerState(2, SamplerState.MinFilter, TextureFilter.Linear);
             effect.Technique = "FinalPass_RGBE8";
 
             DrawFullScreenQuad();
 
             device.SetTexture(0, null);
-            //device.SetTexture(2, null);
         }
-
-        
 
         public void Init(RenderForm form)
         {
@@ -648,24 +595,18 @@ namespace CubeHags.client
             
             form.ResizeBegin += new EventHandler((o, e) => { formIsResizing = true; });
             form.ResizeEnd += new EventHandler((o, e) => { formIsResizing = false; if(form.ClientSize != RenderSize) _sizeChanged = true; });
+
+            VSync = CVars.Instance.Get("r_vsync", "1", CVarFlags.ARCHIVE).Integer == 1 ? true : false;
+
             InitDevice();
             
-            
             // Init input
-            //Input.Instance.InitializeInput();
-            //testTex = TextureManager.Instance.LoadTexture("test.png");
             Commands.Instance.AddCommand("r_mode", ToggleFillMode);
             KeyHags.Instance.SetBind(Keys.F12, "r_mode");
-
-            
         }
 
-        
-
         private void InitDevice()
-        {
-            bool LoadMapb = false;
-            
+        {   
             currentWindowState = form.WindowState;
             form.Resize += (o, args) =>
             {
@@ -688,6 +629,7 @@ namespace CubeHags.client
             DeviceType devType = DeviceType.Hardware;
             int adapterOrdinal = 0;
             Direct3D d3d = new Direct3D();
+            
             // Look for PerfHUD
             AdapterCollection adapters = d3d.Adapters;
             foreach (AdapterInformation adap in adapters)
@@ -696,9 +638,12 @@ namespace CubeHags.client
                 {
                     adapterOrdinal = adap.Adapter;
                     devType = DeviceType.Reference;
-                    LoadMapb = true;
                 }
             }
+            foreach (var item in adapters[adapterOrdinal].GetDisplayModes(Format.X8R8G8B8))
+        	{
+                ValidResolutions.Add(item.Width + "x" + item.Height);
+        	}
 
             // Set present parameters
             _pp = new PresentParameters();
@@ -738,8 +683,6 @@ namespace CubeHags.client
             {
                 throw ex;
             }
-            
-            
             
             // Load main shader
             if (System.IO.File.Exists(System.Windows.Forms.Application.StartupPath+"/client/render/simple.fx"))
@@ -785,6 +728,10 @@ namespace CubeHags.client
                 font = new SlimDX.Direct3D9.Font(Renderer.Instance.device, localFont);
                 Fonts.Add("biglabel", font);
 
+                localFont = new System.Drawing.Font("Candara", 23f, System.Drawing.FontStyle.Regular);
+                font = new SlimDX.Direct3D9.Font(Renderer.Instance.device, localFont);
+                Fonts.Add("biggerlabel", font);
+
                 // Textbox
                 System.Drawing.Text.PrivateFontCollection col = new System.Drawing.Text.PrivateFontCollection();
                 col.AddFontFile(System.Windows.Forms.Application.StartupPath + @"\data\gui\dina10px.ttf");
@@ -792,7 +739,7 @@ namespace CubeHags.client
                 font = new SlimDX.Direct3D9.Font(Renderer.Instance.device, localFont);
                 Fonts.Add("textbox", font);
             }
-            //d3d.Dispose();
+
             // Init backbuffers, etc.
             OnResetDevice();
 
@@ -803,13 +750,6 @@ namespace CubeHags.client
             WindowManager.Instance.Init(device);
             
             Render();
-            
-            if (LoadMapb)
-            {
-                //LoadMap(@"C:\Users\mads\Desktop\Kode Stuff\Data\source-files\cstrike\maps\cs_office.bsp");
-                //LoadMap(@"C:\Users\mads\Desktop\Kode Stuff\Data\lighttest.bsp");
-                LoadMapb = false;
-            }
         }
 
         public Result OnLostDevice()

@@ -2,6 +2,8 @@
 using System.Collections.Generic;
  
 using System.Text;
+using CubeHags.common;
+using System.IO;
 
 namespace CubeHags.client.common
 {
@@ -366,11 +368,41 @@ namespace CubeHags.client.common
                 wait = 1;
         }
 
+        void Cmd_Exec(string[] tokens)
+        {
+            if (tokens.Length != 2)
+            {
+                Common.Instance.WriteLine("exec <filename> : execute a script file.");
+                return;
+            }
+            string file = "";
+            if (FileCache.Instance.Contains(tokens[1]))
+            {
+                file = FileCache.Instance.GetFile(tokens[1]).FullName;
+                
+            }
+            else if (File.Exists(tokens[1]))
+            {
+                file = tokens[1];
+            }
+            else
+            {
+                Common.Instance.WriteLine("couln't exec {0}", tokens[1]);
+                return;
+            }
+            Common.Instance.WriteLine("execing {0}", tokens[1]);
+            StreamReader reader = new StreamReader(File.OpenRead(file));
+            string output = reader.ReadToEnd();
+            reader.Dispose();
+            Commands.Instance.InsertText(output);
+        }
+
         private void Init()
         {
             AddCommand("wait", new CommandDelegate(Cmd_Wait));
             AddCommand("echo", new CommandDelegate(Cmd_Echo));
             AddCommand("alias", new CommandDelegate(Cmd_Alias));
+            AddCommand("exec", new CommandDelegate(Cmd_Exec));
         }
 
         // Singleton

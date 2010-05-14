@@ -21,6 +21,8 @@ namespace CubeHags.client.gui
         private List<Window> Windows;
         public bool ShowManager = false;
         public ConnectGUI connectGUI;
+        public MenuGUI menuGUI;
+        public SettingsGUI settingsGUI;
         public enum CursorType
         {
             NORMAL=0,
@@ -50,7 +52,6 @@ namespace CubeHags.client.gui
         // Pr frame buffers
         public List<KeyValuePair<ulong, RenderDelegate>> renderCalls = new List<KeyValuePair<ulong, RenderDelegate>>();
         public List<VertexPosTex> VertexList = new List<VertexPosTex>();
-        public int nPrimitives;
 
         // Buffers for rendering
         WindowManager()
@@ -69,7 +70,6 @@ namespace CubeHags.client.gui
             // Load cursors
             cursorTextures = new HagsTexture[6];
             cursor_offsets = new System.Drawing.Size[6];
-
 
             // textures
             cursorTextures[0] = new HagsTexture("window-theme/cursor.png");
@@ -90,13 +90,16 @@ namespace CubeHags.client.gui
             // Hook to input
             Input.Instance.Event += new InputHandler(Input_Event);
 
-            AddWindow(new InfoUI());
-            //AddWindow(new MainRibbon());
             vb = new HagsVertexBuffer();
-            //AddWindow(new FPSCounter());
             base.Init();
             connectGUI = new ConnectGUI();
-            AddWindow(connectGUI);
+            //AddWindow(connectGUI);
+
+            menuGUI = new MenuGUI();
+            AddWindow(menuGUI);
+            settingsGUI = new SettingsGUI();
+            settingsGUI.Visible = false;
+            AddWindow(settingsGUI);
         }
 
         void Input_Event(object sender, InputArgs e)
@@ -172,6 +175,8 @@ namespace CubeHags.client.gui
                 bool windowHit = false;
                 foreach (Window window in Windows)
                 {
+                    if (!window.Visible)
+                        continue;
                     // Check against bounds
                     if (window.Bound.Contains(evt.Position))
                     {
@@ -280,6 +285,10 @@ namespace CubeHags.client.gui
             {
                 case Corner.NONE:
                     goto default;
+                case Corner.MIDDLE:
+                    pos = new Dimension((Renderer.Instance.RenderSize.Width / 2) - (window.Bound.Width/2), (Renderer.Instance.RenderSize.Height / 2) - (window.Bound.Height/2));
+                    window.Position = pos;
+                    break;
                 case Corner.TOPLEFT:
                     window.Position = new Dimension();
                     break;

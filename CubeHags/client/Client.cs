@@ -201,22 +201,15 @@ namespace CubeHags.client
             cls.framecount++;
         }
 
-        
-
-        
-
         public void Init()
         {
             Common.Instance.WriteLine("------- Client initialization --------");
             
-            // Console init
-
-
             form = new RenderForm("CubeHags")
             {
-                ClientSize = Renderer.Instance.RenderSize
+                ClientSize = Renderer.Instance.RenderSize,
+                StartPosition = System.Windows.Forms.FormStartPosition.CenterScreen
             };
-            Input.Instance.InitializeInput();
 
             CVars.Instance.Get("name", "UnknownCube", CVarFlags.USER_INFO | CVarFlags.ARCHIVE);
             CVars.Instance.Get("rate", "25000", CVarFlags.USER_INFO | CVarFlags.ARCHIVE);
@@ -224,17 +217,13 @@ namespace CubeHags.client
             CVars.Instance.Get("snaps", "40", CVarFlags.USER_INFO | CVarFlags.ARCHIVE);
 
             Renderer.Instance.Init(form);
+            Input.Instance.InitializeInput();
 
             CVars.Instance.Set("cl_running", "1");
             cin = new Cinematic();
             Commands.Instance.AddCommand("cinematic", new CommandDelegate(cin.PlayCinematic_f));
             
             Common.Instance.WriteLine("------- Client initialization Complete --------");
-            
-            //cin.AlterGameState = true;
-            //
-            //cin.PlayCinematic("testvid.avi", 0, 0, Renderer.Instance.RenderSize.Width, Renderer.Instance.RenderSize.Height);
-            
         }
 
         void CheckTimeout()

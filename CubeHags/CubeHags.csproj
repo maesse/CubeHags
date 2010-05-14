@@ -105,6 +105,7 @@
     <Compile Include="client\gui\Controls\Scrollbar.cs" />
     <Compile Include="client\gui\MenuGUI.cs" />
     <Compile Include="client\gui\Misc\ScrollbarStyle.cs" />
+    <Compile Include="client\gui\SettingsGUI.cs" />
     <Compile Include="common\Commands.cs" />
     <Compile Include="common\CommonTrace.cs" />
     <Compile Include="common\CVars.cs" />
