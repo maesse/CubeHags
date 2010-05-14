@@ -781,6 +781,10 @@ namespace CubeHags.client
                 font = new SlimDX.Direct3D9.Font(Renderer.Instance.device, localFont);
                 Fonts.Add("label", font);
 
+                localFont = new System.Drawing.Font("Candara", 15f, System.Drawing.FontStyle.Regular);
+                font = new SlimDX.Direct3D9.Font(Renderer.Instance.device, localFont);
+                Fonts.Add("biglabel", font);
+
                 // Textbox
                 System.Drawing.Text.PrivateFontCollection col = new System.Drawing.Text.PrivateFontCollection();
                 col.AddFontFile(System.Windows.Forms.Application.StartupPath + @"\data\gui\dina10px.ttf");

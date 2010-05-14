@@ -906,7 +906,7 @@ namespace CubeHags.client
             //renderForm.KeyPress += new KeyPressEventHandler(renderForm_KeyPress);
             renderForm.KeyUp += new System.Windows.Forms.KeyEventHandler(renderForm_KeyUp);
             renderForm.KeyDown += new System.Windows.Forms.KeyEventHandler(renderForm_KeyDown);
-            //renderForm.MouseDown += new MouseEventHandler(renderForm_MouseDown);
+            renderForm.MouseDown += new MouseEventHandler(renderForm_MouseDown);
             
             // Init binds..
             Commands.Instance.AddCommand("+moveup", new CommandDelegate(IN_UpDown));

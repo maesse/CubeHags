@@ -20,6 +20,7 @@ namespace CubeHags.client.gui
             if (oldText.Length != _Text.Length)
                 Window.LayoutUpdate(true);
         } } }
+        public string LabelFont = "label";
         
 
         public enum Align
@@ -61,7 +62,7 @@ namespace CubeHags.client.gui
                 {
                     Sprite sprite = Renderer.Instance.sprite;
                     sprite.Begin(SpriteFlags.AlphaBlend | SpriteFlags.DoNotAddRefTexture);
-                    Renderer.Instance.Fonts["label"].DrawString(sprite, Text, Bound, DrawTextFormat.Left, System.Drawing.Color.FromArgb((int)(Window.Opacity * 255), Color));
+                    Renderer.Instance.Fonts[LabelFont].DrawString(sprite, Text, Bound, DrawTextFormat.Left, System.Drawing.Color.FromArgb((int)(Window.Opacity * 255), Color));
                     sprite.End();
                 });
                 WindowManager.Instance.renderCalls.Add(new KeyValuePair<ulong, RenderDelegate>(key, del));
@@ -71,7 +72,7 @@ namespace CubeHags.client.gui
         {
             int x=0, y=0;
             Rectangle rect = new Rectangle();
-            Renderer.Instance.Fonts["label"].MeasureString(Renderer.Instance.sprite, Text, DrawTextFormat.Left, ref rect);
+            Renderer.Instance.Fonts[LabelFont].MeasureString(Renderer.Instance.sprite, Text, DrawTextFormat.Left, ref rect);
             x = rect.Width;
             y = rect.Height;
 
@@ -88,7 +89,7 @@ namespace CubeHags.client.gui
         {
             Rectangle rect = new Rectangle();
 
-            Renderer.Instance.Fonts["label"].MeasureString(Renderer.Instance.sprite, Text, DrawTextFormat.Left, ref rect);
+            Renderer.Instance.Fonts[LabelFont].MeasureString(Renderer.Instance.sprite, Text, DrawTextFormat.Left, ref rect);
             return new Size(rect.Width, rect.Height);
         }
 

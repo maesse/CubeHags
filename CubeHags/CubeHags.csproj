@@ -103,6 +103,7 @@
     <Compile Include="client\gfx\Cinematic.cs" />
     <Compile Include="client\gui\ConnectGUI.cs" />
     <Compile Include="client\gui\Controls\Scrollbar.cs" />
+    <Compile Include="client\gui\MenuGUI.cs" />
     <Compile Include="client\gui\Misc\ScrollbarStyle.cs" />
     <Compile Include="common\Commands.cs" />
     <Compile Include="common\CommonTrace.cs" />
@@ -236,6 +237,9 @@
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
     <Content Include="data\gui\ribbon\ribbongroup.png">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+    <Content Include="data\gui\window-theme\button\button.png">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
     <Content Include="data\gui\window-theme\scrollbar.png">

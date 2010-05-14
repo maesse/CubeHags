@@ -3,6 +3,7 @@ using System.Collections.Generic;
  
 using System.Text;
 using CubeHags.client.gui.Controls;
+using CubeHags.client.common;
 
 namespace CubeHags.client.gui
 {
@@ -66,6 +67,7 @@ namespace CubeHags.client.gui
 
         public void UnLoadMapEvent()
         {
+            Commands.Instance.ExecuteText(Commands.EXECTYPE.EXEC_NOW, "cinematic cube.avi\n");
             //Renderer.Instance.UnloadMap();
         }
 
