@@ -227,6 +227,18 @@ VS_OUT VertexPosTex( POSTEX input)
 	return Out;
 }
 
+VS_OUT VertexPosTex2( POSTEX input) 
+{
+	VS_OUT Out;
+	//Out.pos = input.pos;
+	Out.pos = mul(input.pos, WorldViewProj);
+	Out.texcoord = input.texcoord;
+	Out.lightmap = float2(0.5f,0.5f);
+	Out.normal = float3(0.0f,0.0f,0.0f);
+	Out.color = float4(0.0f,0.0f,0.0f,0.0f);
+	return Out;
+}
+
 VS_OUT VS_Sky( POSNORTEX input) 
 {
 	VS_OUT Out;
@@ -442,7 +454,8 @@ float4 FinalPass( float2 Tex : TEXCOORD0 ) : COLOR
 float4 PixelGUIAlpha( float2 Tex : TEXCOORD0 ) : COLOR
 {
     float4 vColor = tex2D( BaseTextureSampler, Tex );
-	return vColor;
+	vColor.rgb *= vColor.a;
+	return vColor; 
 }
 
 //-----------------------------------------------------------------------------
@@ -576,6 +589,18 @@ technique GUIAlpha
 		SrcBlend = SrcAlpha;
 		DestBlend = InvSrcAlpha;
 		VertexShader = compile vs_1_1 VertexPosTex();
+        PixelShader = compile ps_2_0 PixelGUIAlpha();
+	}
+}
+technique WorldAlpha
+{
+	pass p0
+	{
+		CullMode = None;
+		AlphaBlendEnable = true;
+		SrcBlend = SrcAlpha;
+		DestBlend = InvSrcAlpha;
+		VertexShader = compile vs_1_1 VertexPosTex2();
         PixelShader = compile ps_2_0 PixelGUIAlpha();
 	}
 }

@@ -17,7 +17,7 @@ namespace CubeHags.client.gfx
         IBasicVideo basicVideo;
         IMediaControl mediaControl;
 
-        bool playing = false;
+        public bool playing = false;
         public bool AlterGameState = false; // If true, will trigget nextmap command when cinematic is finished
 
         // cinematic command implementation
@@ -48,6 +48,7 @@ namespace CubeHags.client.gfx
                 // Stop playback
                 mediaControl.Stop();
                 // Remove overlay
+                videoWindow.put_FullScreenMode(OABool.False);
                 int hr = this.videoWindow.put_Visible(OABool.False);
                 DsError.ThrowExceptionForHR(hr);
                 hr = this.videoWindow.put_Owner(IntPtr.Zero);
@@ -112,6 +113,17 @@ namespace CubeHags.client.gfx
         // Starts playing a new cinematic
         public void PlayCinematic(string file, int x, int y, int w, int h)
         {
+            // Lame bugfix: DirectShow and Fullscreen doesnt like eachother
+            if (CVars.Instance.Get("r_fs", "0", CVarFlags.ARCHIVE).Integer == 1)
+            {
+                if (AlterGameState)
+                {
+                    playing = true;
+                    StopCinematic();
+                }
+                return;
+            }
+
             // Check if file exists
             if (FileCache.Instance.Contains(file))
                 file = FileCache.Instance.GetFile(file).FullName;
@@ -146,6 +158,7 @@ namespace CubeHags.client.gfx
             //int lWidth, lHeight;
             //hr = this.basicVideo.GetVideoSize(out lWidth, out lHeight);
             hr = this.videoWindow.SetWindowPosition(x, y, w, h);
+            videoWindow.put_FullScreenMode((CVars.Instance.Get("r_fs", "0", CVarFlags.ARCHIVE).Integer == 1) ? OABool.True : OABool.False);
             DsError.ThrowExceptionForHR(hr);
 
             // Run the graph to play the media file
@@ -155,6 +168,8 @@ namespace CubeHags.client.gfx
             if (AlterGameState)
                 Client.Instance.cls.state = CubeHags.common.connstate_t.CINEMATIC;
             Common.Instance.WriteLine("Playing cinematic: {0}", file);
+
+            EventCode code;
         }
     }
 }

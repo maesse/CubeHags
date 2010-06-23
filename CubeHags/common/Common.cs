@@ -12,6 +12,7 @@ using CubeHags.client.map.Source;
 using CubeHags.client.render;
 using System.Runtime.InteropServices;
 using CubeHags.client.input;
+using CubeHags.client.game;
 
 namespace CubeHags.common
 {
@@ -37,6 +38,8 @@ namespace CubeHags.common
         
         Queue<sysEvent_t> pushedEventQueue = new Queue<sysEvent_t>(256);
         Queue<sysEvent_t> eventQueue = new Queue<sysEvent_t>(256);
+
+        public PlanetGame PlanetGame = null;
 
         List<string> commandLines = new List<string>();
 
@@ -105,6 +108,9 @@ namespace CubeHags.common
             // client side
             //
             Client.Instance.Frame(msec);
+
+            if (PlanetGame != null)
+                PlanetGame.Frame(msec, Input.Instance.UserCmd);
 
             frameNumber++;
         }
@@ -336,7 +342,7 @@ namespace CubeHags.common
                 // if the user didn't give any commands, run default action
                 Client.Instance.cin.AlterGameState = true;
                 Commands.Instance.AddText("cinematic cube.avi\n");
-                //CVars.Instance.Set("nextmap", "map menu");
+                CVars.Instance.Set("nextmap", "toggleui");
                 Commands.Instance.Execute();
             }
         }

@@ -115,6 +115,14 @@ namespace CubeHags.client.render
             return o;
         }
 
+        public static Vector2 VectorMA(Vector2 v, float s, Vector2 b)
+        {
+            Vector2 o = Vector2.Zero;
+            o[0] = v[0] + b[0] * s;
+            o[1] = v[1] + b[1] * s;
+            return o;
+        }
+
         private byte SignbitsForPlane(cplane_t plane)
         {
             int bits = 0;

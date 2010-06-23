@@ -15,6 +15,8 @@ using CubeHags.client.render;
 using CubeHags.client.common;
 using CubeHags.client.input;
 using System.Windows.Forms;
+using CubeHags.client.game;
+using System.Threading;
 
 
 namespace CubeHags.client
@@ -58,9 +60,9 @@ namespace CubeHags.client
 
         // Display options 
         public Size RenderSize = new Size(1280, 800);
-        public bool Windowed = true;
-        public bool VSync = true;
-        public MultisampleType MultiSampling = MultisampleType.TwoSamples;
+        //public bool Windowed = true;
+        //public bool VSync = true;
+        public MultisampleType MultiSampling = MultisampleType.None;
         private FillMode _fillMode = FillMode.Solid;
         public FillMode FillMode { get { return _fillMode; } set { _fillMode = value; device.SetRenderState<FillMode>(RenderState.FillMode, value); } }
         public Camera Camera;
@@ -121,10 +123,10 @@ namespace CubeHags.client
         bool setMaterial = true;
         bool[] setmaterialbatch = new bool[1024];
 
-        CVar r_vsync = CVars.Instance.Get("r_vsync", "1", CVarFlags.ARCHIVE);
-        CVar r_fs = CVars.Instance.Get("r_fs", "0", CVarFlags.ARCHIVE);
-        CVar r_resulution = CVars.Instance.Get("r_res", "1280x800", CVarFlags.ARCHIVE);
-        CVar r_showfps = CVars.Instance.Get("r_showfps", "1", CVarFlags.ARCHIVE);
+        public CVar r_vsync = CVars.Instance.Get("r_vsync", "1", CVarFlags.ARCHIVE);
+        public CVar r_fs = CVars.Instance.Get("r_fs", "0", CVarFlags.ARCHIVE);
+        public CVar r_resulution = CVars.Instance.Get("r_res", "1280x800", CVarFlags.ARCHIVE);
+        public CVar r_showfps = CVars.Instance.Get("r_showfps", "1", CVarFlags.ARCHIVE);
 
         public List<string> ValidResolutions = new List<string>();
 
@@ -138,7 +140,7 @@ namespace CubeHags.client
         {
             frameCount++;
             frameSceneNum = 0;
-            device.Clear(ClearFlags.Target | ClearFlags.ZBuffer, Color.FromArgb(0, Color.CornflowerBlue), 1.0f, 0);
+            device.Clear(ClearFlags.Target | ClearFlags.ZBuffer, Color.FromArgb(0, Color.Black), 1.0f, 0);
         }
 
         /*
@@ -201,9 +203,18 @@ namespace CubeHags.client
             if (formIsResizing)
                 return;
 
+            //if (Client.Instance.cin.playing)
+            //    return;
+            //{
+            //    // snooze
+            //    Thread.Sleep(0);
+            //    return;
+            //}
+
             if (deviceLost)
             {
-                if (device.TestCooperativeLevel() == ResultCode.DeviceNotReset)
+                Result res = device.TestCooperativeLevel();
+                if (res == ResultCode.DeviceNotReset)
                 {
                     device.Reset(_pp);
                     OnResetDevice();
@@ -220,7 +231,7 @@ namespace CubeHags.client
             // Set new size if using WPF
             if (_sizeChanged)
             {
-                if (Windowed)
+                if (r_fs.Integer == 0)
                 {
                     // Get window size
                     RenderSize = form.ClientSize;
@@ -231,11 +242,11 @@ namespace CubeHags.client
                 else
                 {
                     // Hardcoded fullscreen
-                    _pp.BackBufferWidth = RenderSize.Width = 1680;
-                    _pp.BackBufferHeight = RenderSize.Height = 1050;
+                    //_pp.BackBufferWidth = RenderSize.Width = 1680;
+                    //_pp.BackBufferHeight = RenderSize.Height = 1050;
                 }
-                
-                _pp.Windowed = Windowed;
+
+                _pp.Windowed = r_fs.Integer == 0?true:false;
                 _sizeChanged = false;
 
                 OnLostDevice();
@@ -250,9 +261,6 @@ namespace CubeHags.client
             // Begin drawing
             device.BeginScene();
 
-            long profile_render = HighResolutionTimer.Ticks;
-            profile_preframe = profile_render - profile_preframe;
-
             // Swich drawcall list
             FlushDrawCalls();
             int nDrawCalls = currentdrawCalls.Count;
@@ -265,52 +273,21 @@ namespace CubeHags.client
             nDrawCalls += currentdrawCalls.Count;
             // Do unsorted UI render (Added to drawcalls list back to front)
             RenderDrawCallsNew();
-            
-            long profile_final = HighResolutionTimer.Ticks;
-            profile_render = profile_final - profile_render;
 
-            //tonemap.MeasureLuminance(effect, device);
-            //bloom.RenderBloom(device, effect);
-            //FinalPass();
             effect.Technique = technique;
 
             // Draw FPS
             MiscRender.DrawRenderStats(this);
 
             device.EndScene();
-            
-
-            long profile_sort = HighResolutionTimer.Ticks;
-            profile_final = profile_sort - profile_final;
-
-            
-            long profile_present = HighResolutionTimer.Ticks;
-            profile_sort = profile_present - profile_sort;
-
+            if (device.TestCooperativeLevel() == ResultCode.DeviceLost)
+            {
+                deviceLost = true;
+                OnLostDevice();
+                return;
+            }
             device.Present();
             HighResolutionTimer.Instance.Set();
-            profile_present = HighResolutionTimer.Ticks - profile_present;
-
-            if (EnableProfiling)
-            {
-                // Average this frames times
-                Profile_Final += ((float)profile_final / (float)(HighResolutionTimer.Frequency) * 1000) / nProfileSamples;
-                Profile_PreFrame += ((float)profile_preframe / (float)(HighResolutionTimer.Frequency) * 1000) / nProfileSamples;
-                Profile_Render += ((float)profile_render / (float)(HighResolutionTimer.Frequency) * 1000) / nProfileSamples;
-                Profile_Sort += ((float)profile_sort / (float)(HighResolutionTimer.Frequency) * 1000) / nProfileSamples;
-                Profile_Present += ((float)profile_present / (float)(HighResolutionTimer.Frequency) * 1000) / nProfileSamples;
-                nProfileCount++;
-                // Sampling target hit?
-                if (nProfileCount == nProfileSamples)
-                {
-                    System.Console.WriteLine("Renderer times ({0}frame average):", nProfileSamples);
-                    System.Console.WriteLine("\tPreFrame:\t{0:0.00}ms\n\tRender:\t{1:0.00}ms\n\tSort:\t{2:0.00}ms\n\tFinal:\t{3:0.00}ms\nPresent:\t{4:0.00}ms\nTotal:\t{5:0.00}ms {6} rendercalls", Profile_PreFrame, Profile_Render, Profile_Sort, Profile_Final, Profile_Present, Profile_PreFrame + Profile_Render + Profile_Sort + Profile_Final + Profile_Present, nDrawCalls);
-                    System.Console.WriteLine("RenderCalls: {0} - nPossibleBatch: {1} - Waste: {2:0.0}%", currentdrawCalls.Count, nSameMaterial, ((float)nSameMaterial / (float)currentdrawCalls.Count) * 100f);
-                    // Reset variables
-                    nProfileCount = 0;
-                    Profile_Sort = Profile_Render = Profile_PreFrame = Profile_Final = Profile_Present = 0f;
-                }
-            }   
         }
 
         private void FlushDrawCalls()
@@ -350,7 +327,7 @@ namespace CubeHags.client
                     key = currentdrawCalls[i].Key;
 
                 // Check for statechange - ignore material/depth change
-                if ((uint)(key>>32) != (uint)(oldKey>>32))
+                if ((uint)(key>>32) != (uint)(oldKey>>32) || nDrawGroup == 1023)
                 {
                     int numpasses = effect.Begin(FX.None);
                     for (int j = 0; j < numpasses; j++)
@@ -451,6 +428,7 @@ namespace CubeHags.client
                         //device.SetRenderState(RenderState.ZWriteEnable, false);
                         if (SourceMap != null)
                             SourceMap.skybox.SetupRender(device);
+                        GameWorld.Instance.SetupStarsRender(device, effect);
                         break;
                     case SortItem.VPLayer.HUD:
                         device.SetRenderState(RenderState.ZEnable, false);
@@ -464,6 +442,7 @@ namespace CubeHags.client
                             effect.Technique = technique;
                         if (SourceMap != null)
                             SourceMap.SetupVertexBuffer(device);
+                        GameWorld.Instance.SetupRender(device, effect);
                         break;
                 }
             }
@@ -510,10 +489,11 @@ namespace CubeHags.client
                     case SortItem.Translucency.ADDITIVE:
                     case SortItem.Translucency.SUBSTRACTIVE:
                     case SortItem.Translucency.NORMAL:
-                        if (vpLayer != SortItem.VPLayer.HUD && currentViewport != SortItem.Viewport.INSTANCED)
-                            effect.Technique = "TexturedLightmapAlpha";
-                        else if (currentViewport != SortItem.Viewport.INSTANCED)
-                            effect.Technique = "GUIAlpha";
+                        //if (vpLayer != SortItem.VPLayer.HUD && currentViewport != SortItem.Viewport.INSTANCED)
+                        //    effect.Technique = "TexturedLightmapAlpha";
+                        //else 
+                        //if (currentViewport != SortItem.Viewport.INSTANCED)
+                        //    effect.Technique = "GUIAlpha";
                         break;
                 }
             }
@@ -566,10 +546,11 @@ namespace CubeHags.client
 
             // Texture samplers
             device.SetSamplerState(0, SamplerState.MipFilter, (int)TextureFilter.Linear);
-            device.SetSamplerState(0, SamplerState.MinFilter, (int)TextureFilter.Anisotropic);
-            device.SetSamplerState(0, SamplerState.MaxAnisotropy, 4);
-            device.SetRenderState(RenderState.SrgbWriteEnable, true);
-            device.SetSamplerState(0, SamplerState.SrgbTexture, 1);
+            device.SetSamplerState(0, SamplerState.MinFilter, (int)TextureFilter.Linear);
+            //device.SetSamplerState(0, SamplerState.MinFilter, (int)TextureFilter.Anisotropic);
+            //device.SetSamplerState(0, SamplerState.MaxAnisotropy, 4);
+            //device.SetRenderState(RenderState.SrgbWriteEnable, true);
+            //device.SetSamplerState(0, SamplerState.SrgbTexture, 1);
             device.SetSamplerState(0, SamplerState.MagFilter, (int)TextureFilter.Linear);
             device.SetSamplerState(1, SamplerState.MipFilter, (int)TextureFilter.Linear);
             device.SetSamplerState(1, SamplerState.MinFilter, (int)TextureFilter.Linear);
@@ -596,7 +577,7 @@ namespace CubeHags.client
             form.ResizeBegin += new EventHandler((o, e) => { formIsResizing = true; });
             form.ResizeEnd += new EventHandler((o, e) => { formIsResizing = false; if(form.ClientSize != RenderSize) _sizeChanged = true; });
 
-            VSync = CVars.Instance.Get("r_vsync", "1", CVarFlags.ARCHIVE).Integer == 1 ? true : false;
+            //VSync = CVars.Instance.Get("r_vsync", "1", CVarFlags.ARCHIVE).Integer == 1 ? true : false;
 
             InitDevice();
             
@@ -642,16 +623,32 @@ namespace CubeHags.client
             }
             foreach (var item in adapters[adapterOrdinal].GetDisplayModes(Format.X8R8G8B8))
         	{
-                ValidResolutions.Add(item.Width + "x" + item.Height);
+                string val = item.Width + "x" + item.Height;
+                bool found = false;
+                for (int i = 0; i < ValidResolutions.Count; i++)
+                {
+                    if (ValidResolutions[i].Equals(val))
+                    {
+                        found = true;
+                        break;
+                    }
+                }
+                if(!found)
+                    ValidResolutions.Add(val);
         	}
+
+            // Get resolution
+            Size res = GetResolution();
+            RenderSize = res;
+            form.ClientSize = res;
 
             // Set present parameters
             _pp = new PresentParameters();
-            _pp.Windowed = Windowed;
+            _pp.Windowed = r_fs.Integer==0?true:false;
             _pp.SwapEffect = SwapEffect.Discard;
             _pp.EnableAutoDepthStencil = true;
             _pp.AutoDepthStencilFormat = Format.D24S8;
-            _pp.PresentationInterval = (VSync? PresentInterval.Default: PresentInterval.Immediate);
+            _pp.PresentationInterval = (r_vsync.Integer==1? PresentInterval.Default: PresentInterval.Immediate);
             _pp.Multisample = MultiSampling;
             _pp.BackBufferWidth = RenderSize.Width;
             _pp.BackBufferHeight = RenderSize.Height;
@@ -752,6 +749,53 @@ namespace CubeHags.client
             Render();
         }
 
+        Size GetResolution()
+        {
+            string cvarRes = r_resulution.String;
+            int cvWidth = 0, cvHeight = 0;
+            string[] cvTokens = cvarRes.Split('x');
+            // No resolution in the cvar fallback
+            bool fallback = false;
+            if (cvTokens.Length < 2)
+                fallback = true;
+            else if (!int.TryParse(cvTokens[0], out cvWidth) || !int.TryParse(cvTokens[1], out cvHeight))
+                fallback = true;
+
+            if (fallback)
+            {
+                // Use desktop resolution
+                cvWidth = form.DesktopBounds.Width;
+                cvHeight = form.DesktopBounds.Height;
+            }
+
+            bool found = false;
+            // Now, validate
+            for (int i = 0; i < ValidResolutions.Count; i++)
+            {
+                string validRes = ValidResolutions[i];
+                string[] tokens = validRes.Split('x');
+                if (tokens.Length < 2)
+                    continue;
+                int width, height;
+                if (!int.TryParse(tokens[0], out width) || !int.TryParse(tokens[1], out height))
+                    continue;
+
+                // Compare
+                if (width == cvWidth && height == cvHeight)
+                {
+                    found = true;
+                    break;
+                }
+            }
+
+            if (found)
+            {
+                return new Size(cvWidth, cvHeight);
+            }
+
+            return new Size(form.DesktopBounds.Width, form.DesktopBounds.Height);
+        }
+
         public Result OnLostDevice()
         {
             foreach (HagsIndexBuffer ib in IndexBuffers.Values)
@@ -821,9 +865,9 @@ namespace CubeHags.client
             RenderTextureSfc = RenderTexture.GetSurfaceLevel(0);
             RenderDepthSurface = Surface.CreateDepthStencil(device, RenderSize.Width, RenderSize.Height, Format.D16, MultisampleType.None, 0, true);
 
-            form.FormBorderStyle = (Windowed ? System.Windows.Forms.FormBorderStyle.Sizable: System.Windows.Forms.FormBorderStyle.None);
-            form.TopMost = !Windowed;
-            form.MaximizeBox = Windowed;
+            form.FormBorderStyle = (r_fs.Integer==0 ? System.Windows.Forms.FormBorderStyle.Sizable: System.Windows.Forms.FormBorderStyle.None);
+            form.TopMost = !(r_fs.Integer == 0);
+            form.MaximizeBox = r_fs.Integer == 0;
             return new Result();
         }
 
@@ -880,9 +924,9 @@ namespace CubeHags.client
             if (RenderSize.Equals(form.ClientSize))
                 return;
 
-            form.FormBorderStyle = (Windowed ? System.Windows.Forms.FormBorderStyle.Sizable : System.Windows.Forms.FormBorderStyle.None);
-            form.TopMost = !Windowed;
-            form.MaximizeBox = Windowed;
+            form.FormBorderStyle = (r_fs.Integer == 0 ? System.Windows.Forms.FormBorderStyle.Sizable : System.Windows.Forms.FormBorderStyle.None);
+            form.TopMost = !(r_fs.Integer == 0);
+            form.MaximizeBox = r_fs.Integer == 0;
             //form.Bounds = System.Windows.Forms.Screen.PrimaryScreen.Bounds;
             //form.TopMost = !Windowed;
             //form.MaximizeBox = Windowed;

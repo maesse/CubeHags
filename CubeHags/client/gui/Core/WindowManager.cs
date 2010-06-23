@@ -19,7 +19,7 @@ namespace CubeHags.client.gui
     {
         private static readonly WindowManager _Instance = new WindowManager();
         private List<Window> Windows;
-        public bool ShowManager = false;
+        public bool ShowManager = true;
         public ConnectGUI connectGUI;
         public MenuGUI menuGUI;
         public SettingsGUI settingsGUI;
@@ -225,6 +225,8 @@ namespace CubeHags.client.gui
         // Prepare and send rendercalls and buffers to Renderer
         public void Render()
         {
+            if (!ShowManager)
+                return;
             // Clear buffers for next frame
             renderCalls.Clear();
             VertexList.Clear();

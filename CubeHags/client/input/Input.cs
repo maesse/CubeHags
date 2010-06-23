@@ -15,6 +15,7 @@ using System.IO;
 using System.Windows.Forms;
 using CubeHags.common;
 using Lidgren.Network;
+using CubeHags.client.game;
 
 
 namespace CubeHags.client
@@ -46,6 +47,7 @@ namespace CubeHags.client
             public int buttons;
             public byte weapon;
             public sbyte forwardmove, rightmove, upmove; // keyboard movement
+            public int DX, DY;
         }
 
         public struct Button
@@ -95,6 +97,7 @@ namespace CubeHags.client
         private MouseEvent CurrentMouseEvent; // Current mouseevent = lastmouseargs delta currentargs
         private MouseInputEventArgs CurrentRawMouse;
         private MouseInputEventArgs NextRawMouse;
+        private List<MouseInputEventArgs> NextRawMouseList = new List<MouseInputEventArgs>();
 
         private List<System.Windows.Forms.MouseEventArgs> compatLastMouseArgs = new List<System.Windows.Forms.MouseEventArgs>(); // MouseArgs used last frame
         private List<System.Windows.Forms.MouseEventArgs> compatCurrentMouseArgs = new List<System.Windows.Forms.MouseEventArgs>(); // Mouseargs for use this frame
@@ -117,6 +120,7 @@ namespace CubeHags.client
         public UserCommand UserCmd = new UserCommand();
         float frame_msec;
         private float oldFrameTime;
+        private int buttons;
 
         Input()
         {
@@ -425,7 +429,7 @@ namespace CubeHags.client
             Client.Instance.cl.cmds[cmdNum] = CreateCmd();
         }
 
-        private UserCommand CreateCmd()
+        public UserCommand CreateCmd()
         {
             Vector3 oldAngles = Client.Instance.cl.viewAngles;
             UserCommand cmd = new UserCommand();
@@ -442,6 +446,8 @@ namespace CubeHags.client
             {
                 Client.Instance.cl.viewAngles[0] = oldAngles[0] - 90;
             }
+
+
 
             FinishMove(ref cmd);
 
@@ -462,14 +468,18 @@ namespace CubeHags.client
             cmd.anglex = ((int)(Client.Instance.cl.viewAngles[0] * 65536 / 360) & 65535);
             cmd.angley = ((int)(Client.Instance.cl.viewAngles[1] * 65536 / 360) & 65535);
             cmd.anglez = ((int)(Client.Instance.cl.viewAngles[2] * 65536 / 360) & 65535);
+            cmd.DX = mousedx;
+            cmd.DY = mousedy;
         }
 
         private void CmdButtons(ref UserCommand cmd)
         {
-            for (int i = 0; i < 15; i++)
-            {
-                // Check mouse buttons
-            }
+            cmd.buttons = buttons;
+            //for (int i = 0; i < 15; i++)
+            //{
+            //    // Check mouse buttons
+                
+            //}
         }
 
         void MouseMove(ref UserCommand cmd)
@@ -617,14 +627,20 @@ namespace CubeHags.client
                 {
                     HiddenMousePosition = System.Windows.Forms.Cursor.Position;
                     System.Windows.Forms.Cursor.Hide();
+                    if (Common.Instance.PlanetGame != null)
+                        Common.Instance.PlanetGame.Paused = false;
                 }
                 MouseHidden = true;
                 MouseCentered = true;
             }
             else if (value == client.MouseState.GUI)
             {
-                if(lastValue == client.MouseState.GAME)
+                if (lastValue == client.MouseState.GAME)
+                {
                     System.Windows.Forms.Cursor.Position = HiddenMousePosition;
+                    if(Common.Instance.PlanetGame != null)
+                        Common.Instance.PlanetGame.Paused = true;
+                }
                 MouseHidden = true;
                 MouseCentered = false;
             }
@@ -655,6 +671,7 @@ namespace CubeHags.client
         // RawInput
         void RawInputEvent(object sender, MouseInputEventArgs e)
         {
+            NextRawMouseList.Add(e);
             NextRawMouse = e;
         }
 
@@ -732,9 +749,13 @@ namespace CubeHags.client
                             {
                                 // Toggle between gui and game
                                 if (MouseState == client.MouseState.GAME)
+                                {
                                     MouseState = client.MouseState.GUI;
+                                }
                                 else if (MouseState == client.MouseState.GUI)
+                                {
                                     MouseState = client.MouseState.GAME;
+                                }
                                 Commands.Instance.ExecuteText(Commands.EXECTYPE.EXEC_NOW, "toggleui");
                             }
                             
@@ -747,7 +768,7 @@ namespace CubeHags.client
                         }
                         else if (key == Keys.Enter && evt.Args.Alt)
                         {
-                            Renderer.Instance.Windowed = !Renderer.Instance.Windowed;
+                            Renderer.Instance.r_fs = CVars.Instance.Set("r_fs", Renderer.Instance.r_fs.Integer == 1 ? "0" : "1");
                             Renderer.Instance._sizeChanged = true;
                             return;
                         }
@@ -794,8 +815,27 @@ namespace CubeHags.client
                 if (NextRawMouse != null)
                 {
                     // Use raw input
-                    deltaX = NextRawMouse.X;
-                    deltaY = NextRawMouse.Y;
+                    for (int i = 0; i < NextRawMouseList.Count; i++)
+                    {
+                        deltaX += NextRawMouseList[i].X;
+                        deltaY += NextRawMouseList[i].Y;
+                        if ((NextRawMouseList[i].ButtonFlags & MouseButtonFlags.LeftDown) == MouseButtonFlags.LeftDown)
+                            buttons = 1;
+                        
+                        if ((NextRawMouseList[i].ButtonFlags & MouseButtonFlags.LeftUp) == MouseButtonFlags.LeftUp)
+                            buttons = 0;
+
+                        if ((NextRawMouseList[i].ButtonFlags & MouseButtonFlags.MouseWheel) == MouseButtonFlags.MouseWheel)
+                        {
+                            if (NextRawMouse.WheelDelta != 0)
+                            {
+                                if (Common.Instance.PlanetGame != null)
+                                    Common.Instance.PlanetGame.HandleScroll(NextRawMouse.WheelDelta);
+                            }
+                        }
+
+                    }
+                    NextRawMouseList.Clear();
                     CurrentRawMouse = NextRawMouse;
                     NextRawMouse = null;
                 }

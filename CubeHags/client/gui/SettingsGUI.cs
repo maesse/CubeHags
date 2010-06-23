@@ -34,7 +34,7 @@ namespace CubeHags.client.gui
             Panel vsyncContainer = new Panel(this);
             vsyncContainer.AddControl(new Label("Toggle VSync:", this) { LabelFont = "biglabel" });
             VSyncButton = new Button(CVars.Instance.Get("r_vsync", "1", CVarFlags.ARCHIVE).Integer == 1? "On" : "Off", this);
-            VSyncButton.label.LabelFont = "bigfont";
+            VSyncButton.label.LabelFont = "biglabel";
             VSyncButton.Selected += new Button.ButtonSelectedEvent(VSyncHandler);
             vsyncContainer.AddControl(VSyncButton);
             this.panel.AddControl(vsyncContainer);
@@ -43,7 +43,7 @@ namespace CubeHags.client.gui
             Panel fsPanel = new Panel(this);
             fsPanel.AddControl(new Label("Fullscreen:", this) { LabelFont = "biglabel" });
             FullscreenButton = new Button(CVars.Instance.Get("r_fs", "1", CVarFlags.ARCHIVE).Integer == 1 ? "Yes" : "No", this);
-            FullscreenButton.label.LabelFont = "bigfont";
+            FullscreenButton.label.LabelFont = "biglabel";
             FullscreenButton.Selected += new Button.ButtonSelectedEvent(FSHandler);
             fsPanel.AddControl(FullscreenButton);
             this.panel.AddControl(fsPanel);
@@ -51,6 +51,11 @@ namespace CubeHags.client.gui
             // Resolution
             Panel resPanel = new Panel(this);
             resPanel.AddControl(new Label("Resolution", this) { LabelFont = "biglabel" });
+            ResolutionButton = new Button(CVars.Instance.Get("r_res", "1", CVarFlags.ARCHIVE).String, this);
+            ResolutionButton.label.LabelFont = "biglabel";
+            ResolutionButton.Selected += new Button.ButtonSelectedEvent(ResolutionHandler);
+            resPanel.AddControl(ResolutionButton);
+            this.panel.AddControl(resPanel);
             
 
             this.panel.AddControl(BackButton);
@@ -58,12 +63,40 @@ namespace CubeHags.client.gui
 
         void FSHandler()
         {
-
+            // Toggle vsync
+            if (CVars.Instance.Get("r_fs", "1", CVarFlags.ARCHIVE).Integer == 0)
+            {
+                CVars.Instance.Set("r_fs", "1");
+                FullscreenButton.label.Text = "Yes";
+            }
+            else
+            {
+                CVars.Instance.Set("r_fs", "0");
+                FullscreenButton.label.Text = "No";
+            }
         }
 
         void ResolutionHandler()
         {
+            // Toggle resolution
+            string currentRes = CVars.Instance.Get("r_res", "1280x800", CVarFlags.ARCHIVE).String;
+            // Find offset in valid resolutions
+            int i;
+            for (i = 0; i < Renderer.Instance.ValidResolutions.Count; i++)
+            {
+                string valRes = Renderer.Instance.ValidResolutions[i];
+                if (currentRes.Equals(valRes))
+                    break;
+            }
 
+            if (i >= Renderer.Instance.ValidResolutions.Count-1)
+            {
+                i = -1;
+            }
+
+            string nextRes = Renderer.Instance.ValidResolutions[i + 1];
+            CVars.Instance.Set("r_res", nextRes);
+            ResolutionButton.label.Text = nextRes;
         }
 
         void ShowFPSHandler()

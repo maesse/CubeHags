@@ -11,6 +11,8 @@ namespace CubeHags.client.render
 {
     class MiscRender
     {
+        static Rectangle DefRect =  new Rectangle() { Width = 1, Height = 1 };
+        static Size DefSize = new Size(1, 1);
         private void TakeScreenshot()
         {
             // Init surfaces
@@ -79,13 +81,31 @@ namespace CubeHags.client.render
             //}
         }
 
-        public static VertexPosTex[] GetQuadPoints(Rectangle destination)
+        public static VertexPosTex[] GetQuadPoints(RectangleF destination)
         {
-            return GetQuadPoints(destination, new Rectangle() { Width = 1, Height = 1 }, new Size(1, 1));
+            return GetQuadPoints(destination, DefRect, DefSize);
+        }
+
+        public static VertexPosTex[] GetQuadPoints2(RectangleF destination)
+        {
+            return GetQuadPoints2(destination, DefRect, DefSize);
         }
 
         // Used for sprites.. generates 6 vertex points
-        public static VertexPosTex[] GetQuadPoints(Rectangle destination, RectangleF texture, SizeF texureSize)
+        public static VertexPosTex[] GetQuadPoints2(RectangleF destination, RectangleF texture, SizeF texureSize)
+        {
+            VertexPosTex[] result = new VertexPosTex[6];
+            result[0] = new VertexPosTex(new Vector3(destination.X, destination.Y, 0f), new Vector2((texture.X) / texureSize.Width, (texture.Y) / texureSize.Height));
+            result[1] = new VertexPosTex(new Vector3(destination.X, destination.Y - destination.Height, 0f), new Vector2((texture.X) / texureSize.Width, (texture.Y + texture.Height) / texureSize.Height));
+            result[2] = new VertexPosTex(new Vector3(destination.X + destination.Width, destination.Y, 0f), new Vector2((texture.X + texture.Width) / texureSize.Width, (texture.Y) / texureSize.Height));
+            result[3] = result[2];
+            result[4] = result[1];
+            result[5] = new VertexPosTex(new Vector3(destination.X + destination.Width, destination.Y - destination.Height, 0f), new Vector2((texture.X + texture.Width) / texureSize.Width, (texture.Y + texture.Height) / texureSize.Height));
+            return result;
+        }
+
+        // Used for sprites.. generates 6 vertex points
+        public static VertexPosTex[] GetQuadPoints(RectangleF destination, RectangleF texture, SizeF texureSize)
         {
             VertexPosTex[] result = new VertexPosTex[6];
             Size renderSize = Renderer.Instance.RenderSize;
