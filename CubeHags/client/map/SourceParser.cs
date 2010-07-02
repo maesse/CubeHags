@@ -156,6 +156,7 @@ namespace CubeHags.client.map.Source
             {
                 dbrushside_t brushside = new dbrushside_t();
                 brushside.planenum = br.ReadUInt16();
+
                 brushside.plane = world.planes[brushside.planenum];
                 brushside.texinfo = br.ReadInt16();
                 brushside.dispinfo = br.ReadInt16();
@@ -368,9 +369,10 @@ namespace CubeHags.client.map.Source
 
             world.numLeafs = header.lumps[10].filelen / leafSize;
             world.leafs = new dleaf_t[world.numLeafs];
+            br.BaseStream.Seek(header.lumps[10].fileofs, SeekOrigin.Begin);
             for (int i = 0; i < world.numLeafs; i++)
             {
-                br.BaseStream.Seek(header.lumps[10].fileofs + (i * leafSize), SeekOrigin.Begin);
+                //
                 dleaf_t leaf = new dleaf_t();
                 leaf.contents = br.ReadInt32();
                 leaf.cluster = br.ReadInt16();
@@ -403,7 +405,7 @@ namespace CubeHags.client.map.Source
                         leaf.ambientLighting.Color[j] = new Vector3(r, g, b);
                     }
                 }
-                leaf.padding = 0;//br.ReadInt16();
+                leaf.padding = br.ReadInt16();
                 leaf.staticProps = new List<SourceProp>();
                 world.leafs[i] = leaf;
             }
@@ -436,7 +438,7 @@ namespace CubeHags.client.map.Source
             world.leafbrushes = new List<int>();
             for (int i = 0; i < numLeafBrushes; i++)
             {
-                world.leafbrushes.Add((int)br.ReadInt16());
+                world.leafbrushes.Add((int)br.ReadUInt16());
             }
         }
 

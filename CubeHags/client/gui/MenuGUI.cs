@@ -43,7 +43,7 @@ namespace CubeHags.client.gui
 
         void StartGameHandler()
         {
-            Common.Instance.PlanetGame = new game.PlanetGame();
+
         }
 
         void SettingsHandler()

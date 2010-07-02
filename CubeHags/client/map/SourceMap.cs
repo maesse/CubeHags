@@ -28,6 +28,7 @@ namespace CubeHags.client.map.Source
         public bool LockPVS = false;
 
         public dleaf_t CurrentLeaf;
+        public int CurrentLeafID;
         public int CurrentCluster;
         public int LastCluster = -2;
         public int VisCount = 0;
@@ -43,6 +44,8 @@ namespace CubeHags.client.map.Source
         HagsVertexBuffer propVertexBuffer = new HagsVertexBuffer();
         int propVertexBufferOffset = 0;
         List<SourceProp> visibleProps = new List<SourceProp>();
+
+        HagsVertexBuffer bspVB = new HagsVertexBuffer();
 
         public SourceMap(World world)
         {
@@ -154,10 +157,55 @@ namespace CubeHags.client.map.Source
             }
         }
 
+        void VisualizeBSP()
+        {
+            List<VertexPositionColor> verts = new List<VertexPositionColor>();
+            float red = 1.0f;
+            float green = 0.0f;
+
+
+            int i = 0;
+            foreach (dleaf_t nod in world.leafs)
+            {
+                if (i == 4 || i == 5)
+                {
+                    verts.AddRange(MiscRender.CreateBox(nod.mins + new Vector3(1f, 1f, 1f), nod.maxs - new Vector3(1f, 1f, 1f), new Color4(0.3f, 0.3f, 0.1f, 1.0f)));
+                }
+                else
+                {
+                    verts.AddRange(MiscRender.CreateBox(nod.mins + new Vector3(1f, 1f, 1f), nod.maxs - new Vector3(1f, 1f, 1f), new Color4(0.1f, red, green, 0.0f)));
+                }
+                
+                
+                if (red > 0.0f && green < 1.0f)
+                {
+                    green += 0.1f;
+                }
+                else if (green > 0.9f)
+                {
+                    red -= 0.1f;
+                }
+                i++;
+            }
+            
+
+
+            bspVB.SetVB<VertexPositionColor>(verts.ToArray(), verts.Count * VertexPositionColor.SizeInBytes, VertexPositionColor.Format, Usage.WriteOnly);
+            bspVB.SetVD(new VertexDeclaration(Renderer.Instance.device, VertexPositionColor.Elements));
+            RenderDelegate dlg = new RenderDelegate((effect, device, setMaterial) =>
+            {
+                device.DrawPrimitives(PrimitiveType.TriangleList, 0, verts.Count/3);
+            });
+            ulong id = SortItem.GenerateBits(SortItem.FSLayer.EFFECT, SortItem.Viewport.STATIC, SortItem.VPLayer.EFFECT, SortItem.Translucency.NORMAL, 0, 0, 0, bspVB.VertexBufferID);
+            Renderer.Instance.drawCalls.Add(new KeyValuePair<ulong, RenderDelegate>(id, dlg));
+        }
+
         public void Render(Device device)
         {
             //if (skybox3d != null)
             //    skybox3d.Render();
+
+            
 
             int dynoffset = 0;
             if (skybox != null)
@@ -167,7 +215,8 @@ namespace CubeHags.client.map.Source
             if (!LockPVS)
             {
                 VisCount++;
-                CurrentLeaf = world.leafs[FindLeaf(Renderer.Instance.Camera.position)];
+                CurrentLeafID = FindLeaf(Renderer.Instance.Camera.position);
+                CurrentLeaf = world.leafs[CurrentLeafID];
                 CurrentCluster = CurrentLeaf.cluster;
                 //if (Renderer.Instance.window != null)
                 //    Renderer.Instance.window.CurrentCluster.Text = CurrentCluster.ToString();
@@ -448,6 +497,8 @@ namespace CubeHags.client.map.Source
             }
 
             LastCluster = CurrentCluster;
+
+            VisualizeBSP();
         }
 
         // current cluster, cluster to test against
@@ -457,6 +508,16 @@ namespace CubeHags.client.map.Source
             if (visCluster < 0 || world.visibility == null)
             {
                 return null;
+            }
+
+            if (world.vis.byteofs == null)
+            {
+                bool[] outp = new bool[world.numClusters+1];
+                for (int j = 0; j < outp.Length; j++)
+                {
+                    outp[j] = true;
+                }
+                return outp;
             }
 
             int v = world.vis.byteofs[i][0]; // offset into byte-vector
@@ -525,7 +586,7 @@ namespace CubeHags.client.map.Source
             {
 
 
-                if (world.leafs[i].cluster < 0 || world.leafs[i].cluster >= world.numClusters)
+                if (world.leafs[i].cluster < 0 || (world.leafs[i].cluster >= world.numClusters && world.numClusters != 0))
                     continue;
 
                 dleaf_t leaf = world.leafs[i];

@@ -15,7 +15,6 @@ using System.IO;
 using System.Windows.Forms;
 using CubeHags.common;
 using Lidgren.Network;
-using CubeHags.client.game;
 
 
 namespace CubeHags.client
@@ -627,8 +626,6 @@ namespace CubeHags.client
                 {
                     HiddenMousePosition = System.Windows.Forms.Cursor.Position;
                     System.Windows.Forms.Cursor.Hide();
-                    if (Common.Instance.PlanetGame != null)
-                        Common.Instance.PlanetGame.Paused = false;
                 }
                 MouseHidden = true;
                 MouseCentered = true;
@@ -638,8 +635,6 @@ namespace CubeHags.client
                 if (lastValue == client.MouseState.GAME)
                 {
                     System.Windows.Forms.Cursor.Position = HiddenMousePosition;
-                    if(Common.Instance.PlanetGame != null)
-                        Common.Instance.PlanetGame.Paused = true;
                 }
                 MouseHidden = true;
                 MouseCentered = false;
@@ -829,8 +824,8 @@ namespace CubeHags.client
                         {
                             if (NextRawMouse.WheelDelta != 0)
                             {
-                                if (Common.Instance.PlanetGame != null)
-                                    Common.Instance.PlanetGame.HandleScroll(NextRawMouse.WheelDelta);
+                                //if (Common.Instance.PlanetGame != null)
+                                //    Common.Instance.PlanetGame.HandleScroll(NextRawMouse.WheelDelta);
                             }
                         }
 

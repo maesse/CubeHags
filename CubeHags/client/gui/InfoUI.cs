@@ -4,6 +4,7 @@ using System.Collections.Generic;
 using System.Text;
 using CubeHags.client.gui.Controls;
 using CubeHags.client.common;
+using SlimDX;
 
 namespace CubeHags.client.gui
 {
@@ -14,8 +15,13 @@ namespace CubeHags.client.gui
         private bool mouselock = false;
         Button button3 = null;
         int clickcount = 0;
+
+        trace_t trace;
+        long traceTime;
+        
         public InfoUI()
         {
+            this.AlwaysVisible = true;
             panel.ScrollbarStyle = Misc.ScrollbarStyle.BOTH;
             this.panel.Layout = new FlowLayout(false);
             this.Title = "Hags Windowing system";
@@ -63,6 +69,21 @@ namespace CubeHags.client.gui
             //    //Renderer.Instance.LoadMap(@"client/data/map/albjergparken.bsp");
             //}
             
+        }
+
+        public void SetPos(Vector3 pos)
+        {
+            Info.Text = string.Format("[x:{0:0000.0} y:{1:0000.0} z:{2:0000.0}]", pos.X, pos.Y, pos.Z);
+        }
+
+        public void HitWall(trace_t trace)
+        {
+            if (traceTime == 0 || ((HighResolutionTimer.Ticks - traceTime) / HighResolutionTimer.Frequency) > 1f)
+            {
+                //this.trace = trace;
+                //Info.Text = "Hit Wall - " + trace.plane;
+                traceTime = HighResolutionTimer.Ticks;
+            }
         }
 
         public void UnLoadMapEvent()

@@ -60,8 +60,8 @@ namespace CubeHags.client
             Renderer.Instance.viewParams.World = or;
 
             //device.SetTransform(TransformState.World, worldMatrix);
-            //device.SetTransform(TransformState.View, or.modelMatrix);
-            //device.SetTransform(TransformState.Projection, Renderer.Instance.viewParams.ProjectionMatrix);
+            device.SetTransform(TransformState.View, or.modelMatrix);
+            device.SetTransform(TransformState.Projection, Renderer.Instance.viewParams.ProjectionMatrix);
             //Frustrum.SetupFrustrum(this);
         }
 

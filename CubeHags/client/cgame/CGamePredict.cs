@@ -5,6 +5,7 @@ using System.Text;
 using CubeHags.common;
 using SlimDX;
 using CubeHags.server;
+using CubeHags.client.gui;
 
 namespace CubeHags.client.cgame
 {
@@ -84,8 +85,8 @@ namespace CubeHags.client.cgame
             pmove.ps = cg.predictedPlayerState;
             pmove.tracemask = 1;
 
-            pmove.mins = new Vector3( -15, -15, -24 );
-            pmove.maxs = new Vector3(15, 15, 32);
+            pmove.mins = new Vector3( -16, -16, -36 );
+            pmove.maxs = new Vector3(16, 16, 36);
             
             // run cmds
             bool moved = false;
@@ -160,6 +161,7 @@ namespace CubeHags.client.cgame
 
                 Common.Instance.Pmove(pmove);
 
+                
                 //// Test for stuck
                 //trace_t trace = pmove.DoTrace(cg.predictedPlayerState.origin, pmove.mins, pmove.maxs, oldOrigin, 0, 1);
                 //if (trace.fraction != 1.0f)
@@ -179,6 +181,7 @@ namespace CubeHags.client.cgame
             
             // fire events and other transition triggered things
             TransitionPlayerState(cg.predictedPlayerState, oldPlayerState);
+            WindowManager.Instance.info.SetPos(cg.predictedPlayerState.origin);
         }
 
         /*

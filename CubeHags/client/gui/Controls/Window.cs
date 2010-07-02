@@ -24,6 +24,7 @@ namespace CubeHags.client.gui
         public Corner WindowSpawnPosition = Corner.NONE;
         public bool AutoResize = true;
         public bool AcceptFocus = true;
+        public bool AlwaysVisible = false;
         
         // Panel
         public Panel panel;

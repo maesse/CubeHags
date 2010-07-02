@@ -23,6 +23,7 @@ namespace CubeHags.client.gui
         public ConnectGUI connectGUI;
         public MenuGUI menuGUI;
         public SettingsGUI settingsGUI;
+        public InfoUI info;
         public enum CursorType
         {
             NORMAL=0,
@@ -94,6 +95,9 @@ namespace CubeHags.client.gui
             base.Init();
             connectGUI = new ConnectGUI();
             //AddWindow(connectGUI);
+
+            info = new InfoUI();
+            AddWindow(info);
 
             menuGUI = new MenuGUI();
             AddWindow(menuGUI);
@@ -225,8 +229,8 @@ namespace CubeHags.client.gui
         // Prepare and send rendercalls and buffers to Renderer
         public void Render()
         {
-            if (!ShowManager)
-                return;
+            //if (!ShowManager)
+            //    return;
             // Clear buffers for next frame
             renderCalls.Clear();
             VertexList.Clear();
@@ -236,7 +240,7 @@ namespace CubeHags.client.gui
             foreach (Window window in Windows)
             {
                 // Render if visible
-                if (window.Visible)
+                if ((window.Visible && ShowManager) || window.AlwaysVisible)
                     window.Render();
             }
 

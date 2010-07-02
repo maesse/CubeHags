@@ -169,6 +169,11 @@ namespace CubeHags.client.map.Source
         public float dist;
         public int type;			// for fast side tests: 0,1,2 = axial, 3 = nonaxial
         public byte signbits;		// signx + (signy<<1) + (signz<<2), used as lookup during collision
+
+        public override string ToString()
+        {
+            return "Pl: n" + normal + " d" + dist + " t" + type;
+        }
     }
 
     public struct ddispinfo_t
