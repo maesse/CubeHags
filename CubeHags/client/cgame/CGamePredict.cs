@@ -39,7 +39,7 @@ namespace CubeHags.client.cgame
             pmove.ps = cg.predictedPlayerState;
 
             // save the state before the pmove so we can detect transitions
-            Common.playerState_t oldPlayerStateref = cg.predictedPlayerState;
+            Common.PlayerState oldPlayerStateref = cg.predictedPlayerState;
             int current = Client.Instance.cl.cmdNumber;
 
             // if we don't have the commands right after the snapshot, we
@@ -81,7 +81,7 @@ namespace CubeHags.client.cgame
 
             pmove.pmove_fixed = pmove_fixed.Integer;
             pmove.pmove_msec = pmove_msec.Integer;
-            Common.playerState_t oldPlayerState = cg.predictedPlayerState.Clone();
+            Common.PlayerState oldPlayerState = cg.predictedPlayerState.Clone();
             pmove.ps = cg.predictedPlayerState;
             pmove.tracemask = 1;
 
@@ -199,7 +199,7 @@ namespace CubeHags.client.cgame
             snapshot_t next = cg.nextSnap;
 
             // not 100% sure this is correct
-            Common.playerState_t outs = cg.snap.ps;
+            Common.PlayerState outs = cg.snap.ps;
             
 
             // if we are still allowing local input, short circuit the view angles

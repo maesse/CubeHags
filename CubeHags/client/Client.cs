@@ -11,6 +11,7 @@ using SlimDX;
 using Lidgren.Network;
 using CubeHags.client.render;
 using CubeHags.client.gfx;
+using CubeHags.server;
 
 namespace CubeHags.client
 {
@@ -27,11 +28,18 @@ namespace CubeHags.client
         public CVar cl_sensitivity = CVars.Instance.Get("cl_sensitivity", "1", CVarFlags.ARCHIVE);
         public CVar cl_nodelta = CVars.Instance.Get("cl_nodelta", "0", CVarFlags.NONE);
 
+        public ConnectState state;				// connection status
+        public string servername;		// name of server from original connect (used by reconnect)
+
+        public int frametime;			// msec since last frame
+        public int realtime;			// 
+
         public clientActive cl = new clientActive();
-        public clientStatic_t cls = new clientStatic_t();
         public clientConnect clc = new clientConnect();
 
         public Cinematic cin;
+
+        public Lagometer lagometer = new Lagometer();
 
         public Client()
         {
@@ -48,7 +56,7 @@ namespace CubeHags.client
         public void PacketEvent(Net.Packet packet)
         {
              
-            clc.lastPacketTime = cls.realtime;
+            clc.lastPacketTime = realtime;
 
             if (packet.Type == NetMessageType.OutOfBandData)
             {
@@ -56,7 +64,7 @@ namespace CubeHags.client
                 return;
             }
 
-            if (cls.state < connstate_t.CONNECTED)
+            if (state < ConnectState.CONNECTED)
                 return; // can't be a valid sequenced packet
 
             //
@@ -81,7 +89,7 @@ namespace CubeHags.client
             packet.Buffer.Position = 0;
             clc.serverMessageSequence = packet.Buffer.ReadInt32();
             packet.Buffer.Position = oldpos;
-            clc.lastPacketTime = cls.realtime;
+            clc.lastPacketTime = realtime;
             ParseServerMessage(packet);
         }
 
@@ -94,7 +102,7 @@ namespace CubeHags.client
             string c = tokens[0];
             if (c.Equals("challengeResponse"))
             {
-                if (cls.state != connstate_t.CONNECTING)
+                if (state != ConnectState.CONNECTING)
                 {
                     Common.Instance.WriteLine("Unwanted challenge response recieved. Ignored.");
                     return;
@@ -116,7 +124,7 @@ namespace CubeHags.client
 
                 // start sending challenge response instead of challenge request packets
                 clc.challenge = int.Parse(tokens[1]);
-                cls.state = connstate_t.CHALLENGING;
+                state = ConnectState.CHALLENGING;
                 clc.connectPacketCount = 0;
                 clc.connectTime = -99999;
 
@@ -130,13 +138,13 @@ namespace CubeHags.client
             // server connection
             if (c.Equals("connectResponse"))
             {
-                if ((int)cls.state >= (int)connstate_t.CONNECTED)
+                if ((int)state >= (int)ConnectState.CONNECTED)
                 {
                     Common.Instance.WriteLine("Duplicate connect recieved. Ignored");
                     return;
                 }
 
-                if (cls.state != connstate_t.CHALLENGING)
+                if (state != ConnectState.CHALLENGING)
                 {
                     Common.Instance.WriteLine("connectResponse packet while not connecting. Ignored.");
                     return;
@@ -149,7 +157,7 @@ namespace CubeHags.client
 
                 clc.netchan = Net.Instance.NetChan_Setup(Net.NetSource.CLIENT, packet.Address, CVars.Instance.VariableIntegerValue("net_qport"));
                 Net.Instance.ClientConnect(packet.Address);
-                cls.state = connstate_t.CONNECTED;
+                state = ConnectState.CONNECTED;
                 clc.lastPacketSentTime = -99999;   // send first packet immediately
                 return;
             }
@@ -171,9 +179,8 @@ namespace CubeHags.client
                 return;
 
             // decide the simulation time
-            cls.realFrametime = (int)msec;
-            cls.frametime = (int)msec;
-            cls.realtime += cls.frametime;
+            frametime = (int)msec;
+            realtime += frametime;
 
             // see if we need to update any userinfo
             CheckUserInfo();
@@ -198,7 +205,6 @@ namespace CubeHags.client
             EndFrame();
 
             cin.RunCinematic();
-            cls.framecount++;
         }
 
         public void Init()
@@ -222,18 +228,19 @@ namespace CubeHags.client
             CVars.Instance.Set("cl_running", "1");
             cin = new Cinematic();
             Commands.Instance.AddCommand("cinematic", new CommandDelegate(cin.PlayCinematic_f));
+            Commands.Instance.AddCommand("connect", new CommandDelegate(CL_Connect_f));
             
             Common.Instance.WriteLine("------- Client initialization Complete --------");
         }
 
         void CheckTimeout()
         {
-            if (cls.state >= connstate_t.CONNECTED && cls.state != connstate_t.CINEMATIC && cls.realtime - clc.lastPacketTime > cl_timeout.Value * 1000)
+            if (state >= ConnectState.CONNECTED && state != ConnectState.CINEMATIC && realtime - clc.lastPacketTime > cl_timeout.Value * 1000)
             {
                 if (++cl.timeoutCount > 5)
                 {
                     Common.Instance.WriteLine("\nServer connection timed out.");
-                    Disonnect(true);
+                    Disconnect(true);
                     return;
                 }
             }
@@ -264,7 +271,7 @@ namespace CubeHags.client
         This is also called on Com_Error and Com_Quit, so it shouldn't cause any errors
         =====================
         */
-        private void Disonnect(bool showMainMenu)
+        public void Disconnect(bool showMainMenu)
         {
             if (Common.Instance.cl_running.Integer == 0)
             {
@@ -273,7 +280,7 @@ namespace CubeHags.client
 
             // send a disconnect message to the server
             // send it a few times in case one is dropped
-            if ((int)cls.state >= (int)connstate_t.CONNECTED)
+            if ((int)state >= (int)ConnectState.CONNECTED)
             {
                 AddReliableCommand("disconnect", true);
                 Input.Instance.WritePacket();
@@ -285,13 +292,13 @@ namespace CubeHags.client
 
             // wipe the client connection
             clc = new clientConnect();
-            cls.state = connstate_t.DISCONNECTED;
+            state = ConnectState.DISCONNECTED;
         }
 
         void CheckUserInfo()
         {
             // don't add reliable commands when not yet connected
-            if ((int)cls.state < (int)connstate_t.CHALLENGING)
+            if ((int)state < (int)ConnectState.CHALLENGING)
                 return;
 
             // send a reliable userinfo update if needed
@@ -352,10 +359,9 @@ namespace CubeHags.client
             }
 
             // if we are already connected to the local host, stay connected
-            if ((int)cls.state >= (int)connstate_t.CONNECTED && cls.servername.Equals("localhost"))
+            if ((int)state >= (int)ConnectState.CONNECTED && servername.Equals("localhost"))
             {
-                cls.state = connstate_t.CONNECTED;  // so the connect screen is drawn
-                cls.updateInfoString = "";
+                state = ConnectState.CONNECTED;  // so the connect screen is drawn
                 clc.serverMessage = "";
                 cl.gamestate.data.Clear();
                 clc.lastPacketSentTime = -9999;
@@ -364,9 +370,9 @@ namespace CubeHags.client
             else
             {
                 CVars.Instance.Set("nextmap", "");
-                Disonnect(true);
-                cls.servername = "localhost";
-                cls.state = connstate_t.CHALLENGING;    // so the connect screen is drawn
+                Disconnect(true);
+                servername = "localhost";
+                state = ConnectState.CHALLENGING;    // so the connect screen is drawn
                 UpdateScreen();
                 clc.connectTime = -3000;
                 IPEndPoint end = new IPEndPoint(IPAddress.Parse("127.0.0.1"), Net.Instance.net_port.Integer);
@@ -386,27 +392,27 @@ namespace CubeHags.client
         void CheckForResend()
         {
             // resend if we haven't gotten a reply yet
-            if (cls.state != connstate_t.CONNECTING && cls.state != connstate_t.CHALLENGING)
+            if (state != ConnectState.CONNECTING && state != ConnectState.CHALLENGING)
             {
                 return;
             }
 
-            if (cls.realtime - clc.connectTime < 3000)
+            if (realtime - clc.connectTime < 3000)
             {
                 return;
             }
 
-            clc.connectTime = cls.realtime;
+            clc.connectTime = realtime;
             clc.connectPacketCount++;
 
-            switch (cls.state)
+            switch (state)
             {
-                case connstate_t.CONNECTING:
+                case ConnectState.CONNECTING:
                     string data = "getchallenge " + clc.challenge;
                     Net.Instance.OutOfBandMessage(Net.NetSource.CLIENT,clc.serverAddress, data);
 
                     break;
-                case connstate_t.CHALLENGING:
+                case ConnectState.CHALLENGING:
                     // sending back the challenge
                     int port = CVars.Instance.VariableIntegerValue("net_qport");
 
@@ -454,8 +460,63 @@ namespace CubeHags.client
             }
 
             string server = tokens[1];
+            clc.serverMessage = "";
 
+            if (Common.Instance.sv_running.Integer == 1 && server != "localhost")
+            {
+                // If running a server, shut it down
+                Server.Instance.Shutdown("Server quit");
+            }
+
+            // Make sure the local server is killed
+            CVars.Instance.Set("sv_killserver", "1");
+            Server.Instance.Frame(0);
+
+            Disconnect(true);
+
+            // Split connection string
+            string addr;
+            int portIndex = server.IndexOf(':');
+            int port = 27960;
+            if (portIndex > 0)
+            {
+                int portParse;
+                if (int.TryParse(server.Substring(portIndex), out portParse))
+                {
+                    port = portParse;
+                    addr = server.Substring(0, portIndex);
+                }
+                else
+                    addr = server;
+
+            }
+            else
+                addr = server;
+
+            // Do we need a dns lookup?
+            IPAddress ip;
+            if (!IPAddress.TryParse(addr, out ip))
+            {
+                IPAddress[] ips = Dns.GetHostAddresses(addr);
+                if (ips != null && ips.Length > 0)
+                {
+                    ip = ips[0];
+                }
+                else
+                {
+                    Common.Instance.WriteLine("Bad server address");
+                    state = ConnectState.DISCONNECTED;
+                    return;
+                }
+            }
+
+            clc.serverAddress = new IPEndPoint(ip, port);
+            state = ConnectState.CONNECTING;
+            clc.connectTime = -99999;
+            clc.connectPacketCount = 0;
         }
+
+
 
         internal void ShutdownAll()
         {

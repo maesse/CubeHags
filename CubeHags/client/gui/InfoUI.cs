@@ -5,6 +5,7 @@ using System.Text;
 using CubeHags.client.gui.Controls;
 using CubeHags.client.common;
 using SlimDX;
+using CubeHags.common;
 
 namespace CubeHags.client.gui
 {
@@ -57,6 +58,7 @@ namespace CubeHags.client.gui
         {
             clickcount++;
             button3.label.Text = "Clicks: " + clickcount;
+            Client.Instance.AddReliableCommand("team red", false);
         }
 
         public void LoadMapEvent()
@@ -92,17 +94,32 @@ namespace CubeHags.client.gui
             //Renderer.Instance.UnloadMap();
         }
 
+        string GetTeam(int team)
+        {
+            switch (team)
+            {
+                case 0:
+                    return "Free";
+                case 1:
+                    return "Red";
+                case 2:
+                    return "Blue";
+                case 3:
+                    return "Spectator";
+                default:
+                    return "??";
+            }
+        }
+
         public override void Update()
         {
             // Check for changed value
-            if (WindowManager.Instance.MouseLock != mouselock)
+            
+            if (Client.Instance.cl.snap != null)
             {
-                mouselock = WindowManager.Instance.MouseLock;
-                MouseFocus.Text = "MouseFocus: " + ((mouselock) ? "Yes" : "No");
-            }
-            if (Renderer.Instance.SourceMap != null)
-            {
-                Info.Text = "CurrLeaf: " + Renderer.Instance.SourceMap.CurrentLeaf.cluster;
+                MouseFocus.Text = "Team " +
+                GetTeam(Client.Instance.cl.snap.ps.persistant[(int)Common.Persistance.PERS_TEAM]) + " - HP: " + Client.Instance.cl.snap.ps.stats[0] + " - Armor: " + Client.Instance.cl.snap.ps.stats[3];
+                
             }
             //Info.Text = string.Format("ControlsWithMouseEnter - n:{0}\n{1}", Window.ControlsWithMouseEnter.Count(), Window.ControlsWithMouseEnter);
 

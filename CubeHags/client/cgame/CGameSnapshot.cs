@@ -30,7 +30,8 @@ namespace CubeHags.client.cgame
         private void ProcessSnapshots()
         {
             // see what the latest snapshot the client system has is
-            int latestSnapshotTime = Client.Instance.cl.snap.serverTime;
+            
+            cg.latestSnapshotTime = Client.Instance.cl.snap.serverTime;
             int n = Client.Instance.cl.snap.messageNum;
             if (n != cg.latestSnapshotNum)
             {
@@ -132,9 +133,11 @@ namespace CubeHags.client.cgame
                 cgs.processedSnapshotNum++;
                 snapshot_t snap = GetSnapshot(cgs.processedSnapshotNum);
 
+                // if it succeeded, return
                 if (snap != null)
                 {
                     cg.activeSnapshots[dest] = snap;
+                    AddLagometerSnapshotInfo(snap);
                     return snap;
                 }
 
@@ -142,9 +145,28 @@ namespace CubeHags.client.cgame
                 // never arrived, or  is so old that its entities
                 // have been shoved off the end of the circular
                 // buffer in the client system.
+                AddLagometerSnapshotInfo(null);
+
+                // If there are additional snapshots, continue trying to
+                // read them.
+            }
+            
+            return null;
+        }
+
+        void AddLagometerSnapshotInfo(snapshot_t snap)
+        {
+            if (snap == null)
+            {
+                // Dropped
+                Client.Instance.lagometer.snapshotSamples[Client.Instance.lagometer.snapshotCount++ & Lagometer.LAGBUFFER-1] = -1;
+                return;
             }
 
-            return null;
+            // Add this snapshots info
+            Client.Instance.lagometer.snapshotSamples[Client.Instance.lagometer.snapshotCount & Lagometer.LAGBUFFER - 1] = snap.ping;
+            Client.Instance.lagometer.snapshotFlags[Client.Instance.lagometer.snapshotCount & Lagometer.LAGBUFFER - 1] = snap.snapFlags;
+            Client.Instance.lagometer.snapshotCount++;
         }
 
         void ResetEntity(centity_t cent)
@@ -225,7 +247,7 @@ namespace CubeHags.client.cgame
 
                 // if this frame is a teleport, or the entity wasn't in the
                 // previous frame, don't interpolate
-                if (!cent.currentValid || (((cent.currentState.eFlags ^ es.eFlags) & 0x00000004) == 0x00000004))
+                if (!cent.currentValid || (((cent.currentState.eFlags ^ es.eFlags) & Common.EntityFlags.EF_TELEPORT_BIT) == Common.EntityFlags.EF_TELEPORT_BIT))
                 {
                     cent.interpolate = false;
                 }
@@ -235,7 +257,7 @@ namespace CubeHags.client.cgame
 
             // if the next frame is a teleport for the playerstate, we
             // can't interpolate during demos
-            if (cg.snap != null && ((snap.ps.eFlags ^ cg.snap.ps.eFlags) & 0x00000004) == 0x00000004)
+            if (cg.snap != null && ((snap.ps.eFlags ^ cg.snap.ps.eFlags) & Common.EntityFlags.EF_TELEPORT_BIT) == Common.EntityFlags.EF_TELEPORT_BIT)
             {
                 cg.nextFrameTeleport = true;
             }
@@ -370,11 +392,11 @@ namespace CubeHags.client.cgame
 
             if (oldFrame != null)
             {
-                Common.playerState_t ops = oldFrame.ps;
-                Common.playerState_t ps = cg.snap.ps;
+                Common.PlayerState ops = oldFrame.ps;
+                Common.PlayerState ps = cg.snap.ps;
 
                 // teleporting checks are irrespective of prediction
-                if (((ps.eFlags ^ ops.eFlags) & 0x00000004) == 0x00000004)
+                if (((ps.eFlags ^ ops.eFlags) & Common.EntityFlags.EF_TELEPORT_BIT) == Common.EntityFlags.EF_TELEPORT_BIT)
                 {
                     cg.thisFrameTeleport = true;    // will be cleared by prediction code
                 }

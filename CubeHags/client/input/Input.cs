@@ -172,7 +172,7 @@ namespace CubeHags.client
         public void SendCmd()
         {
             // don't send any message if not connected
-            if (Client.Instance.cls.state < connstate_t.CONNECTED || !Net.Instance.IsClientConnected)
+            if (Client.Instance.state < ConnectState.CONNECTED || !Net.Instance.IsClientConnected)
                 return;
 
             Input.Instance.CreateNewCommands();
@@ -186,7 +186,7 @@ namespace CubeHags.client
 
         public void WritePacket()
         {
-            if (Client.Instance.cls.state == connstate_t.CINEMATIC)
+            if (Client.Instance.state == ConnectState.CINEMATIC)
                 return;
 
             NetBuffer buffer = new NetBuffer();
@@ -258,10 +258,10 @@ namespace CubeHags.client
             // deliver the message
             //
             int packetNum = Client.Instance.clc.netchan.outgoingSequence & 31;
-            Client.Instance.cl.outPackets[packetNum].p_realtime = (int)Client.Instance.cls.realtime;
+            Client.Instance.cl.outPackets[packetNum].p_realtime = (int)Client.Instance.realtime;
             Client.Instance.cl.outPackets[packetNum].p_serverTime = ((oldcmd == -1) ? 0 : Client.Instance.cl.cmds[oldcmd].serverTime);
             Client.Instance.cl.outPackets[packetNum].p_cmdNumber = Client.Instance.cl.cmdNumber;
-            Client.Instance.clc.lastPacketSentTime = (int)Client.Instance.cls.realtime;
+            Client.Instance.clc.lastPacketSentTime = (int)Client.Instance.realtime;
 
             // Bam, send...
             Client.Instance.NetChan_Transmit(Client.Instance.clc.netchan, buffer);
@@ -379,14 +379,14 @@ namespace CubeHags.client
 
         bool ReadyToSendPacket()
         {
-            if (Client.Instance.cls.state == connstate_t.CINEMATIC)
+            if (Client.Instance.state == ConnectState.CINEMATIC)
                 return false;
 
             // if we don't have a valid gamestate yet, only send
             // one packet a second
-            if (Client.Instance.cls.state != connstate_t.ACTIVE &&
-                Client.Instance.cls.state != connstate_t.PRIMED &&
-                Client.Instance.cls.realtime - Client.Instance.clc.lastPacketSentTime < 1000)
+            if (Client.Instance.state != ConnectState.ACTIVE &&
+                Client.Instance.state != ConnectState.PRIMED &&
+                Client.Instance.realtime - Client.Instance.clc.lastPacketSentTime < 1000)
                 return false;
 
             // send every frame for LAN
@@ -399,7 +399,7 @@ namespace CubeHags.client
                 CVars.Instance.Set("cl_maxpackets", "125");
 
             int oldpacketNum = (Client.Instance.clc.netchan.outgoingSequence - 1) & 31;
-            int delta = Client.Instance.cls.realtime - Client.Instance.cl.outPackets[oldpacketNum].p_realtime;
+            int delta = Client.Instance.realtime - Client.Instance.cl.outPackets[oldpacketNum].p_realtime;
 
             // the accumulated commands will go out in the next packet
             if (delta < 1000 / Client.Instance.cl_maxpackets.Integer)
@@ -412,7 +412,7 @@ namespace CubeHags.client
         void CreateNewCommands()
         {
             // no need to create usercmds until we have a gamestate
-            if (Client.Instance.cls.state < connstate_t.PRIMED)
+            if (Client.Instance.state < ConnectState.PRIMED)
                 return;
 
             frame_msec = Common.Instance.frameTime - oldFrameTime;
@@ -733,7 +733,7 @@ namespace CubeHags.client
                     {
                         pressedKeys.Add(key);
                         // Test
-                        if (Client.Instance.cls.state == connstate_t.CINEMATIC)
+                        if (Client.Instance.state == ConnectState.CINEMATIC)
                             {
                                 // Exit cinematic
                                 Client.Instance.cin.StopCinematic();

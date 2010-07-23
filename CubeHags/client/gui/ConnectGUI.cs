@@ -34,10 +34,9 @@ namespace CubeHags.client.gui
 
         public void DrawConnect()
         {
-            connstate_t state = Client.Instance.cls.state;
+            ConnectState state = Client.Instance.state;
             int retry = Client.Instance.clc.connectPacketCount;
-            string servername = Client.Instance.cls.servername;
-            string updateInfoString = Client.Instance.cls.updateInfoString;
+            string servername = Client.Instance.servername;
             string messageString = Client.Instance.clc.serverMessage;
             //int cliNum = Client.Instance.cl.snap.ps.clientNum;
 
@@ -45,22 +44,22 @@ namespace CubeHags.client.gui
             string s;
             switch (state)
             {
-                case connstate_t.CONNECTING:
+                case ConnectState.CONNECTING:
                     s = "Awaiting challenge..." + retry;
                     break;
-                case connstate_t.CHALLENGING:
+                case ConnectState.CHALLENGING:
                     s = "Awaiting connection..." + retry;
                     break;
-                case connstate_t.CONNECTED:
+                case ConnectState.CONNECTED:
                     s = "Awaiting gamestate...";
                     break;
-                case connstate_t.LOADING:
+                case ConnectState.LOADING:
                     s = "Loading map...";
                     break;
-                case connstate_t.PRIMED:
+                case ConnectState.PRIMED:
                     s = "Waiting for server...";
                     break;
-                case connstate_t.ACTIVE:
+                case ConnectState.ACTIVE:
                     s = "Connection complete :)";
                     break;
                 default:

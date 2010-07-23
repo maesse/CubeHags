@@ -70,18 +70,17 @@ namespace CubeHags.client
         void InitDownloads()
         {
             // let the client game init and load data
-            cls.state = connstate_t.LOADING;
+            state = ConnectState.LOADING;
 
             // Pump the loop, this may change gamestate!
             Common.Instance.EventLoop();
 
             // if the gamestate was changed by calling Com_EventLoop
             // then we loaded everything already and we don't want to do it again.
-            if (cls.state != connstate_t.LOADING)
+            if (state != ConnectState.LOADING)
                 return;
 
             // initialize the CGame
-            cls.cgameStarted = true;
             InitCGame();
 
             Input.Instance.WritePacket();
@@ -230,7 +229,7 @@ namespace CubeHags.client
                 int packetNum = (clc.netchan.outgoingSequence - 1 - i) & 31;
                 if (cl.snap.ps.commandTime >= cl.outPackets[packetNum].p_serverTime)
                 {
-                    cl.snap.ping = cls.realtime - cl.outPackets[packetNum].p_realtime;
+                    cl.snap.ping = realtime - cl.outPackets[packetNum].p_realtime;
                     break;
                 }
             }

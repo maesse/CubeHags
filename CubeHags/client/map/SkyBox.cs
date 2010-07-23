@@ -112,9 +112,10 @@ namespace CubeHags.client.map.Source
             verts[33] = new VertexPositionNormalTextured(1.0f, 1.0f, -1.0f, 0.0f, 0.0f);
             verts[34] = new VertexPositionNormalTextured(1.0f, 1.0f, 1.0f, 1.0f, 0.0f);
             verts[35] = new VertexPositionNormalTextured(1.0f, -1.0f, -1.0f, 0.0f, 1.0f);
-            Matrix translation = Matrix.Translation(0f,0f,0f);
+            Matrix translation = Matrix.RotationYawPitchRoll(0f, 90f * (float)(Math.PI / 180f), 0f);
             for (int i = 0; i < verts.Length; i++)
             {
+                //verts[i].Position = 
                 verts[i].Position = Vector3.Multiply(verts[i].Position, 5000f);
                 verts[i].Position = Vector3.TransformCoordinate(verts[i].Position, translation);
                 verts[i].TextureCoordinate.X = (verts[i].TextureCoordinate.X + (1f / 512)) * (510f / 512f);

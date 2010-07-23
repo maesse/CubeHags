@@ -23,7 +23,7 @@ namespace CubeHags.client.gfx
         // cinematic command implementation
         public void PlayCinematic_f(string[] tokens)
         {
-            if (Client.Instance.cls.state == CubeHags.common.connstate_t.CINEMATIC)
+            if (Client.Instance.state == CubeHags.common.ConnectState.CINEMATIC)
             {
                 StopCinematic();
             }
@@ -68,7 +68,7 @@ namespace CubeHags.client.gfx
             // If cinematic alters gamestate, go ahead and do that..
             if (AlterGameState)
             {
-                Client.Instance.cls.state = CubeHags.common.connstate_t.DISCONNECTED;
+                Client.Instance.state = CubeHags.common.ConnectState.DISCONNECTED;
                 string s = CVars.Instance.VariableString("nextmap"); // next gamestate contained in nextmap
                 if (s.Length > 0)
                 {
@@ -166,7 +166,7 @@ namespace CubeHags.client.gfx
             DsError.ThrowExceptionForHR(hr);
             playing = true;
             if (AlterGameState)
-                Client.Instance.cls.state = CubeHags.common.connstate_t.CINEMATIC;
+                Client.Instance.state = CubeHags.common.ConnectState.CINEMATIC;
             Common.Instance.WriteLine("Playing cinematic: {0}", file);
 
             EventCode code;

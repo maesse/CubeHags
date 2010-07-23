@@ -12,6 +12,7 @@ using CubeHags.client.map.Source;
 using CubeHags.client.gfx;
 using System.Drawing;
 using CubeHags.client.common;
+using CubeHags.client.render.Formats;
 
 namespace CubeHags.client.gui
 {
@@ -52,7 +53,7 @@ namespace CubeHags.client.gui
 
         // Pr frame buffers
         public List<KeyValuePair<ulong, RenderDelegate>> renderCalls = new List<KeyValuePair<ulong, RenderDelegate>>();
-        public List<VertexPosTex> VertexList = new List<VertexPosTex>();
+        public List<VertexPositionColorTex> VertexList = new List<VertexPositionColorTex>();
 
         // Buffers for rendering
         WindowManager()
@@ -104,6 +105,7 @@ namespace CubeHags.client.gui
             settingsGUI = new SettingsGUI();
             settingsGUI.Visible = false;
             AddWindow(settingsGUI);
+            AddWindow(new LagOMeterUI());
         }
 
         void Input_Event(object sender, InputArgs e)
@@ -241,7 +243,10 @@ namespace CubeHags.client.gui
             {
                 // Render if visible
                 if ((window.Visible && ShowManager) || window.AlwaysVisible)
+                {
+                    window.Update();
                     window.Render();
+                }
             }
 
             // Render Mouse Cursor
@@ -249,7 +254,7 @@ namespace CubeHags.client.gui
             {
                 // Get verts
                 int vertexStart = VertexList.Count;
-                VertexPosTex[] verts = MiscRender.GetQuadPoints(new System.Drawing.Rectangle(new System.Drawing.Point(Input.Instance.MouseX - cursor_offsets[(int)Cursor].Width, Input.Instance.MouseY - cursor_offsets[(int)Cursor].Height), cursorSize), new Rectangle(Point.Empty, cursorTextures[(int)Cursor].Size), cursorTextures[(int)Cursor].Size);
+                VertexPositionColorTex[] verts = MiscRender.GetQuadPoints(new System.Drawing.Rectangle(new System.Drawing.Point(Input.Instance.MouseX - cursor_offsets[(int)Cursor].Width, Input.Instance.MouseY - cursor_offsets[(int)Cursor].Height), cursorSize), new Rectangle(Point.Empty, cursorTextures[(int)Cursor].Size), cursorTextures[(int)Cursor].Size);
                 VertexList.AddRange(verts);
 
                 // Create rendercall
@@ -266,7 +271,7 @@ namespace CubeHags.client.gui
             // Send rendercalls to renderer
             if (VertexList.Count > 0)
             {
-                vb.SetVB<VertexPosTex>(VertexList.ToArray(), VertexList.Count * VertexPosTex.SizeInBytes, VertexPosTex.Format, Usage.WriteOnly);
+                vb.SetVB<VertexPositionColorTex>(VertexList.ToArray(), VertexList.Count * VertexPositionColorTex.SizeInBytes, VertexPositionColorTex.Format, Usage.WriteOnly);
                 Renderer.Instance.drawCalls.AddRange(renderCalls);
             }
 

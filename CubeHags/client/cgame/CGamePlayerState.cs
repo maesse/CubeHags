@@ -8,7 +8,7 @@ namespace CubeHags.client.cgame
 {
     public sealed partial class CGame
     {
-        public static void PlayerStateToEntityState(Common.playerState_t ps, Common.entityState_t s, bool snap)
+        public static void PlayerStateToEntityState(Common.PlayerState ps, Common.entityState_t s, bool snap)
         {
             if (ps.pm_type == Common.PMType.INTERMISSION || ps.pm_type == Common.PMType.SPECTATOR)
                 s.eType = 10; // ET_INVISIBLE
@@ -49,7 +49,7 @@ namespace CubeHags.client.cgame
             //s.generic1 = ps.generic1;
         }
 
-        void TransitionPlayerState(Common.playerState_t ps, Common.playerState_t ops)
+        void TransitionPlayerState(Common.PlayerState ps, Common.PlayerState ops)
         {
             // check for changing follow mode
             if (ps.clientNum != ops.clientNum)

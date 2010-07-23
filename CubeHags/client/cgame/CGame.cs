@@ -53,7 +53,15 @@ namespace CubeHags.client.cgame
             ViewParams view = CalcViewValues();
             view.time = cg.time;
 
+            AddLagometerFrameInfo();
+
             Renderer.Instance.Render(view);
+        }
+
+        void AddLagometerFrameInfo()
+        {
+            int offset = cg.time - cg.latestSnapshotTime;
+            Client.Instance.lagometer.frameSamples[Client.Instance.lagometer.frameCount++ & Lagometer.LAGBUFFER - 1] = offset;
         }
 
         ViewParams CalcViewValues()
@@ -67,7 +75,7 @@ namespace CubeHags.client.cgame
             fovY = (float)(fovY * 360 / Math.PI);
             view.fovY = fovY;
 
-            Common.playerState_t ps = cg.predictedPlayerState;
+            Common.PlayerState ps = cg.predictedPlayerState;
 
             cg.xyspeed = (float)Math.Sqrt(ps.velocity[0] * ps.velocity[0] + ps.velocity[1] * ps.velocity[1]);
             view.vieworg = ps.origin;

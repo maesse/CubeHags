@@ -2,6 +2,7 @@
 using System.Collections.Generic;
 using System.Text;
 using CubeHags.common;
+using CubeHags.client.common;
 
 namespace CubeHags.client.gui
 {
@@ -9,6 +10,7 @@ namespace CubeHags.client.gui
     {
         Label GameName;
         Button StartGameButton;
+        Button JoinGameButton;
         Button SettingsButton;
         Button ExitButton;
 
@@ -25,9 +27,12 @@ namespace CubeHags.client.gui
         {
             GameName = new Label("Cube!", this);
             GameName.LabelFont = "biggerlabel";
-            StartGameButton = new Button("New Game", this);
+            StartGameButton = new Button("Create Game", this);
             StartGameButton.label.LabelFont = "biglabel";
             StartGameButton.Selected += new Button.ButtonSelectedEvent(StartGameHandler);
+            JoinGameButton = new Button("Join Game", this);
+            JoinGameButton.label.LabelFont = "biglabel";
+            JoinGameButton.Selected += new Button.ButtonSelectedEvent(JoinGameHandler);
             SettingsButton = new Button("Settings", this);
             SettingsButton.label.LabelFont = "biglabel";
             SettingsButton.Selected += new Button.ButtonSelectedEvent(SettingsHandler);
@@ -37,13 +42,19 @@ namespace CubeHags.client.gui
 
             panel.AddControl(GameName);
             panel.AddControl(StartGameButton);
+            panel.AddControl(JoinGameButton);
             panel.AddControl(SettingsButton);
             panel.AddControl(ExitButton);
         }
 
+        void JoinGameHandler()
+        {
+            Commands.Instance.ExecuteText(Commands.EXECTYPE.EXEC_NOW, "connect 10.111.9.144");
+        }
+
         void StartGameHandler()
         {
-
+            Commands.Instance.ExecuteText(Commands.EXECTYPE.EXEC_NOW, "map de_dust2");
         }
 
         void SettingsHandler()

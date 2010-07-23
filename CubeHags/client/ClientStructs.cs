@@ -24,7 +24,7 @@ namespace CubeHags.client
 
     	public byte[]			areamask = new byte[32];		// 32 portalarea visibility bits
 
-    	public CubeHags.common.Common.playerState_t	ps;						// complete information about the current player at this time
+    	public CubeHags.common.Common.PlayerState	ps;						// complete information about the current player at this time
 
     	public int				numEntities;			// all of the entities that need to be presented
     	public CubeHags.common.Common.entityState_t[]	entities;	// 256 at the time of this snapshot
@@ -168,7 +168,7 @@ namespace CubeHags.client
     public class pmove_t
     {
         // state (in / out)
-        public CubeHags.common.Common.playerState_t ps;
+        public CubeHags.common.Common.PlayerState ps;
 
         // command (in)
         public Input.UserCommand cmd;
@@ -301,7 +301,7 @@ namespace CubeHags.client
     	// prediction state
     	bool	hyperspace;				// true if prediction has hit a trigger_teleport
 
-    	public CubeHags.common.Common.playerState_t	predictedPlayerState;
+    	public CubeHags.common.Common.PlayerState	predictedPlayerState;
     	public bool	validPPS;				// clear until the first call to CG_PredictPlayerState
     	public int			predictedErrorTime;
     	public Vector3		predictedError;
@@ -451,56 +451,12 @@ namespace CubeHags.client
         public int ping;                // time from when cmdNum-1 was sent to time packet was reeceived
         public byte[] areamask;         // 32 portalarea visibility bits
         public int cmdNum;              // the next cmdNum the server is expecting
-        public Common.playerState_t ps = new Common.playerState_t();        // complete information about the current player at this time
+        public Common.PlayerState ps = new Common.PlayerState();        // complete information about the current player at this time
 
         public int numEntities;         // all of the entities that need to be presented
         public int parseEntitiesNum;    // at the time of this snapshot
         public int ServerCommandNum;    // execute all commands up to this before
         // making the snapshot current
-    }
-
-    public class clientStatic_t
-    {
-        public connstate_t state;				// connection status
-
-        public bool cddialog;			// bring up the cd needed dialog next frame
-
-        public string servername;		// name of server from original connect (used by reconnect)
-
-        // when the server clears the hunk, all of these must be restarted
-        public bool rendererStarted;
-        public bool soundStarted;
-        public bool soundRegistered;
-        public bool uiStarted;
-        public bool cgameStarted;
-
-        public int framecount;
-        public int frametime;			// msec since last frame
-
-        public int realtime;			// ignores pause
-        public int realFrametime;		// ignoring pause, so console always works
-
-        public int numlocalservers;
-
-        public List<serverInfo_t> localServers = new List<serverInfo_t>();
-
-        public int numglobalservers;
-        public List<serverInfo_t> globalServers = new List<serverInfo_t>();
-        // additional global servers
-        public int numGlobalServerAddresses;
-        public List<IPAddress> globalServerAddresses = new List<IPAddress>();
-
-        public int numfavoriteservers;
-        public List<serverInfo_t> favoriteServers = new List<serverInfo_t>();
-
-        public int pingUpdateSource;		// source currently pinging or updating
-
-        // update server info
-        public IPAddress updateServer;
-        public string updateChallenge;
-        public string updateInfoString;
-
-        public IPAddress authorizeServer;
     }
 
     public struct serverInfo_t
@@ -524,4 +480,14 @@ namespace CubeHags.client
     {
         public Dictionary<int, string> data;
     }
+
+    public class Lagometer 
+    {
+        public const int LAGBUFFER = 128;
+        public int[] frameSamples = new int[LAGBUFFER];
+	    public int		frameCount;
+        public int[] snapshotFlags = new int[LAGBUFFER];
+        public int[] snapshotSamples = new int[LAGBUFFER];
+	    public int		snapshotCount;
+    } 
 }

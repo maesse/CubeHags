@@ -23,17 +23,17 @@ namespace CubeHags.client
         {
             Renderer.Instance.BeginFrame();
 
-            switch (cls.state)
+            switch (state)
             {
-                case CubeHags.common.connstate_t.CONNECTING:
-                case CubeHags.common.connstate_t.CHALLENGING:
-                case CubeHags.common.connstate_t.CONNECTED:
+                case CubeHags.common.ConnectState.CONNECTING:
+                case CubeHags.common.ConnectState.CHALLENGING:
+                case CubeHags.common.ConnectState.CONNECTED:
                     // connecting clients will only show the connection dialog
                     // refresh to update the time
                     WindowManager.Instance.connectGUI.DrawConnect();
                     break;
-                case CubeHags.common.connstate_t.LOADING:
-                case CubeHags.common.connstate_t.PRIMED:
+                case CubeHags.common.ConnectState.LOADING:
+                case CubeHags.common.ConnectState.PRIMED:
                     // draw the game information screen and loading progress
                     CGame.Instance.DrawActiveFrame(cl.serverTime);
 
@@ -42,12 +42,12 @@ namespace CubeHags.client
                     // refresh to update the time
                     WindowManager.Instance.connectGUI.DrawConnect();
                     break;
-                case CubeHags.common.connstate_t.ACTIVE:
+                case CubeHags.common.ConnectState.ACTIVE:
                     WindowManager.Instance.connectGUI.DrawConnect();
 
                     CGame.Instance.DrawActiveFrame(cl.serverTime);
                     break;
-                case connstate_t.CINEMATIC:
+                case ConnectState.CINEMATIC:
 
                     break;
             }

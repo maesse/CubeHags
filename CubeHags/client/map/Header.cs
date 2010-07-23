@@ -5,6 +5,7 @@ using System.Text;
 
 using SlimDX;
 using SlimDX.Direct3D9;
+using CubeHags.common;
 
 namespace CubeHags.client.map.Source
 {
@@ -62,7 +63,7 @@ namespace CubeHags.client.map.Source
         public face_t face_t;
         public Texture lightmap;
         public int lightOffsetX, lightOffsetY;
-        public int light2X, light2Y, light3X, light3Y, light4X, light4Y;
+        //public int light2X, light2Y, light3X, light3Y, light4X, light4Y;
 
         public VertexBuffer vb = null;
         public int nVerts;
@@ -77,6 +78,7 @@ namespace CubeHags.client.map.Source
         public int displace_offset;
         public int nDisplace;
         public int lastVisCount;
+        public Vector3[] BBox;
 
         #region IComparable<Face> Members
 
@@ -193,14 +195,14 @@ namespace CubeHags.client.map.Source
         public ulong[] AllowedVerts;    // ALLOWEDVERTS_SIZE active verticies
     };
 
-    public struct dDispVert
+    public class dDispVert
     {
         public Vector3 vec;        // Vector field defining displacement volume.
         public float dist;       // Displacement distances.
         public float alpha;      // "per vertex" alpha values.
     };
 
-    public struct dDispTri
+    public class dDispTri
     {
         public ushort Tags;          // Displacement triangle tags.
     };
@@ -269,7 +271,8 @@ namespace CubeHags.client.map.Source
         public int lastVisibleCount;
         public dnode_t parent;
         public List<SourceProp> staticProps;
-        
+        public int[] DisplacementIndexes;
+        public DispLeafLink m_pDisplacements;
     }
 
     public struct LightCube

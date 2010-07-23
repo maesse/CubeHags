@@ -26,7 +26,7 @@ namespace CubeHags.client
             string mapname = Info.ValueForKey(cl.gamestate.data[0], "mapname");
             cl.mapname = string.Format("maps/{0}", mapname);
 
-            cls.state = connstate_t.LOADING;
+            state = ConnectState.LOADING;
 
             // init for this gamestate
             // use the lastExecutedServerCommand instead of the serverCommandSequence
@@ -35,7 +35,7 @@ namespace CubeHags.client
 
             // we will send a usercmd this frame, which
             // will cause the server to send us the first snapshot
-            cls.state = connstate_t.PRIMED;
+            state = ConnectState.PRIMED;
             float t2 = Common.Instance.Milliseconds();
 
             Common.Instance.WriteLine("InitCGame(): {0:0.000} seconds", (t2 - t1) / 1000f);
@@ -47,19 +47,19 @@ namespace CubeHags.client
             if ((cl.snap.snapFlags & 2) == 2)
                 return;
 
-            cls.state = connstate_t.ACTIVE;
+            state = ConnectState.ACTIVE;
 
             // set the timedelta so we are exactly on this first frame
-            cl.serverTimeDelta = cl.snap.serverTime - cls.realtime;
+            cl.serverTimeDelta = cl.snap.serverTime - realtime;// -(1000 / CVars.Instance.VariableIntegerValue("snaps"));
             cl.oldServerTime = cl.snap.serverTime;
         }
 
         public void SetCGameTime()
         {
             // getting a valid frame message ends the connection process
-            if (cls.state != CubeHags.common.connstate_t.ACTIVE)
+            if (state != CubeHags.common.ConnectState.ACTIVE)
             {
-                if (cls.state != CubeHags.common.connstate_t.PRIMED)
+                if (state != CubeHags.common.ConnectState.PRIMED)
                     return;
 
                 if (cl.newSnapshots)
@@ -68,7 +68,7 @@ namespace CubeHags.client
                     FirstSnapshot();
                 }
 
-                if (cls.state != CubeHags.common.connstate_t.ACTIVE)
+                if (state != CubeHags.common.ConnectState.ACTIVE)
                     return;
             }
 
@@ -94,7 +94,7 @@ namespace CubeHags.client
                 tn = 30;
 
             // get our current view of time
-            cl.serverTime = cls.realtime + cl.serverTimeDelta - tn;
+            cl.serverTime = realtime + cl.serverTimeDelta - tn;
 
             // guarantee that time will never flow backwards, even if
             // serverTimeDelta made an adjustment or cl_timeNudge was changed
@@ -106,7 +106,7 @@ namespace CubeHags.client
 
             // note if we are almost past the latest frame (without timeNudge),
             // so we will try and adjust back a bit when the next snapshot arrives
-            if (cls.realtime + cl.serverTimeDelta >= cl.snap.serverTime - 5)
+            if (realtime + cl.serverTimeDelta >= cl.snap.serverTime - 5)
             {
                 cl.extrapolatedSnapshot = true;
             }
@@ -144,7 +144,7 @@ namespace CubeHags.client
         {
             cl.newSnapshots = false;
 
-            int newDelta = cl.snap.serverTime - cls.realtime;
+            int newDelta = cl.snap.serverTime - realtime;
             int deltaDelta = Math.Abs(newDelta - cl.serverTimeDelta);
 
             if (deltaDelta > 500)
@@ -156,7 +156,7 @@ namespace CubeHags.client
             else if (deltaDelta > 100)
             {
                 // fast adjust, cut the difference in half
-                cl.serverTimeDelta = (cl.serverTimeDelta + newDelta) >>1;
+                cl.serverTimeDelta = (cl.serverTimeDelta + newDelta) >> 1;
             }
             else
             {
@@ -179,6 +179,7 @@ namespace CubeHags.client
                     }
                 }
             }
+            //System.Console.WriteLine("" + cl.serverTimeDelta);
         }
 
         public string[] GetServerCommand(int serverCommandNumber)

@@ -72,7 +72,7 @@ namespace CubeHags.client.gui
         Rectangle botright = new Rectangle();
         Rectangle topright = new Rectangle();
         Rectangle botleft = new Rectangle();
-
+        public Rectangle middle = new Rectangle();
         Rectangle left = new Rectangle();
         Rectangle right = new Rectangle();
         Rectangle bot = new Rectangle();
@@ -406,7 +406,7 @@ namespace CubeHags.client.gui
             botright = new Rectangle(Size.Width - 20, Size.Height - 20, 20, 20);
             topright = new Rectangle(Size.Width - BorderMargin, 0, BorderMargin, BorderMargin);
             botleft = new Rectangle(0, Size.Height - BorderMargin, BorderMargin, BorderMargin);
-
+            middle = new Rectangle(new Point(Position.X + atlas["left"].Width, Position.Y + atlas["top"].Height), new Size(Size.Width - atlas["left"].Width - atlas["right"].Width, Size.Height - atlas["top"].Height - atlas["bottom"].Height));
             left = new Rectangle(0, BorderMargin, BorderMargin, Size.Height - (BorderMargin * 2));
             right = new Rectangle(Size.Width - BorderMargin, BorderMargin, BorderMargin, Size.Height - 20 - BorderMargin);
             bot = new Rectangle(BorderMargin, Size.Height - BorderMargin, Size.Width - 20 - BorderMargin, BorderMargin);
