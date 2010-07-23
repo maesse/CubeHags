@@ -6,6 +6,7 @@ using CubeHags.client;
 using SlimDX;
 using CubeHags.client.render;
 using CubeHags.client.cgame;
+using CubeHags.client.map.Source;
 
 namespace CubeHags.common
 {
@@ -13,11 +14,16 @@ namespace CubeHags.common
     {
         pml_t pml;
         pmove_t pm;
+        trace_t lastTrace;
 
         float pm_maxspeed = 400f;
-        float pm_accelerate = 8f;
+        float pm_stopspeed = 100.0f;
+        float pm_accelerate = 10f;
+        float pm_flyaccelerate = 8f;
         float pm_airaccelerate = 1.0f;
         float pm_friction = 6f;
+        float pm_spectatorfriction = 5f;
+        float pm_flyfriction = 4f;
         float pm_duckScale = 0.25f;
         int c_pmove = 0;
 
@@ -72,12 +78,34 @@ namespace CubeHags.common
             // this counter lets us debug movement problems with a journal
             // by setting a conditional breakpoint fot the previous frame
             c_pmove++;
-
+            
             // clear results
             pm.numtouch = 0;
 
+            if (pm.ps.stats[0] <= 0)
+            {
+                pm.tracemask &= ~0x2000000;
+            }
+
+            // make sure walking button is clear if they are running, to avoid
+            // proxy no-footsteps cheats
+            if (Math.Abs(pm.cmd.forwardmove) > 64 || Math.Abs(pm.cmd.rightmove) > 64)
+            {
+                pm.cmd.buttons &= ~16;
+            }
+
+            //// set the firing flag for continuous beam weapons
+            //if ((pm.ps.pm_flags & PMFlags.RESPAWNED) != PMFlags.RESPAWNED && pm.ps.pm_type != PMType.INTERMISSION
+            //    && (pm.cmd.buttons & 1) == 1 && pm.ps.ammo[pm.ps.weapon] > 0)
+            //{
+            //    pm.ps.eFlags |= EntityFlags.EF_FIRING;
+            //}
+            //else
+            //    pm.ps.eFlags &= ~EntityFlags.EF_FIRING;
+
             // clear the respawned flag if attack and use are cleared
-            pm.ps.pm_flags &= ~PMFlags.RESPAWNED;
+            if(pm.ps.stats[0] > 0 && (pm.cmd.buttons & (1|4)) == 0)
+                pm.ps.pm_flags &= ~PMFlags.RESPAWNED;
 
             // clear all pmove local vars
             pml = new pml_t();
@@ -117,16 +145,46 @@ namespace CubeHags.common
             else if (pm.cmd.forwardmove > 0 || (pm.cmd.forwardmove == 0 && pm.cmd.rightmove > 0))
                 pm.ps.pm_flags &= ~PMFlags.BACKWARDS_RUN;
 
+            if (pm.ps.pm_type == PMType.DEAD)
+            {
+                pm.cmd.forwardmove = 0;
+                pm.cmd.rightmove = 0;
+                pm.cmd.upmove = 0;
+            }
+
             if (pm.ps.pm_type == PMType.SPECTATOR)
             {
-                //CheckDuck();
+                CheckDuck();
                 FlyMove();
-                //DropTimers();
+                DropTimers();
                 return;
             }
 
+            if (pm.ps.pm_type == PMType.NOCLIP)
+            {
+                //NoclipMove();
+                DropTimers();
+                return;
+            }
+
+            if (pm.ps.pm_type == PMType.FREEZE)
+                return; // no movement at all
+
+            if (pm.ps.pm_type == PMType.INTERMISSION || pm.ps.pm_type == PMType.SPINTERMISSION)
+                return; // no movement at all
+
+            // set mins, maxs, and viewheight
+            CheckDuck();
+
             // set groundentity
             GroundTrace();
+
+            if (pm.ps.pm_type == PMType.DEAD)
+            {
+                //DeadMove();
+            }
+
+            DropTimers();
 
             if (pml.walking)
             {
@@ -144,6 +202,52 @@ namespace CubeHags.common
 
             // snap some parts of playerstate to save network bandwidth
             CGame.SnapVector(pm.ps.velocity);
+        }
+
+        void CheckDuck()
+        {
+            pm.mins[0] = -15;
+            pm.mins[1] = -15;
+
+            pm.maxs[0] = 15;
+            pm.maxs[1] = 15;
+
+            pm.mins[2] = -24;
+
+            if (pm.ps.pm_type == PMType.DEAD)
+            {
+                pm.maxs[2] = -8;
+                pm.ps.viewheight = -16;
+                return;
+            }
+
+            if (pm.cmd.upmove < 0)
+            {
+                pm.ps.pm_flags |= PMFlags.DUCKED;
+            }
+            else
+            {
+                // stand up if possible
+                if ((pm.ps.pm_flags & PMFlags.DUCKED) == PMFlags.DUCKED)
+                {
+                    // try to stand up
+                    pm.maxs[2] = 32;
+                    trace_t trace = pm.DoTrace(pm.ps.origin, pm.mins, pm.maxs, pm.ps.origin, pm.ps.clientNum, pm.tracemask);
+                    if (!trace.allsolid)
+                        pm.ps.pm_flags &= ~PMFlags.DUCKED;
+                }
+            }
+
+            if ((pm.ps.pm_flags & PMFlags.DUCKED) == PMFlags.DUCKED)
+            {
+                pm.maxs[2] = 16;
+                pm.ps.viewheight = 12;
+            }
+            else
+            {
+                pm.maxs[2] = 32;
+                pm.ps.viewheight = 26;
+            }
         }
 
         bool CheckJump()
@@ -191,9 +295,9 @@ namespace CubeHags.common
 
             float fmove = pm.cmd.forwardmove;
             float smove = pm.cmd.rightmove;
+
             Input.UserCommand cmd = pm.cmd;
             float scale = CommandScale(cmd);
-
 
             // project moves down to flat plane
             pml.forward[2] = 0;
@@ -201,7 +305,7 @@ namespace CubeHags.common
             pml.forward.Normalize();
             pml.right.Normalize();
 
-            Vector3 wishvel = pml.forward * fmove + pml.right * smove;
+            Vector3 wishvel = (pml.forward * fmove) + (pml.right * smove);
             wishvel[2] = 0;
 
             Vector3 wishdir = wishvel;
@@ -221,6 +325,22 @@ namespace CubeHags.common
             }
 
             StepSlideMove(true);
+        }
+
+
+        void DropTimers()
+        {
+            // drop misc timing counter
+            if (pm.ps.pm_time > 0)
+            {
+                if (pml.msec >= pm.ps.pm_time)
+                {
+                    pm.ps.pm_flags &= ~PMFlags.ALL_TIMES;
+                    pm.ps.pm_time = 0;
+                }
+                else
+                    pm.ps.pm_time -= pml.msec;
+            }
         }
 
         void WalkMove()
@@ -252,7 +372,7 @@ namespace CubeHags.common
             pml.forward.Normalize();
             pml.right.Normalize();
 
-            Vector3 wishvel = pml.forward * fmove + pml.right * smove;
+            Vector3 wishvel = (pml.forward * fmove) + (pml.right * smove);
             Vector3 wishdir = wishvel;
             float wishpeed = wishdir.Length();
             wishdir.Normalize();
@@ -267,7 +387,22 @@ namespace CubeHags.common
                 }
             }
 
-            Accelerate(wishdir, wishpeed, pm_accelerate);
+            // when a player gets hit, they temporarily lose
+            // full control, which allows them to be moved a bit
+            float accelerate;
+            if ((pml.groundTrace.surfaceFlags & (int)SurfFlags.SURF_SLICK) > 0 || (pm.ps.pm_flags & PMFlags.TIME_KNOCKBACK) == PMFlags.TIME_KNOCKBACK)
+            {
+                accelerate = pm_airaccelerate;
+            }
+            else
+                accelerate = pm_accelerate;
+
+            Accelerate(wishdir, wishpeed, accelerate);
+
+            if ((pml.groundTrace.surfaceFlags & (int)SurfFlags.SURF_SLICK) > 0 || (pm.ps.pm_flags & PMFlags.TIME_KNOCKBACK) == PMFlags.TIME_KNOCKBACK)
+            {
+                pm.ps.velocity[2] -= pm.ps.gravity * pml.frametime;
+            }
 
             float vel = pm.ps.velocity.Length();
             // slide along the ground plane
@@ -282,6 +417,9 @@ namespace CubeHags.common
                 return;
 
             StepSlideMove(false);
+
+            if (pm.ps.groundEntityNum != 1023)
+                pm.ps.velocity[2] = 0;
         }
 
         void GroundTrace()
@@ -310,6 +448,7 @@ namespace CubeHags.common
             // check if getting thrown off the ground
             if (pm.ps.velocity[2] > 0 && Vector3.Dot(pm.ps.velocity, trace.plane.normal) > 10f)
             {
+                //Common.Instance.WriteLine("kickoff");
                 pm.ps.groundEntityNum = 1023;
                 pml.groundPlane = false;
                 pml.walking = false;
@@ -319,6 +458,7 @@ namespace CubeHags.common
             // slopes that are too steep will not be considered onground
             if (trace.plane.normal[2] < 0.7f)
             {
+                //Common.Instance.WriteLine("steep");
                 // FIXME: if they can't slide down the slope, let them
                 // walk (sharp crevices)
                 pm.ps.groundEntityNum = 1023;
@@ -332,6 +472,7 @@ namespace CubeHags.common
 
             if (pm.ps.groundEntityNum == 1023)
             {
+                //Common.Instance.WriteLine("land");
                 // just hit the ground
                 //CrashLand();
 
@@ -452,6 +593,7 @@ namespace CubeHags.common
             // Apply acceleration
             Accelerate(wishdir, wishspeed, pm_accelerate);
 
+            //SlideMove(false);
             StepSlideMove(false);
         }
 
@@ -482,35 +624,16 @@ namespace CubeHags.common
 
             if (!SlideMove(gravity))
             {
-                //// Test for stuck
-                //trace_t traces = pm.DoTrace(start_o, pm.mins, pm.maxs, pm.ps.origin, 0, 1);
-                //if (traces.fraction != 1.0f)
-                //{
-                //    int test = 2;
-                //}
-                //traces = pm.DoTrace(pm.ps.origin, pm.mins, pm.maxs, start_o, 0, 1);
-                //if (traces.fraction != 1.0f)
-                //{
-                //    int test = 2;
-                //}
                 return; // we got exactly where we wanted to go first try	
             }
-
-            //trace_t tracess = pm.DoTrace(pm.ps.origin, pm.mins, pm.maxs, start_o, 0, 1);
-            //if (tracess.fraction != 1.0f)
-            //{
-            //    int test = 2;
-            //    pm.ps.origin = start_o;
-            //}
-            //return;
+            
             Vector3 down = start_o;
             down[2] -= 18;
-            trace_t trace = new trace_t();
-            trace = pm.DoTrace(start_o, pm.mins, pm.maxs, down, pm.ps.clientNum, pm.tracemask);
-
-            Vector3 up = new Vector3(0, 0, 1);
+            trace_t trace = pm.DoTrace(start_o, pm.mins, pm.maxs, down, pm.ps.clientNum, pm.tracemask);
+            Vector3 up = new Vector3(0f, 0f, 1f);
             // never step up when you still have up velocity
-            if (pm.ps.velocity[2] > 0f && (trace.fraction == 1.0f || Vector3.Dot(trace.plane.normal, up) > 0.7f))
+            float dotUp = Vector3.Dot(trace.plane.normal, up);
+            if (pm.ps.velocity[2] > 0f && (trace.fraction == 1.0f || dotUp < 0.7f))
             {
                 return;
             }
@@ -528,12 +651,12 @@ namespace CubeHags.common
             }
 
             float stepSize = trace.endpos[2] - start_o[2];
+            
             // try slidemove from this position
             pm.ps.origin = trace.endpos;
             pm.ps.velocity = start_v;
 
             SlideMove(gravity);
-
             // push down the final amount
             down = pm.ps.origin;
             down[2] -= 18;
@@ -563,12 +686,7 @@ namespace CubeHags.common
                     //PM_AddEvent(EV_STEP_16);
                 }
             }
-
-            //tracess = pm.DoTrace(pm.ps.origin, pm.mins, pm.maxs, start_o, 0, 1);
-            //if (tracess.fraction != 1.0f)
-            //{
-            //    int test = 2;
-            //}
+           //Common.Instance.WriteLine("stepped");
 
         }
 
@@ -622,16 +740,7 @@ namespace CubeHags.common
                 Vector3 end = ViewParams.VectorMA(pm.ps.origin, time_left, pm.ps.velocity);
 
                 // see if we can make it there
-                trace_t trace = new trace_t();
-
-                
-                //
-                //if(end.Z > -110)
-                //    trace.endpos = end;
-                //else
-                    trace = pm.DoTrace( pm.ps.origin, pm.mins, pm.maxs, end, pm.ps.clientNum, pm.tracemask);
-
-                //trace.fraction = 1f;
+                trace_t trace = pm.DoTrace( pm.ps.origin, pm.mins, pm.maxs, end, pm.ps.clientNum, pm.tracemask);
                 
                 if (trace.allsolid)
                 {
@@ -644,19 +753,13 @@ namespace CubeHags.common
                 {
                     // actually covered some distance
                     Vector3 save = trace.endpos;
-                    //trace_t trc = pm.DoTrace(trace.endpos, pm.mins, pm.maxs, pm.ps.origin, 0, 1);
-                    //if (trc.fraction < 1.0f)
-                    //{
-                    //    int test = 2;
-                    //}
                     pm.ps.origin = save;
-                    
                 }
 
-                if (trace.fraction == 1)
+                if (trace.fraction == 1.0f)
                     break;  // moved the entire distance
 
-                
+                //lastTrace = trace;
 
                 // save entity for contact
                 //AddTouchEnt(trace.entityNum);
@@ -719,7 +822,7 @@ namespace CubeHags.common
                         if (j == i)
                             continue;
 
-                        if (Vector3.Dot(clipVelocity, planes[i]) > 0.1f)
+                        if (Vector3.Dot(clipVelocity, planes[j]) >= 0.1f)
                             continue;   // move doesn't interact with the plane
 
                         // try clipping the move to the plane
@@ -736,6 +839,8 @@ namespace CubeHags.common
                         float d = Vector3.Dot(dir, pm.ps.velocity);
                         clipVelocity = Vector3.Multiply(dir, d);
 
+                        dir = Vector3.Cross(planes[i], planes[j]);
+                        dir.Normalize();
                         d = Vector3.Dot(dir, endVelocity);
                         endClipVelocity = Vector3.Multiply(dir, d);
 
@@ -746,12 +851,11 @@ namespace CubeHags.common
                                 continue;
 
                             if (Vector3.Dot(clipVelocity, planes[k]) >= 0.1f)
-                                continue;
+                                continue;   // move doesn't interact with the plane
 
                             // stop dead at a tripple plane interaction
                             pm.ps.velocity = Vector3.Zero;
                             return true;
-
                         }
                     }
 
@@ -829,7 +933,7 @@ namespace CubeHags.common
                 return 0f;
 
             float total = (float)Math.Sqrt(cmd.forwardmove * cmd.forwardmove + cmd.rightmove * cmd.rightmove + cmd.upmove * cmd.upmove);
-            float scale = (float)400 * max / (127f * total);
+            float scale = (float)pm.ps.speed * max / (127f * total);
             return scale;
         }
 
@@ -838,9 +942,13 @@ namespace CubeHags.common
         {
             Vector3 velocity = pm.ps.velocity;
 
+            Vector3 vec = velocity;
+            if (pml.walking)
+            {
+                vec[2] = 0;
+            }
 
-            //frametime /= 1000;
-            float speed = velocity.Length();
+            float speed = vec.Length();
             if (speed < 1f)
             {
                 velocity[0] = 0;
@@ -849,6 +957,20 @@ namespace CubeHags.common
             }
 
             float drop = 0;
+
+            // apply ground friction
+            //if (pm.waterlevel <= 1)
+            //{
+            if (pml.walking && (pml.groundTrace.surfaceFlags & (int)SurfFlags.SURF_SLICK) == 0)
+                {
+                    // if getting knocked back, no friction
+                    if ((pm.ps.pm_flags & PMFlags.TIME_KNOCKBACK) != PMFlags.TIME_KNOCKBACK)
+                    {
+                        float control = (speed < pm_stopspeed) ? pm_stopspeed : speed;
+                        drop += control * pm_friction * pml.frametime;
+                    }
+                }
+            //}
 
             
             // if spectator
@@ -902,17 +1024,17 @@ namespace CubeHags.common
             }
         }
 
-        public static void UpdateViewAngles(ref Common.playerState_t ps, Input.UserCommand cmd)
+        public static void UpdateViewAngles(ref Common.PlayerState ps, Input.UserCommand cmd)
         {
             if (ps.pm_type == Common.PMType.INTERMISSION || ps.pm_type == Common.PMType.SPINTERMISSION)
             {
                 return;
             }
 
-            if (ps.pm_type != Common.PMType.SPECTATOR && ps.stats[0] <= 0)
-            {
-                return;
-            }
+            //if (ps.pm_type != Common.PMType.SPECTATOR )//&& ps.stats[0] <= 0)
+            //{
+            //    return;
+            //}
 
             
             // circularly clamp the angles with deltas

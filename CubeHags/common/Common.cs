@@ -12,7 +12,6 @@ using CubeHags.client.map.Source;
 using CubeHags.client.render;
 using System.Runtime.InteropServices;
 using CubeHags.client.input;
-using CubeHags.client.game;
 
 namespace CubeHags.common
 {
@@ -35,11 +34,9 @@ namespace CubeHags.common
         public int frameNumber;
         private long startTime;
         public float frameMsec;
-        
-        Queue<sysEvent_t> pushedEventQueue = new Queue<sysEvent_t>(256);
-        Queue<sysEvent_t> eventQueue = new Queue<sysEvent_t>(256);
 
-        public PlanetGame PlanetGame = null;
+        Queue<Event> pushedEventQueue = new Queue<Event>(256);
+        Queue<Event> eventQueue = new Queue<Event>(256);
 
         List<string> commandLines = new List<string>();
 
@@ -109,8 +106,6 @@ namespace CubeHags.common
             //
             Client.Instance.Frame(msec);
 
-            if (PlanetGame != null)
-                PlanetGame.Frame(msec, Input.Instance.UserCmd);
 
             frameNumber++;
         }
@@ -125,22 +120,22 @@ namespace CubeHags.common
         */
         public float EventLoop()
         {
-            sysEvent_t ev;
-            
+            Event ev;
+
             while (true)
             {
                 ev = GetEvent();
                 // if no more events are available
-                if (ev.evType == sysEventType_t.SE_NONE)
+                if (ev.evType == EventType.NONE)
                 {
                     return ev.evTime;
                 }
 
                 switch (ev.evType)
                 {
-                    case sysEventType_t.SE_NONE:
+                    case EventType.NONE:
                         break;
-                    case sysEventType_t.SE_PACKET:
+                    case EventType.PACKET:
                         Net.Packet packet = (Net.Packet)ev.data;
                         if (sv_running.Integer == 1 && packet.Address.Port != Net.Instance.net_port.Integer)
                             Server.Instance.PacketEvent(packet);
@@ -148,26 +143,20 @@ namespace CubeHags.common
                             Client.Instance.PacketEvent(packet);
                         break;
                 }
-                break;
             }
-
-
-            //if (ev != null)
-                return ev.evTime;
-            //return 0f;
         }
 
-       
 
-        sysEvent_t GetEvent()
+
+        Event GetEvent()
         {
-            if (pushedEventQueue.Count > 0)
-                return pushedEventQueue.Dequeue();
+            //if (pushedEventQueue.Count > 0)
+            //    return pushedEventQueue.Dequeue();
 
             return GetRealEvent();
         }
 
-        sysEvent_t GetRealEvent()
+        Event GetRealEvent()
         {
             // return if we have data
             if (eventQueue.Count > 0)
@@ -177,7 +166,7 @@ namespace CubeHags.common
             Net.Packet packet = Net.Instance.GetPacket();
             if (packet != null)
             {
-                QueueEvent(0f, sysEventType_t.SE_PACKET, 0, 0, packet.Buffer.LengthBytes, packet);
+                QueueEvent(0f, EventType.PACKET, 0, 0, packet.Buffer.LengthBytes, packet);
             }
 
             // return if we have data
@@ -185,7 +174,7 @@ namespace CubeHags.common
                 return eventQueue.Dequeue();
 
             // create an empty event to return
-            sysEvent_t evt = new sysEvent_t();
+            Event evt = new Event();
             evt.evTime = Milliseconds();
             return evt;
         }
@@ -200,9 +189,9 @@ namespace CubeHags.common
         be freed by the game later.
         ================
         */
-        void QueueEvent(float time, sysEventType_t type, int value, int value2, int dataSize, object data)
+        void QueueEvent(float time, EventType type, int value, int value2, int dataSize, object data)
         {
-            sysEvent_t evt = new sysEvent_t();
+            Event evt = new Event();
             if (time == 0f)
                 time = Milliseconds();
 
@@ -294,7 +283,15 @@ namespace CubeHags.common
         public void Init(string commandline)
         {
             System.Console.WriteLine("Cubehags os:{0} cpus:{1}", Environment.OSVersion, Environment.ProcessorCount);
-            FileStream stream = File.OpenWrite("cubehagslog.txt");
+            FileStream stream;
+            try
+            {
+                stream = File.OpenWrite("cubehagslog.txt");
+            }
+            catch (Exception ex)
+            {
+                stream = File.OpenWrite("cubelog" + new Random().Next(99999) + ".txt");
+            }
             logWriter = new StreamWriter(stream);
             CVars.Instance.Init();
 
@@ -309,7 +306,7 @@ namespace CubeHags.common
             FileCache.Instance.Init();
 
             Commands.Instance.AddCommand("quit", new CommandDelegate(Quit_f));
-            
+
             ExecuteCfg();
             StartupVariable(null);
 
@@ -320,13 +317,13 @@ namespace CubeHags.common
             //
             // init commands and vars
             //
-            maxfps = CVars.Instance.Get("maxfps", "115", CVarFlags.ARCHIVE);
+            maxfps = CVars.Instance.Get("maxfps", "300", CVarFlags.ARCHIVE);
             logfile = CVars.Instance.Get("logfile", "0", CVarFlags.TEMP);
             cl_running = CVars.Instance.Get("cl_running", "0", CVarFlags.ROM);
             sv_running = CVars.Instance.Get("sv_running", "0", CVarFlags.ROM);
             timescale = CVars.Instance.Get("timescale", "1", CVarFlags.TEMP);
 
-            
+
 
             Server.Instance.Init();
             Client.Instance.Init();
@@ -337,12 +334,14 @@ namespace CubeHags.common
             frameTime = (int)Milliseconds();
 
             // add + commands from command line
+            Commands.Instance.AddText("toggleui;");
+            Commands.Instance.Execute();
             if (!AddStartupCommands())
             {
                 // if the user didn't give any commands, run default action
                 Client.Instance.cin.AlterGameState = true;
                 Commands.Instance.AddText("cinematic cube.avi\n");
-                CVars.Instance.Set("nextmap", "toggleui");
+                //CVars.Instance.Set("nextmap", "map cs_office");
                 Commands.Instance.Execute();
             }
         }
@@ -434,22 +433,27 @@ namespace CubeHags.common
                 logWriter.Flush();
                 logWriter.Close();
                 logWriter.Dispose();
-            } catch {
+            }
+            catch
+            {
             }
             Environment.Exit(0);
         }
 
-        public static void SetPlaneSignbits (cplane_t plane) {
-        	int	bits, j;
+        public static void SetPlaneSignbits(cplane_t plane)
+        {
+            int bits, j;
 
-        	// for fast box on planeside test
-        	bits = 0;
-        	for (j=0 ; j<3 ; j++) {
-        		if (plane.normal[j] < 0) {
-        			bits |= 1<<j;
-        		}
-        	}
-        	plane.signbits = (byte)bits;
+            // for fast box on planeside test
+            bits = 0;
+            for (j = 0; j < 3; j++)
+            {
+                if (plane.normal[j] < 0)
+                {
+                    bits |= 1 << j;
+                }
+            }
+            plane.signbits = (byte)bits;
         }
 
         public void EvaluateTrajectory(trajectory_t tr, int atTime, out Vector3 result)
@@ -533,13 +537,6 @@ namespace CubeHags.common
             return sides;
         }
 
-        // the server looks at a sharedEntity, which is the start of the game's gentity_t structure
-        public class sharedEntity_t
-        {
-        	public entityState_t	s;				// communicated by server to clients
-            public entityShared_t r;				// shared by both the server system and game
-        }
-
         // entity->svFlags
         // the server does not know how to interpret most of the values
         // in entityStates (level eType), so the game must explicitly flag
@@ -547,76 +544,76 @@ namespace CubeHags.common
         [Flags]
         public enum svFlags : int
         {
-            NONE     = 0x00000000,
+            NONE = 0x00000000,
             NOCLIENT = 0x00000001,              // don't send entity to clients, even if it has effects
             CLIENTMASK = 0x00000002,
             BROADCAST = 0x00000020,             // send to all connected clients
             PORTAL = 0x00000040,                // merge a second pvs at origin2 into snapshots
             USE_CURRENT_ORIGIN = 0x00000080,    // entity->r.currentOrigin instead of entity->s.origin
-                                                // for link position (missiles and movers)
+            // for link position (missiles and movers)
             SINGLECLIENT = 0x00000100,          // only send to a single client (entityShared_t->singleClient)
             NOSERVERINFO = 0x00000200,          // don't send CS_SERVERINFO updates to this client
-                                                // so that it can be updated for ping tools without
-                                                // lagging clients
+            // so that it can be updated for ping tools without
+            // lagging clients
             CAPSULE = 0x00000400,               // use capsule for collision detection instead of bbox
             NOTSINGLECLIENT = 0x00000800        // send entity to everyone but one client   
-                                                // (entityShared_t->singleClient)
+            // (entityShared_t->singleClient)
         }
 
         public class entityShared_t
         {
-        	public entityState_t	s;				// communicated by server to clients
+            public entityState_t s;				// communicated by server to clients
 
             public bool linked;				// qfalse if not in any good cluster
             public int linkcount;
 
             public svFlags svFlags;			// SVF_NOCLIENT, SVF_BROADCAST, etc
 
-        	// only send to this client when SVF_SINGLECLIENT is set	
-        	// if SVF_CLIENTMASK is set, use bitmask for clients to send to (maxclients must be <= 32, up to the mod to enforce this)
+            // only send to this client when SVF_SINGLECLIENT is set	
+            // if SVF_CLIENTMASK is set, use bitmask for clients to send to (maxclients must be <= 32, up to the mod to enforce this)
             public int singleClient;
 
             public bool bmodel;				// if false, assume an explicit mins / maxs bounding box
-        									// only set by trap_SetBrushModel
+            // only set by trap_SetBrushModel
             public Vector3 mins, maxs;
             public int contents;			// CONTENTS_TRIGGER, CONTENTS_SOLID, CONTENTS_BODY, etc
-        									// a non-solid entity should set to 0
+            // a non-solid entity should set to 0
 
             public Vector3 absmin, absmax;		// derived from mins/maxs and origin + rotation
 
-        	// currentOrigin will be used for all collision detection and world linking.
-        	// it will not necessarily be the same as the trajectory evaluation for the current
-        	// time, because each entity must be moved one at a time after time is advanced
-        	// to avoid simultanious collision issues
+            // currentOrigin will be used for all collision detection and world linking.
+            // it will not necessarily be the same as the trajectory evaluation for the current
+            // time, because each entity must be moved one at a time after time is advanced
+            // to avoid simultanious collision issues
             public Vector3 currentOrigin;
             public Vector3 currentAngles;
 
-        	// when a trace call is made and passEntityNum != ENTITYNUM_NONE,
-        	// an ent will be excluded from testing if:
-        	// ent->s.number == passEntityNum	(don't interact with self)
-        	// ent->s.ownerNum = passEntityNum	(don't interact with your own missiles)
-        	// entity[ent->s.ownerNum].ownerNum = passEntityNum	(don't interact with other missiles from owner)
+            // when a trace call is made and passEntityNum != ENTITYNUM_NONE,
+            // an ent will be excluded from testing if:
+            // ent->s.number == passEntityNum	(don't interact with self)
+            // ent->s.ownerNum = passEntityNum	(don't interact with your own missiles)
+            // entity[ent->s.ownerNum].ownerNum = passEntityNum	(don't interact with other missiles from owner)
             public int ownerNum;
         }
 
-        
+
 
         public enum PMType : int
         {
-        	NORMAL,		// can accelerate and turn
-        	NOCLIP,		// noclip movement
-        	SPECTATOR,	// still run into walls
-        	DEAD,		// no acceleration or turning, but free falling
-        	FREEZE,		// stuck in place with no control
-        	INTERMISSION,	// no movement or status bar
-        	SPINTERMISSION	// no movement or status bar
+            NORMAL,		// can accelerate and turn
+            NOCLIP,		// noclip movement
+            SPECTATOR,	// still run into walls
+            DEAD,		// no acceleration or turning, but free falling
+            FREEZE,		// stuck in place with no control
+            INTERMISSION,	// no movement or status bar
+            SPINTERMISSION	// no movement or status bar
         }
 
-        public class playerState_t
+        public class PlayerState
         {
-            public playerState_t Clone()
+            public PlayerState Clone()
             {
-                playerState_t s = new playerState_t();
+                PlayerState s = new PlayerState();
                 s.commandTime = commandTime;
                 s.pm_flags = pm_flags;
                 s.pm_time = pm_time;
@@ -663,7 +660,7 @@ namespace CubeHags.common
 
             public Vector3 grapplePoint;	// location of grapple to pull towards if PMF_GRAPPLE_PULL
 
-            public int eFlags;			// copied to entityState_t->eFlags
+            public EntityFlags eFlags;			// copied to entityState_t->eFlags
 
             public int eventSequence;	// pmove generated events
             public int[] events = new int[2];     // 2
@@ -708,11 +705,17 @@ namespace CubeHags.common
         // Different eTypes may use the information in different ways
         // The messages are delta compressed, so it doesn't really matter if
         // the structure size is fairly large
-        public class entityState_t
+        public class    entityState_t
         {
-            public int number;			// entity index
+            private int _number;
+            public int number { get { return _number;} set {
+            _number = value;
+                if(value == 1024) {
+                int i = 2;
+                }
+            }} 			// entity index
             public int eType;			// entityType_t
-            public int eFlags;
+            public EntityFlags eFlags;
 
             public trajectory_t pos;	// for calculating position
             public trajectory_t apos;	// for calculating angles
@@ -739,6 +742,32 @@ namespace CubeHags.common
             public int generic1;
         }
 
+        [Flags]
+        public enum EntityFlags : int
+        {
+            	EF_DEAD			=	0x00000001,		// don't draw a foe marker over players with EF_DEAD
+                EF_TICKING		=	0x00000002,		// used to make players play the prox mine ticking sound
+            	EF_TELEPORT_BIT	=	0x00000004,		// toggled every time the origin abruptly changes
+            	EF_AWARD_EXCELLENT=	0x00000008,		// draw an excellent sprite
+                EF_PLAYER_EVENT	=	0x00000010,
+            	EF_BOUNCE		=	0x00000010,		// for missiles
+            	EF_BOUNCE_HALF	=	0x00000020,		// for missiles
+            	EF_AWARD_GAUNTLET=	0x00000040,		// draw a gauntlet sprite
+            	EF_NODRAW		=	0x00000080,		// may have an event, but no model (unspawned items)
+            	EF_FIRING		=	0x00000100,		// for lightning gun
+            	EF_KAMIKAZE		=	0x00000200,
+            	EF_MOVER_STOP	=	0x00000400,		// will push otherwise
+                EF_AWARD_CAP	=	0x00000800,		// draw the capture sprite
+            	EF_TALK			=	0x00001000,		// draw a talk balloon
+            	EF_CONNECTION	=	0x00002000,		// draw a connection trouble sprite
+            	EF_VOTED		=	0x00004000,		// already cast a vote
+            	EF_AWARD_IMPRESSIVE=	0x00008000,		// draw an impressive sprite
+            	EF_AWARD_DEFEND	=	0x00010000,		// draw a defend sprite
+            	EF_AWARD_ASSIST	=	0x00020000,		// draw a assist sprite
+                EF_AWARD_DENIED	=	0x00040000,		// denied
+                EF_TEAMVOTED	=	0x00080000		// already cast a team vote
+        }
+
         public struct trajectory_t
         {
             public trType_t trType;
@@ -758,8 +787,9 @@ namespace CubeHags.common
             TR_GRAVITY
         }
 
-        public struct cmodel_t {
-        	public Vector3		mins, maxs;
+        public struct cmodel_t
+        {
+            public Vector3 mins, maxs;
             public cLeaf_t leaf;			// submodels don't reference the main tree
         }
 
@@ -775,54 +805,66 @@ namespace CubeHags.common
             public int numLeafSurfaces;
         }
 
-        public struct sysEvent_t {
-            public float evTime;
-            public sysEventType_t evType;
-            public int evValue, evValue2;
-            public int dataSize;
-            public object data;			// this must be manually freed if not NULL
+        public enum Persistance
+        {
+            PERS_SCORE = 0,           // !!! MUST NOT CHANGE, SERVER AND GAME BOTH REFERENCE !!!
+            PERS_HITS,            // total points damage inflicted so damage beeps can sound on change
+            PERS_RANK,            // player rank or team rank
+            PERS_TEAM,            // player team
+            PERS_SPAWN_COUNT,       // incremented every respawn
+            PERS_PLAYEREVENTS,        // 16 bits that can be flipped for events
+            PERS_ATTACKER,          // clientnum of last damage inflicter
+            PERS_ATTACKEE_ARMOR,      // health/armor of last person we attacked
+            PERS_KILLED,          // count of the number of times you died
+            // player awards tracking
+            PERS_IMPRESSIVE_COUNT,      // two railgun hits in a row
+            PERS_EXCELLENT_COUNT,     // two successive kills in a short amount of time
+            PERS_DEFEND_COUNT,        // defend awards
+            PERS_ASSIST_COUNT,        // assist awards
+            PERS_GAUNTLET_FRAG_COUNT,   // kills with the guantlet
+            PERS_CAPTURES         // captures
+
         }
     }
+        //
+        // config strings are a general means of communicating variable length strings
+        // from the server to all connected clients.
+        //
+        public enum ConfigString : int
+        {
+            CS_SERVERINFO = 0,
+            CS_SYSTEMINFO = 1,
+            CS_MUSIC = 2,
+            CS_MESSAGE = 3,		// from the map worldspawn's message field
+            CS_MOTD = 4,		// g_motd string for server message of the day
+            CS_WARMUP = 5,		// server time when the match will be restarted
+            CS_SCORES1 = 6,
+            CS_SCORES2 = 7,
+            CS_VOTE_TIME = 8,
+            CS_VOTE_STRING = 9,
+            CS_VOTE_YES = 10,
+            CS_VOTE_NO = 11,
 
-    //
-    // config strings are a general means of communicating variable length strings
-    // from the server to all connected clients.
-    //
-    public enum ConfigString : int
-    {
-        CS_SERVERINFO       = 0,
-        CS_SYSTEMINFO       = 1,
-        CS_MUSIC		=		2,
-        CS_MESSAGE		=		3,		// from the map worldspawn's message field
-        CS_MOTD			=		4,		// g_motd string for server message of the day
-        CS_WARMUP		=		5,		// server time when the match will be restarted
-        CS_SCORES1		=		6,
-        CS_SCORES2		=		7,
-        CS_VOTE_TIME		=	8,
-        CS_VOTE_STRING	=		9,
-        CS_VOTE_YES		=		10,
-        CS_VOTE_NO		=		11,
+            CS_TEAMVOTE_TIME = 12,
+            CS_TEAMVOTE_STRING = 14,
+            CS_TEAMVOTE_YES = 16,
+            CS_TEAMVOTE_NO = 18,
 
-        CS_TEAMVOTE_TIME	=	12,
-        CS_TEAMVOTE_STRING	=	14,
-        CS_TEAMVOTE_YES		=	16,
-        CS_TEAMVOTE_NO		=	18,
+            CS_GAME_VERSION = 20,
+            CS_LEVEL_START_TIME = 21,		// so the timer only shows the current level
+            CS_INTERMISSION = 22,		// when 1, fraglimit/timelimit has been hit and intermission will start in a second or two
+            CS_FLAGSTATUS = 23,		// string indicating flag status in CTF
+            CS_SHADERSTATE = 24,
+            CS_BOTINFO = 25,
 
-        CS_GAME_VERSION		=	20,
-        CS_LEVEL_START_TIME	=	21,		// so the timer only shows the current level
-        CS_INTERMISSION		=	22,		// when 1, fraglimit/timelimit has been hit and intermission will start in a second or two
-        CS_FLAGSTATUS		=	23,		// string indicating flag status in CTF
-        CS_SHADERSTATE	=		24,
-        CS_BOTINFO		=		25,
+            CS_ITEMS = 27,		// string of 0's and 1's that tell which items are present
 
-        CS_ITEMS		=		27,		// string of 0's and 1's that tell which items are present
+            CS_MODELS = 32,
+            CS_SOUNDS = (CS_MODELS + 256),
+            CS_PLAYERS = (CS_SOUNDS + 256),
+            CS_LOCATIONS = (CS_PLAYERS + 64),
+            CS_PARTICLES = (CS_LOCATIONS + 64),
 
-        CS_MODELS		=		32,
-        CS_SOUNDS		=		(CS_MODELS+256),
-        CS_PLAYERS = (CS_SOUNDS + 256),
-        CS_LOCATIONS		=	(CS_PLAYERS+64),
-        CS_PARTICLES		=	(CS_LOCATIONS+64) ,
-
-        CS_MAX			=		(CS_PARTICLES+64)
+            CS_MAX = (CS_PARTICLES + 64)
+        }
     }
-}

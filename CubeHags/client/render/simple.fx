@@ -70,6 +70,19 @@ struct POSTEX
 	float2 texcoord : TEXCOORD0;
 };
 
+struct POSTEXCOL
+{
+	float4 pos : POSITION;
+	float2 texcoord : TEXCOORD0;
+	float4 color : COLOR;
+};
+
+struct POSCOLOR
+{
+	float4 pos : POSITION;
+	float4 color : COLOR;
+};
+
 struct POSNORTEX
 {
 	float4 pos : POSITION;
@@ -86,6 +99,12 @@ struct VS_INPUTTAN
 	float4 tangent : TANGENT;
 };
 
+struct VS_POSCOLOR
+{
+	float4 pos : POSITION;
+	float4 color : COLOR;
+};
+
 struct VS_OUT
 {
 	float4 pos : POSITION;
@@ -93,6 +112,7 @@ struct VS_OUT
 	float2 lightmap : TEXCOORD1;
 	float3 normal : TEXCOORD2;
 	float3 color : TEXCOORD3;
+	float4 realpos : TEXCOORD4;
 };
 
 struct VS_OUTPUT_DIR
@@ -111,6 +131,21 @@ VS_OUT VertexNorTexLight( VS_INPUT input)
 	VS_OUT Out = (VS_OUT)0;
 
 	Out.pos = mul(input.pos, WorldViewProj).xyzw;
+	Out.realpos = Out.pos;
+	Out.normal = mul(input.normal, World).xyz;
+	Out.texcoord = input.texcoord;
+	Out.lightmap = input.lightmap;
+	Out.color = float4(0.0f,0.0f,0.0f,0.0f);
+	return Out;
+}
+// Vertex Shaders
+VS_OUT VertexNorTexLight2( VS_INPUT input)
+{
+	VS_OUT Out = (VS_OUT)0;
+
+	Out.pos = mul(input.pos, WorldViewProj).xyzw;
+	Out.pos.z += 1.9f;
+	Out.realpos = Out.pos;
 	Out.normal = mul(input.normal, World).xyz;
 	Out.texcoord = input.texcoord;
 	Out.lightmap = input.lightmap;
@@ -170,6 +205,7 @@ VS_OUT VertexNorTexInstancing(float4 vPos : POSITION0,
 
 	vPos.xyz = mul(vPos, modelview);
 	Out.pos = mul(vPos, WorldViewProj).xyzw;
+	Out.realpos = Out.pos;
 	Out.normal = mul(vNormal, modelview).xyz;
 	Out.texcoord = vTexcoord;
 	Out.lightmap = center;
@@ -220,10 +256,23 @@ VS_OUT VertexPosTex( POSTEX input)
 {
 	VS_OUT Out;
 	Out.pos = input.pos;
+	Out.realpos = Out.pos;
 	Out.texcoord = input.texcoord;
 	Out.lightmap = float2(0.5f,0.5f);
 	Out.normal = float3(0.0f,0.0f,0.0f);
 	Out.color = float4(0.0f,0.0f,0.0f,0.0f);
+	return Out;
+}
+
+VS_OUT VertexPosTexColor( POSTEXCOL input) 
+{
+	VS_OUT Out;
+	Out.pos = input.pos;
+	Out.realpos = Out.pos;
+	Out.texcoord = input.texcoord;
+	Out.lightmap = float2(0.5f,0.5f);
+	Out.normal = float3(0.0f,0.0f,0.0f);
+	Out.color = input.color;
 	return Out;
 }
 
@@ -232,6 +281,7 @@ VS_OUT VertexPosTex2( POSTEX input)
 	VS_OUT Out;
 	//Out.pos = input.pos;
 	Out.pos = mul(input.pos, WorldViewProj);
+	Out.realpos = Out.pos;
 	Out.texcoord = input.texcoord;
 	Out.lightmap = float2(0.5f,0.5f);
 	Out.normal = float3(0.0f,0.0f,0.0f);
@@ -239,10 +289,19 @@ VS_OUT VertexPosTex2( POSTEX input)
 	return Out;
 }
 
+VS_POSCOLOR VertexPosColor( POSCOLOR input) 
+{
+	VS_POSCOLOR Out;
+	Out.pos = mul(input.pos, WorldViewProj);
+	Out.color = input.color;
+	return Out;
+}
+
 VS_OUT VS_Sky( POSNORTEX input) 
 {
 	VS_OUT Out;
 	Out.pos = mul(input.pos+Eye, WorldViewProj);
+	Out.realpos = Out.pos;
 	Out.texcoord = input.texcoord;
 	Out.lightmap = float2(0.5f,0.5f);
 	Out.normal = float3(0.0f,0.0f,0.0f);
@@ -336,7 +395,12 @@ float4 PixelTexLightLogLum(VS_OUT i) : COLOR0
 	
 	//tex.a = get_log_luminance(tex.rgb) * invLogLumRange + logLumOffset; 
 	//tex.rgb = LinearToSRGB(tex.rgb);
+	float b = 0.001f;
+	float fogAmount = exp(-i.realpos.z*b);
+	float3 fogColor = float3(0.5f, 0.6f, 0.7f);
+	
 	tex.rgb = TonemapPixel(tex.rgb);
+	//tex.rgb = lerp(fogColor, tex.rgb, fogAmount);
 	//
 	return tex;
 	float3 albedo = GetAlbedo( i );
@@ -363,6 +427,7 @@ float4 PixelTexLightLogLum(VS_OUT i) : COLOR0
 float4 PixelTexLogLum(VS_OUT i) : COLOR0
 {
 	float4 tex = tex2D(BaseTextureSampler, i.texcoord);
+	clip(tex.a-0.01f);
 	tex.rgb *= i.color;
 	tex *= avgLogLum;
 	//tex.a = get_log_luminance(tex.rgb) * invLogLumRange + logLumOffset; 
@@ -451,9 +516,16 @@ float4 FinalPass( float2 Tex : TEXCOORD0 ) : COLOR
 	return vColor;
 }
 
-float4 PixelGUIAlpha( float2 Tex : TEXCOORD0 ) : COLOR
+float4 PixelColorAlpha( float4 color : COLOR ) : COLOR
 {
-    float4 vColor = tex2D( BaseTextureSampler, Tex );
+	float4 col = float4(color.r, color.g, color.b, color.a);
+	return col;
+}
+
+float4 PixelGUIAlpha( VS_OUT input ) : COLOR
+{
+    float4 vColor = tex2D( BaseTextureSampler, input.texcoord );
+	vColor.rgb *= input.color;
 	vColor.rgb *= vColor.a;
 	return vColor; 
 }
@@ -523,10 +595,10 @@ technique TexturedInstaced
 {
 	pass P0
 	{
-	//AlphaBlendEnable = true;
-	//SrcBlend = SrcAlpha;
-		//DestBlend = InvSrcAlpha;
-		CullMode = CCW;
+	AlphaBlendEnable = true;
+		SrcBlend = SrcAlpha;
+		DestBlend = InvSrcAlpha;
+		CullMode = None;
 		VertexShader = compile vs_2_0 VertexNorTexInstancing();
 		PixelShader = compile ps_2_0 PixelTexLogLum();
 	}
@@ -542,6 +614,17 @@ technique TexturedLightmap
 		SrcBlend = SrcAlpha;
 		CullMode = CCW;
 		VertexShader = compile vs_1_1 VertexNorTexLight();
+		PixelShader = compile ps_2_0 PixelTexLightLogLum();
+	}
+}
+technique Sky3d
+{
+	pass P0
+	{
+		DestBlend = Zero;
+		SrcBlend = SrcAlpha;
+		CullMode = CCW;
+		VertexShader = compile vs_1_1 VertexNorTexLight2();
 		PixelShader = compile ps_2_0 PixelTexLightLogLum();
 	}
 }
@@ -566,7 +649,7 @@ technique Sky
 		ZEnable = false; 
 		ZWriteEnable = false;
 		
-		CullMode = CCW;
+		CullMode = CW;
 		VertexShader = compile vs_1_1 VS_Sky();
 		PixelShader = compile ps_2_0 PS_Sky();
 	}
@@ -588,8 +671,22 @@ technique GUIAlpha
 		AlphaBlendEnable = true;
 		SrcBlend = SrcAlpha;
 		DestBlend = InvSrcAlpha;
-		VertexShader = compile vs_1_1 VertexPosTex();
+		VertexShader = compile vs_1_1 VertexPosTexColor();
         PixelShader = compile ps_2_0 PixelGUIAlpha();
+	}
+}
+
+
+technique PositionColorAlpha
+{
+	pass p0
+	{
+		CullMode = None;
+		AlphaBlendEnable = true;
+		SrcBlend = SrcAlpha;
+		DestBlend = InvSrcAlpha;
+		VertexShader = compile vs_1_1 VertexPosColor();
+        PixelShader = compile ps_2_0 PixelColorAlpha();
 	}
 }
 technique WorldAlpha

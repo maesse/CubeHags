@@ -9,11 +9,17 @@ namespace CubeHags.client.map.Source
 {
     public class SkyBox3D : RenderGroup
     {
-        Entity sky_camera;
         SourceMap map;
 
+        // Positioning
+        Entity sky_camera;
         public Vector3 startPosition = Vector3.Zero;
         public float Scale = 16f;
+
+        // Rendering
+        int lastCluster = -1;
+        int VisCount = 1;
+        public Dictionary<int, List<RenderItem>> visibleRenderItems = new Dictionary<int, List<RenderItem>>();
 
         public SkyBox3D(SourceMap map, Entity sky_camera)
         {
@@ -45,28 +51,104 @@ namespace CubeHags.client.map.Source
             
         }
 
+
         public void Render()
         {
             int cluster = map.GetClusterFromPosition(GetSkyboxPosition(Renderer.Instance.Camera.position));
-            //if (cluster != -1)
+            if (cluster == -1)
             {
-                // Generate render calls
-                //List<RenderItem> list = map.MarkVisible(cluster);
-                ////List<KeyValuePair<ulong, RenderDelegate>> calls = new List<KeyValuePair<ulong, RenderDelegate>>();
-                //foreach (RenderItem item in list)
+                lastCluster = -1;
+                //// Clear last runs visible renderitems
+                //foreach (List<RenderItem> itlist in visibleRenderItems.Values)
                 //{
-                //    ushort ibid;
-                //    if(item.ib == null)
-                //        ibid = 0;
-                //    else
-                //        ibid = item.ib.IndexBufferID;
-                //    ulong callkey = SortItem.GenerateBits(SortItem.FSLayer.GAME, SortItem.Viewport.STATIC, SortItem.VPLayer.SKYBOX3D, SortItem.Translucency.OPAQUE, item.material.MaterialID, 0,ibid , item.vb.VertexBufferID);
-                //    RenderDelegate callvalue = new RenderDelegate(item.Render);
-                //    // submit call to renderer
-                //    Renderer.Instance.drawCalls.Add(new KeyValuePair<ulong, RenderDelegate>(callkey, callvalue));
+                //    itlist.Clear();
                 //}
+            } else if (cluster != lastCluster)
+            {
+                lastCluster = cluster;
+                // Clear last runs visible renderitems
+                foreach (List<RenderItem> itlist in visibleRenderItems.Values)
+                {
+                    itlist.Clear();
+                }
                 
+
+                // Generate render calls
+                map.MarkVisible(cluster, VisCount);
+                RecursiveWorldNode(0);
             }
+        }
+
+        private void RecursiveWorldNode(int nodeid)
+        {
+            do
+            {
+                if (nodeid >= 0)
+                {
+                    // node
+                    dnode_t node = map.world.nodes[nodeid];
+
+                    if (node.lastVisibleCount != VisCount)
+                        return;
+
+                    RecursiveWorldNode(node.children[0]);
+                    nodeid = node.children[1];
+                }
+                else
+                {
+                    // leaf
+                    dleaf_t leaf = map.world.leafs[-(nodeid + 1)];
+
+                    // Check for displacements
+                    leaf.lastVisibleCount = VisCount;
+                    if (leaf.DisplacementIndexes != null)
+                    {
+                        int[] indx = leaf.DisplacementIndexes;
+                        for (int i = 0; i < indx.Length; i++)
+                        {
+                            Face face2 = map.world.faces[indx[i]];
+                            if (face2.lastVisCount != VisCount)
+                            {
+                                face2.lastVisCount = VisCount;
+                                visibleRenderItems[face2.item.material.MaterialID].Add(face2.item);
+                            }
+                        }
+                    }
+
+
+                    // Iterate over contained faces - this will loop a lot!
+                    for (int j = 0; j < leaf.numleaffaces; j++)
+                    {
+                        int index = j + leaf.firstleafface;
+
+                        Face face = map.world.faces[map.world.leafFaces[index]];
+                        // is face already processed this frame?
+                        if (face != null && face.lastVisCount != VisCount)
+                        {
+                            face.lastVisCount = VisCount;
+                            if (face.item != null)
+                                visibleRenderItems[face.item.material.MaterialID].Add(face.item); // possible 10%+ optimization here
+                        }
+                    }
+                    //// Handle static props
+                    //for (int i = 0; i < leaf.staticProps.Count; i++)
+                    //{
+                    //    if (leaf.staticProps[i].prop_t.lastVisibleCount != VisCount)
+                    //    {
+                    //        leaf.staticProps[i].prop_t.lastVisibleCount = VisCount;
+                    //        leaf.staticProps[i].prop_t.lastVisibleLeaf = (ushort)-(nodeid + 1);
+                    //        // middle of leaf
+                    //        //Vector3 pos = (leaf.maxs - leaf.mins) / 2;
+                    //        //leaf.staticProps[i].prop_t.Origin
+
+                    //        visibleProps.Add(leaf.staticProps[i]);
+                    //    }
+                    //    else
+                    //        leaf.staticProps[i].prop_t.lastVisibleLeaf = (ushort)-(nodeid + 1);
+                    //}
+                    break;
+                }
+            } while (true);
         }
 
         public Vector3 GetSkyboxPosition(Vector3 cameraPosition) 

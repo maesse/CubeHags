@@ -10,15 +10,15 @@ using CubeHags.client;
 namespace CubeHags.server
 {
     public struct level_locals_t{
-    	public List<gclient_t>	clients;		// [maxclients]
+    	public gclient_t[]	clients;		// [maxclients]
 
-    	public List<gentity_t>	gentities;
-    	public int			gentitySize;
-    	public int			num_entities;		// current number, <= MAX_GENTITIES
+    	public gentity_t[]	gentities;
+        public sharedEntity[] sentities;
 
-    	public int			warmupTime;			// restart match at this time
 
-    	public StreamWriter	logFile;
+        public int			num_entities;		// current number, <= MAX_GENTITIES
+
+    	//public int			warmupTime;			// restart match at this time
 
     	// store latched cvars here that we want to get at often
     	public int			maxclients;
@@ -110,6 +110,7 @@ namespace CubeHags.server
         {
             s = new Common.entityState_t();
             r = new Common.entityShared_t();
+            r.s = s;
         }
         public Common.entityState_t s;  // communicated by server to clients
         public Common.entityShared_t r;     // shared by both the server system and game
@@ -245,7 +246,7 @@ namespace CubeHags.server
     public class gclient_t {
 
     	// ps MUST be the first element, because the server expects it
-        public Common.playerState_t ps = new Common.playerState_t();				// communicated by server to clients
+        public Common.PlayerState ps = new Common.PlayerState();				// communicated by server to clients
 
     	// the rest of the structure is private to game
     	public clientPersistant_t	pers;

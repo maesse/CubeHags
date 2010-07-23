@@ -37,7 +37,7 @@ namespace CubeHags.client.cgame
 
             // prepare for pmove
             pmove.ps = cg.predictedPlayerState;
-
+            pmove.Trace = new TraceDelegate(CG_Trace);
             // save the state before the pmove so we can detect transitions
             Common.PlayerState oldPlayerStateref = cg.predictedPlayerState;
             int current = Client.Instance.cl.cmdNumber;
@@ -182,6 +182,15 @@ namespace CubeHags.client.cgame
             // fire events and other transition triggered things
             TransitionPlayerState(cg.predictedPlayerState, oldPlayerState);
             WindowManager.Instance.info.SetPos(cg.predictedPlayerState.origin);
+        }
+
+        public trace_t CG_Trace(Vector3 start, Vector3 end, Vector3 mins, Vector3 maxs, int skipNumber, int mask) 
+        {
+            trace_t t = ClipMap.Instance.Box_Trace(start, end, mins, maxs, 0, mask, 0);
+            t.entityNum = t.fraction != 1.0f ? 1022 : 1023;
+
+            // TODO: Check entities
+            return t;
         }
 
         /*

@@ -14,6 +14,7 @@ namespace CubeHags.server
         {
             FindIntermissionPoint();
             origin = level.intermission_origin;
+            origin[2] += 36;
             angles = level.intermission_angle;
             return null;
         }
@@ -352,7 +353,7 @@ namespace CubeHags.server
                 from++;
 
             gentity_t ent;
-            for (; from < g_entities.Count; from++)
+            for (; from < g_entities.Length; from++)
             {
                 ent = g_entities[from];
                 if (!ent.inuse)

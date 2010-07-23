@@ -9,8 +9,32 @@ using CubeHags.client.map.Source;
 
 namespace CubeHags.common
 {
+
+    //#define	MASK_ALL				(-1)
+    //#define	MASK_SOLID				(1)
+    //#define	MASK_PLAYERSOLID		(1|0x10000|0x2000000)
+    //#define	MASK_DEADSOLID			(1|0x10000)
+    //#define	MASK_WATER				(32)
+    //#define	MASK_OPAQUE				(1)
+    //#define	MASK_SHOT				(1|0x2000000|0x4000000)
+
+    public class MoveClip
+    {
+        public Vector3		boxmins, boxmaxs;// enclose the test object along entire move
+        public Vector3 mins;
+        public Vector3 maxs;	// size of the moving object
+        public Vector3 start;
+        public Vector3 end;
+        public trace_t trace;
+        public int passEntityNum;
+        public int contentmask;
+        public int capsule;
+    }
+
     public sealed partial class ClipMap
     {
+        public const float EPSILON = 0.03125f;
+
         leafList_t ll = new leafList_t();
         traceWork_t tw = new traceWork_t();
         int[] lleafs = new int[1024];
@@ -18,6 +42,56 @@ namespace CubeHags.common
         public trace_t Box_Trace( Vector3 start, Vector3 end, Vector3 mins, Vector3 maxs, int model, int brushmask, int capsule)
         {
             return Trace(start, end, mins, maxs, model, Vector3.Zero, brushmask, capsule, null);
+        }
+
+        public trace_t SV_Trace(Vector3 start, Vector3 end, Vector3 mins, Vector3 maxs, int passEntityNum, int contentMask)
+        {
+            trace_t results;
+            if (mins == null)
+                mins = Vector3.Zero;
+            if (maxs == null)
+                maxs = Vector3.Zero;
+
+            // clip to world
+            MoveClip clip = new MoveClip();
+            clip.trace = Box_Trace(start, end, mins, maxs, 0, contentMask, 0);
+            clip.trace.entityNum = (clip.trace.fraction != 1.0f) ? 1022 : 1023;
+            if (clip.trace.fraction == 0f)
+            {
+                return clip.trace; // blocked immediately by the world
+            }
+
+
+            clip.contentmask = contentMask;
+            clip.start = start;
+            clip.end = end;
+            clip.mins = mins;
+            clip.maxs = maxs;
+            clip.passEntityNum = passEntityNum;
+            clip.capsule = 0;
+
+            // create the bounding box of the entire move
+            // we can limit it to the part of the move not
+            // already clipped off by the world, which can be
+            // a significant savings for line of sight and shot traces
+            for (int i = 0; i < 3; i++)
+            {
+                if (end[i] > start[i])
+                {
+                    clip.boxmins[i] = clip.start[i] + clip.mins[i] - 1;
+                    clip.boxmaxs[i] = clip.end[i] + clip.maxs[i] + 1;
+                }
+                else
+                {
+                    clip.boxmins[i] = clip.end[i] + clip.mins[i] - 1;
+                    clip.boxmaxs[i] = clip.start[i] + clip.maxs[i] + 1;
+                }
+            }
+
+            // clip to other solid entities
+            //ClipMoveToEntities(clip);
+            results = clip.trace;
+            return results;
         }
 
         trace_t Trace(Vector3 start, Vector3 end, Vector3 mins, Vector3 maxs, int model, Vector3 origin, int brushmask, int capsule, sphere_t sphere)
@@ -28,16 +102,14 @@ namespace CubeHags.common
             // for statistics, may be zeroed
             c_traces++;
 
-            //traceWork_t tw = new traceWork_t();
+            this.tw = new traceWork_t();
             traceWork_t tw = this.tw;
             tw.trace = new trace_t();
-
             tw.trace.fraction = 1; // assume it goes the entire distance until shown otherwise
             tw.modelOrigin = origin;
 
             if (nodes == null || nodes.Length == 0)
             {
-                //results = tw.trace;
                 return tw.trace; // map not loaded, shouldn't happen
             }
 
@@ -53,7 +125,7 @@ namespace CubeHags.common
             // adjust so that mins and maxs are always symetric, which
             // avoids some complications with plane expanding of rotated
             // bmodels
-            Vector3 offset = (mins-maxs) * 0.5f;
+            Vector3 offset = (mins+maxs) * 0.5f;
             tw.size[0] = mins - offset;
             tw.size[1] = maxs - offset;
             tw.start = start + offset;
@@ -67,7 +139,7 @@ namespace CubeHags.common
                 tw.sphere.use = capsule==1?true:false;
                 tw.sphere.radius = (tw.size[1][0] > tw.size[1][2]) ? tw.size[1][2] : tw.size[1][0];
                 tw.sphere.halfheight = tw.size[1][2];
-                //tw.sphere.offset = new Vector3(0, 0, tw.size[1][2] - tw.sphere.radius);
+                tw.sphere.offset = new Vector3(0, 0, tw.size[1][2] - tw.sphere.radius);
             }
 
             tw.maxOffset = tw.size[1][0] + tw.size[1][1] + tw.size[1][2];
@@ -210,7 +282,8 @@ namespace CubeHags.common
                 }
                 else
                 {
-                    TraceThroughTree(tw, 0, 0, 1, tw.start, tw.end);
+                    RecursiveHullCheck(tw, 0, 0, 1, tw.start, tw.end);
+                    //TraceThroughTree(tw, 0, 0, 1, tw.start, tw.end);
                 }
             }
 
@@ -222,11 +295,6 @@ namespace CubeHags.common
             else
             {
                 tw.trace.endpos = start + (tw.trace.fraction * (end - start));
-
-                //for (int i = 0; i < 3; i++)
-                //{
-                //    tw.trace.endpos[i] = start[i] + tw.trace.fraction * (end[i] - start[i]);
-                //}
             }
 
             // If allsolid is set (was entirely inside something solid), the plane is not valid.
@@ -235,6 +303,378 @@ namespace CubeHags.common
             Debug.Assert(tw.trace.allsolid || tw.trace.fraction == 1f || tw.trace.plane.normal.LengthSquared() > 0.9999f);
             return tw.trace;
         }
+
+        void TraceTest(int num)
+        {
+            List<int> llist = new List<int>();
+            for (int h = 0; h < leafbrushes.Count; h++)
+            {
+                if (leafbrushes[h] == 0)
+                {
+                    llist.Add(h);
+                }
+            }
+
+            for (int j = 0; j < leafs.Length; j++)
+            {
+                foreach (int ll in llist)
+                {
+                    if (leafs[j].firstleafbrush <= ll && ll - leafs[j].firstleafbrush < leafs[j].numleafbrushes)
+                    {
+                        int test = 2;
+                    }
+                }
+            }
+
+            for (int i = -1; i > -(leafs.Length+1); i--)
+            {
+                TraceTest2(i);
+            }
+
+            if (num < 0)
+            {
+                TraceTest2(num);
+                return;
+            }
+
+            dnode_t node = nodes[num];
+            cplane_t plane = node.plane;
+
+            TraceTest(node.children[0]);
+            TraceTest(node.children[1]);
+        }
+
+        void TraceTest2(int num)
+        {
+            dleaf_t leaf = leafs[-1 - num];
+            dbrush_t b;
+            // trace line against all brushes in the leaf
+            for (int k = 0; k < leaf.numleafbrushes+1; k++)
+            {
+                b = brushes[leafbrushes[leaf.firstleafbrush + k]];
+                if (b.checkcount == checkcount)
+                    continue;   // already checked this brush in another leaf
+                b.checkcount = checkcount;
+
+                if (b.contents == brushflags.CONTENTS_EMPTY || ((int)b.contents & 1) != 1)
+                    continue;
+                if (b.boundsmax.Y != 512.0f)
+                    continue;
+                //if (!BoundsIntersect(new Vector3(100, 490, 40), new Vector3(100, 492, 40), b.boundsmin, b.boundsmax))
+                //    continue;
+
+                TraceTest3(b);
+                //if (tw.trace.fraction == 0.0f)
+                //    return;
+            }
+        }
+
+        void TraceTest3(dbrush_t brush)
+        {
+            for (int i = 0; i < brush.sides.Length; i++)
+            {
+                dbrushside_t side = brush.sides[i];
+                cplane_t plane = side.plane;
+
+                if (plane.normal == new Vector3(0, 1f, 0) && plane.dist == 512f)
+                {
+                    int test = 2;
+                }
+            }
+        
+        }
+
+        void RecursiveHullCheck(traceWork_t tw, int num, float p1f, float p2f, Vector3 p1, Vector3 p2)
+        {
+            if (tw.trace.fraction <= p1f)
+                return; // already hit something nearer
+
+            dnode_t node = null;
+            cplane_t plane;
+            float t1 = 0f, t2 = 0f, offset = 0f;
+
+            // find the point distances to the seperating plane
+            // and the offset for the size of the box
+
+            // NJS: Hoisted loop invariant comparison to trace_ispoint
+            if (tw.isPoint)
+            {
+                while (num >= 0)
+                {
+                    node = nodes[num];
+                    plane = node.plane;
+
+                    if (plane.type < 3)
+                    {
+                        t1 = p1[plane.type] - plane.dist;
+                        t2 = p2[plane.type] - plane.dist;
+                        offset = tw.extents[plane.type];
+                    }
+                    else
+                    {
+                        t1 = Vector3.Dot(plane.normal, p1) - plane.dist;
+                        t2 = Vector3.Dot(plane.normal, p2) - plane.dist;
+                        offset = 0;
+                    }
+
+                    // see which sides we need to consider
+                    if (t1 > offset && t2 > offset)
+                    {
+                        num = node.children[0];
+                        continue;
+                    }
+                    if (t1 < -offset && t2 < -offset)
+                    {
+                        num = node.children[1];
+                        continue;
+                    }
+                    break;
+
+                }
+            }
+            else
+            {
+                while (num >= 0)
+                {
+                    node = nodes[num];
+                    plane = node.plane;
+
+                    if (plane.type < 3)
+                    {
+                        t1 = p1[plane.type] - plane.dist;
+                        t2 = p2[plane.type] - plane.dist;
+                        offset = tw.extents[plane.type];
+                    } else {
+                        t1 = Vector3.Dot(plane.normal, p1) - plane.dist;
+                        t2 = Vector3.Dot(plane.normal, p2) - plane.dist;
+                        offset = (float)(Math.Abs(tw.extents[0]*plane.normal[0]) +
+                                       Math.Abs(tw.extents[1]*plane.normal[1]) +
+                                       Math.Abs(tw.extents[2]*plane.normal[2]));
+                    }
+
+                    // see which sides we need to consider
+                    if (t1 > offset && t2 > offset)
+                    {
+                        num = node.children[0];
+                        continue;
+                    }
+                    if (t1 < -offset && t2 < -offset)
+                    {
+                        num = node.children[1];
+                        continue;
+                    }
+                    break;
+                }
+            }
+
+            // if < 0, we are in a leaf node
+            if (num < 0)
+            {
+                //TraceToLeaf(tw, -1 - num, p1f, p2f);
+                TraceThroughLeaf(tw, leafs[-1 - num]);
+                return;
+            }
+
+            // put the crosspoint DIST_EPSILON pixels on the near side
+            float idist, frac, frac2;
+            int side;
+            if (t1 < t2)
+            {
+                idist = 1.0f / (t1 - t2);
+                side = 1;
+                frac2 = (t1 + offset + EPSILON) * idist;
+                frac = (t1 - offset - EPSILON) * idist;
+            }
+            else if (t1 > t2)
+            {
+                idist = 1.0f / (t1 - t2);
+                side = 0;
+                frac2 = (t1 - offset - EPSILON) * idist;
+                frac = (t1 + offset + EPSILON) * idist;
+            }
+            else
+            {
+                side = 0;
+                frac = 1;
+                frac2 = 0;
+            }
+
+            // move up to the node
+            frac = Clamp(frac, 0, 1);
+            float midf = p1f + (p2f - p1f) * frac;
+            Vector3 mid = p1 + (p2 - p1) * frac;
+
+            RecursiveHullCheck(tw, node.children[side], p1f, midf, p1, mid);
+
+            // go past the node
+            frac2 = Clamp(frac2, 0, 1);
+            midf = p1f + (p2f - p1f) * frac2;
+            mid = p1 + (p2 - p1) * frac2;
+
+            RecursiveHullCheck(tw, node.children[side ^ 1], midf, p2f, mid, p2);
+        }
+
+        void TraceToLeaf(traceWork_t tw, int ndxLeaf, float startFrac, float endFrac)
+        {
+            //int nCurrentDepth = CurrentCheckCount();
+            //int nDepth = CurrentCheckCountDepth();
+
+            // get the leaf
+            dleaf_t pLeaf = leafs[ndxLeaf];
+
+            //
+            // trace ray/box sweep against all brushes in this leaf
+            //
+            for (int ndxLeafBrush = 0; ndxLeafBrush < pLeaf.numleafbrushes; ndxLeafBrush++)
+            {
+                // get the current brush
+                int ndxBrush = leafbrushes[pLeaf.firstleafbrush + ndxLeafBrush];
+                dbrush_t brush = brushes[ndxBrush];
+
+                //// make sure we only check this brush once per trace/stab
+                //if (brush.checkcount[nDepth] == nCurrentCheckCount)
+                //    continue;
+                
+                //// mark the brush as checked
+                //brush.checkcount[nDepth] = nCurrentCheckCount;
+
+                // only collide with objects you are interested in
+                if (((int)brush.contents & tw.contents) != tw.contents)
+                    continue;
+
+                // trace against the brush and find impact point -- if any?
+                // NOTE: trace_trace.fraction == 0.0f only when trace starts inside of a brush!
+                ClipBoxToBrush(tw, brush);
+                if (tw.trace.fraction == 0.0f)
+                    return;
+            }
+
+            // TODO: this may be redundant
+            if (tw.trace.startsolid)
+                return;
+        }
+
+        
+
+        float Clamp(float value, float min, float max)
+        {
+            if (value > max)
+                value = max;
+            if (value < min)
+                value = min;
+            return value;
+        }
+
+        ///*
+        //==================
+        //CM_TraceThroughTree
+
+        //Traverse all the contacted leafs from the start to the end position.
+        //If the trace is a point, they will be exactly in order, but for larger
+        //trace volumes it is possible to hit something in a later leaf with
+        //a smaller intercept fraction.
+        //==================
+        //*/
+        //void TraceThroughTree(traceWork_t tw, int num, float p1f, float p2f, Vector3 p1, Vector3 p2)
+        //{
+        //    //TraceTest(0);
+        //    if (tw.trace.fraction <= p1f)
+        //        return; // already hit something nearer
+
+        //    // if < 0, we are in a leaf node
+        //    if (num < 0)
+        //    {
+        //        TraceThroughLeaf(tw, leafs[-1-num]);
+        //        return;
+        //    }
+            
+        //    //
+        //    // find the point distances to the seperating plane
+        //    // and the offset for the size of the box
+        //    //
+        //    dnode_t node = nodes[num];
+        //    cplane_t plane = node.plane;
+
+        //    // adjust the plane distance apropriately for mins/maxs
+        //    float t1, t2, offset;
+        //    if (plane.type < 3)
+        //    {
+        //        t1 = p1[plane.type] - plane.dist;
+        //        t2 = p2[plane.type] - plane.dist;
+        //        offset = tw.extents[plane.type];
+        //    }
+        //    else
+        //    {
+        //        t1 = Vector3.Dot(plane.normal, p1) - plane.dist;
+        //        t2 = Vector3.Dot(plane.normal, p2) - plane.dist;
+        //        if (tw.isPoint)
+        //            offset = 0;
+        //        else
+        //        {
+        //            offset = (float)(Math.Abs(tw.extents[0] * plane.normal[0]) + Math.Abs(tw.extents[1] * plane.normal[1]) + Math.Abs(tw.extents[2] * plane.normal[2]));
+        //            // this is silly
+        //            //offset = 2048;
+        //        }
+        //    }
+
+        //    // see which sides we need to consider
+        //    if (t1 > offset + 1 && t2 > offset + 1)
+        //    {
+        //        TraceThroughTree(tw, node.children[0], p1f, p2f, p1, p2);
+        //        return;
+        //    }
+        //    if (t1 < -offset - 1 && t2 < -offset - 1)
+        //    {
+        //        TraceThroughTree(tw, node.children[1], p1f, p2f, p1, p2);
+        //        return;
+        //    }
+
+        //    // put the crosspoint SURFACE_CLIP_EPSILON pixels on the near side
+        //    float idist, frac, frac2;
+        //    int side;
+        //    if (t1 < t2)
+        //    {
+        //        idist = 1.0f / (t1 - t2);
+        //        side = 1;
+        //        frac2 = (t1 + offset + EPSILON) * idist;
+        //        frac = (t1 - offset + EPSILON) * idist;
+        //    }
+        //    else if (t1 > t2)
+        //    {
+        //        idist = 1.0f / (t1 - t2);
+        //        side = 0;
+        //        frac2 = (t1 - offset - EPSILON) * idist;
+        //        frac = (t1 + offset + EPSILON) * idist;
+        //    }
+        //    else
+        //    {
+        //        side = 0;
+        //        frac = 1;
+        //        frac2 = 0;
+        //    }
+
+        //    // move up to the node
+        //    if (frac < 0f)
+        //        frac = 0;
+        //    if (frac > 1f)
+        //        frac = 1;
+
+        //    float midf = p1f + ((p2f - p1f) * frac);
+        //    Vector3 mid = p1 + (p2 - p1) * frac;
+
+        //    TraceThroughTree(tw, node.children[side], p1f, midf, p1, mid);
+
+        //    // go past the node
+        //    if (frac2 < 0f)
+        //        frac2 = 0;
+        //    if (frac2 > 1f)
+        //        frac2 = 1f;
+
+        //    midf = p1f + ((p2f - p1f) * frac2);
+        //    mid = p1 + (frac2 * (p2 - p1));
+
+        //    TraceThroughTree(tw, node.children[side ^ 1], midf, p2f, mid, p2);
+        //}
 
         void TraceThroughLeaf(traceWork_t tw, dleaf_t leaf)
         {
@@ -247,12 +687,12 @@ namespace CubeHags.common
                     continue;   // already checked this brush in another leaf
                 b.checkcount = checkcount;
 
-                if (b.contents == brushflags.CONTENTS_EMPTY || ((int)b.contents & tw.contents) != tw.contents)
+                if (((int)b.contents & tw.contents) != tw.contents)
                     continue;
 
-                if (!BoundsIntersect(tw.bounds[0], tw.bounds[1], b.boundsmin, b.boundsmax))
-                    continue;
-
+                //if (!BoundsIntersect(tw.bounds[0], tw.bounds[1], b.boundsmin, b.boundsmax))
+                //    continue;
+                //ClipBoxToBrush(tw, b);
                 TraceThroughBrush(tw, b);
                 if (tw.trace.fraction == 0.0f)
                     return;
@@ -274,12 +714,12 @@ namespace CubeHags.common
 
             dbrushside_t leadside = null;
 
-            if (tw.sphere.use)
-            {
-                int test = 2;
-            }
-            else
-            {
+            //if (tw.sphere.use)
+            //{
+            //    int test = 2;
+            //}
+            //else
+            //{
                 //
                 // compare the trace against all planes of the brush
                 // find the latest time the trace crosses a plane towards the interior
@@ -287,36 +727,47 @@ namespace CubeHags.common
                 //
                 for (int i = 0; i < brush.numsides; i++)
                 {
-                    dbrushside_t side = brush.sides[i];
+                    dbrushside_t side = brushsides[brush.firstside + i];
                     cplane_t plane = side.plane;
 
-                    // adjust the plane distance apropriately for mins/maxs
+                    if (side.plane.normal.X == 0f && side.plane.normal.Y == 0f && side.plane.normal.Z == 0f)
+                        continue;
+
                     float dist = plane.dist - Vector3.Dot(tw.offsets[plane.signbits], plane.normal);
 
                     float d1 = Vector3.Dot(tw.start, plane.normal) - dist;
                     float d2 = Vector3.Dot(tw.end, plane.normal) - dist;
 
-                    if (d2 > 0f)
-                        getout = true;  // endpoint is not in solid
-                    if (d1 > 0f)
+                    // if completely in front of face, no intersection
+                    if (d1 > 0.0f)
+                    {
                         startout = true;
 
-                    // if completely in front of face, no intersection with the entire brush
-                    if (d1 > 0f && (d2 >= 0.125f || d2 >= d1))
-                        return;
-
-                    // if it doesn't cross the plane, the plane isn't relevent
-                    if (d1 <= 0 && d2 <= 0)
+                        // d1 > 0.f && d2 > 0.f
+                        if (d2 > 0.0f)
+                            return;
+                    }
+                    else
                     {
-                        continue;
+                        // d1 <= 0.f && d2 <= 0.f
+                        if (d2 <= 0.0f)
+                            continue;
+
+                        // d2 > 0.f
+                        getout = true;  // endpoint is not in solid
                     }
 
                     // crosses face
                     if (d1 > d2)    // enter
                     {
-                        float f = (d1 - 0.125f) / (d1 - d2);
-                        if (f < 0)
-                            f = 0;
+                        // enter
+                        // JAY: This could be negative if d1 is less than the epsilon.
+                        // If the trace is short (d1-d2 is small) then it could produce a large
+                        // negative fraction.  I can't believe this didn't break Q2!
+                        float f = (d1 - EPSILON);
+                        if (f < 0.0f)
+                            f = 0.0f;
+                        f = f / (d1 - d2);
                         if (f > enterFrac)
                         {
                             enterFrac = f;
@@ -326,16 +777,16 @@ namespace CubeHags.common
                     }
                     else // leave
                     {
-                        float f = (d1 + 0.125f) / (d1 - d2);
-                        if (f > 1)
-                            f = 1;
+                        float f = (d1 + EPSILON) / (d1 - d2);
+                        //if (f > 1)
+                        //    f = 1;
                         if (f < leaveFrac)
                         {
                             leaveFrac = f;
                         }
                     }
                 }
-            }
+            //}
 
             //
             // all planes have been checked, and the trace was not
@@ -345,39 +796,231 @@ namespace CubeHags.common
             {
                 // original point was inside brush
                 tw.trace.startsolid = true;
+                tw.trace.contents = (int)brush.contents;
+
                 if (!getout)
                 {
                     tw.trace.allsolid = true;
                     tw.trace.fraction = 0f;
-                    tw.trace.contents = (int)brush.contents;
+                    //tw.trace.fractionleftsolid = 1.0f;
+                }
+                else
+                {
+                    // if leavefrac == 1, this means it's never been updated or we're in allsolid
+                    // the allsolid case was handled above
+
                 }
                 return;
             }
 
             if (enterFrac < leaveFrac)
             {
-                if (enterFrac > -1 && enterFrac < tw.trace.fraction)
+                if (enterFrac > -1.0f && enterFrac < tw.trace.fraction)
                 {
                     if (enterFrac < 0)
                         enterFrac = 0;
                     tw.trace.fraction = enterFrac;
                     tw.trace.plane = clipplane;
-                    tw.trace.surfaceFlags = leadside.bevel;
+                    //tw.trace.surfaceFlags = leadside.bevel;
                     tw.trace.contents = (int)brush.contents;
 
                 }
             }
         }
 
+        void ClipBoxToBrush(traceWork_t tw, dbrush_t brush)
+        {
+            if (brush.numsides <= 0)
+                return;
+
+            float enterFrac = -9999f;
+            float leaveFrac = 1.0f;
+            cplane_t clipPlane = null;
+
+            bool getout = false;
+            bool getout2 = false;
+            bool startout = false;
+            bool startout2 = false;
+            dbrushside_t leadside = null;
+
+            float dist;
+            cplane_t plane = new cplane_t();
+
+            dbrushside_t side;
+            for (int i = 0; i < brush.numsides; i++)
+            {
+                side = brushsides[brush.firstside+i];
+                plane = side.plane;
+
+                if (!tw.isPoint)
+                {
+                    // general box case
+
+                    // push the plane out apropriately for mins/maxs
+
+                    // FIXME: special case for axial - NOTE: These axial planes are not always positive!!!
+                    // FIXME: use signbits into 8 way lookup for each mins/maxs
+
+                    // Compute the sign bits
+                    //unsigned nSigns  =  ( *(int*)(&plane->normal[0])) & 0x80000000;
+                    //		   nSigns |= (( *(int*)(&plane->normal[1]) & 0x80000000 ) >> 1);
+                    //         nSigns |= (( *(int*)(&plane->normal[2]) & 0x80000000 ) >> 2);
+
+                    Vector3 ofs = Vector3.Zero;
+                    ofs[0] = (plane.normal[0] < 0.0f) ? tw.extents[0] : tw.extents[0] * -1f;
+                    ofs[1] = (plane.normal[1] < 0.0f) ? tw.extents[1] : tw.extents[1] * -1f;
+                    ofs[2] = (plane.normal[2] < 0.0f) ? tw.extents[2] : tw.extents[2] * -1f;
+
+                    dist = plane.dist - Vector3.Dot(ofs, plane.normal);
+                }
+                else
+                {
+                    // special point case
+                    dist = plane.dist;
+                    // don't trace rays against bevel planes 
+                    if (side.bevel > 0)
+                        continue;
+                }
+
+                //for (int j = 0; j < planes.Count; j++)
+                //{
+                //    if ( planes[j].dist == -512f)
+                //    {
+                //        int test = 2;
+                //    }
+                //}
+
+                //if ( plane.normal.Y == -1.0f && plane.dist == -544.0f)
+                //{
+                //    int test = 2;
+                //}
+
+                float d1 = Vector3.Dot(tw.start, plane.normal) - dist;
+                float d2 = Vector3.Dot(tw.end, plane.normal) - dist;
+
+                // if completely in front of face, no intersection
+                if (d1 > 0.0f)
+                {
+                    startout2 = true;
+
+                    //if (d2 > 0.0f)
+                    //    return;
+                }
+                else
+                {
+                    if (d2 <= 0.0f)
+                        continue;
+
+                    getout2 = true;
+                }
+
+                // crosses face
+                if (d1 > d2)
+                {
+                    // enter
+                    // JAY: This could be negative if d1 is less than the epsilon.
+                    // If the trace is short (d1-d2 is small) then it could produce a large
+                    // negative fraction.  I can't believe this didn't break Q2!
+                    float f = (d1 - EPSILON);
+                    if (f < 0.0f)
+                        f = 0.0f;
+                    f = f / (d1 - d2);
+                    if (f > enterFrac)
+                    {
+                        enterFrac = f;
+                        clipPlane = plane;
+                        leadside = side;
+                        getout = getout2;
+                        startout = startout2;
+                    }
+
+                }
+                else
+                {
+                    // leave
+                    float f = (d1 + EPSILON) / (d1 - d2);
+                    if (f < leaveFrac)
+                    {
+                        leaveFrac = f;
+                        getout = getout2;
+                        startout = startout2;
+                    }
+                }
+            }
+
+            // when this happens, we entered the brush *after* leaving the previous brush.
+            // Therefore, we're still outside!
+
+            // NOTE: We only do this test against points because fractionleftsolid is
+            // not possible to compute for brush sweeps without a *lot* more computation
+            // So, client code will never get fractionleftsolid for box sweeps
+            if (tw.isPoint && startout)
+            {
+                // Add a little sludge.  The sludge should already be in the fractionleftsolid
+                // (for all intents and purposes is a leavefrac value) and enterfrac values.  
+                // Both of these values have +/- DIST_EPSILON values calculated in.  Thus, I 
+                // think the test should be against "0.0."  If we experience new "left solid"
+                // problems you may want to take a closer look here!
+                //		if ((trace->fractionleftsolid - enterfrac) > -1e-6)
+                if (tw.trace.fractionleftsolid - enterFrac > 0.0f)
+                    startout = false;
+            }
+
+            if (!startout)
+            {
+                // original point was inside brush
+                tw.trace.startsolid = true;
+                // return starting contents
+                tw.trace.contents = (int)brush.contents;
+
+                if (!getout)
+                {
+                    tw.trace.allsolid = true;
+                    tw.trace.plane = plane;
+                    tw.trace.fraction = 0.0f;
+                    tw.trace.fractionleftsolid = 1.0f;
+                }
+                else
+                {
+                    // if leavefrac == 1, this means it's never been updated or we're in allsolid
+                    // the allsolid case was handled above
+                    if ((leaveFrac != 1.0f) && (leaveFrac > tw.trace.fractionleftsolid))
+                    {
+                        tw.trace.fractionleftsolid = leaveFrac;
+
+                        // This could occur if a previous trace didn't start us in solid
+                        if (tw.trace.fraction <= leaveFrac)
+                        {
+                            tw.trace.fraction = 1.0f;
+                        }
+                    }
+                }
+                return;
+
+            }
+
+            // We haven't hit anything at all until we've left...
+            if (enterFrac < leaveFrac)
+            {
+                if (enterFrac > -9999 && enterFrac < tw.trace.fraction)
+                {
+                    if (enterFrac < 0)
+                        enterFrac = 0;
+                    tw.trace.fraction = enterFrac;
+                    tw.trace.plane = clipPlane;
+                    tw.trace.contents = (int)brush.contents;
+                }
+            }
+        }
+
         bool BoundsIntersect(Vector3 mins, Vector3 maxs, Vector3 mins2, Vector3 maxs2)
         {
-            float SURFACE_CLIP_EPSILON = 0.125f;
-            if (maxs[0] < mins2[0] - SURFACE_CLIP_EPSILON ||
-                maxs[1] < mins2[1] - SURFACE_CLIP_EPSILON ||
-                maxs[2] < mins2[2] - SURFACE_CLIP_EPSILON ||
-                mins[0] > maxs2[0] + SURFACE_CLIP_EPSILON ||
-                mins[1] > maxs2[1] + SURFACE_CLIP_EPSILON ||
-                mins[2] > maxs2[2] + SURFACE_CLIP_EPSILON)
+            if (maxs[0] < mins2[0] - EPSILON ||
+                maxs[1] < mins2[1] - EPSILON ||
+                maxs[2] < mins2[2] - EPSILON ||
+                mins[0] > maxs2[0] + EPSILON ||
+                mins[1] > maxs2[1] + EPSILON ||
+                mins[2] > maxs2[2] + EPSILON)
             {
                 return false;
             }
@@ -385,113 +1028,19 @@ namespace CubeHags.common
             return true;
         }
 
-        /*
-        ==================
-        CM_TraceThroughTree
-
-        Traverse all the contacted leafs from the start to the end position.
-        If the trace is a point, they will be exactly in order, but for larger
-        trace volumes it is possible to hit something in a later leaf with
-        a smaller intercept fraction.
-        ==================
-        */
-        void TraceThroughTree(traceWork_t tw, int num, float p1f, float p2f, Vector3 p1, Vector3 p2)
+        int FindParentNode(int nodeid)
         {
-            if (tw.trace.fraction <= p1f)
-                return; // already hit something nearer
-
-            // if < 0, we are in a leaf node
-            if (num < 0)
+            //System.Console.WriteLine("Parent for " + nodeid);
+            if (nodeid == 0)
+                return 0;
+            for (int i = 0; i < nodes.Length; i++)
             {
-                TraceThroughLeaf(tw, leafs[-1 - num]);
-                return;
+                if (nodes[i].children[0] == nodeid)
+                    return FindParentNode(i);
+                else if (nodes[i].children[1] == nodeid)
+                    return FindParentNode(i);
             }
-
-            //
-            // find the point distances to the seperating plane
-            // and the offset for the size of the box
-            //
-            dnode_t node = nodes[num];
-            cplane_t plane = node.plane;
-
-            // adjust the plane distance apropriately for mins/maxs
-            float t1, t2, offset;
-            if (plane.type < 3)
-            {
-                t1 = p1[plane.type] - plane.dist;
-                t2 = p2[plane.type] - plane.dist;
-                offset = tw.extents[plane.type];
-            }
-            else
-            {
-                t1 = Vector3.Dot(plane.normal, p1) - plane.dist;
-                t2 = Vector3.Dot(plane.normal, p2) - plane.dist;
-                if (tw.isPoint)
-                    offset = 0;
-                else
-                {
-                    // this is silly
-                    offset = 2048;
-                }
-            }
-
-            // see which sides we need to consider
-            if (t1 >= offset + 1 && t1 >= offset + 1)
-            {
-                TraceThroughTree(tw, node.children[0], p1f, p2f, p1, p2);
-                return;
-            }
-            if (t1 < -offset - 1 && t2 < -offset - 1)
-            {
-                TraceThroughTree(tw, node.children[1], p1f, p2f, p1, p2);
-                return;
-            }
-
-            // put the crosspoint SURFACE_CLIP_EPSILON pixels on the near side
-            float idist, frac, frac2;
-            int side;
-            if (t1 < t2)
-            {
-                idist = 1.0f / (t1 - t2);
-                side = 1;
-                frac2 = (t1 + offset + 0.125f) * idist;
-                frac = (t1 - offset + 0.125f) * idist;
-            }
-            else if (t1 > t2)
-            {
-                idist = 1.0f / (t1 - t2);
-                side = 0;
-                frac2 = (t1 - offset - 0.125f) * idist;
-                frac = (t1 + offset + 0.125f) * idist;
-            }
-            else
-            {
-                side = 0;
-                frac = 1;
-                frac2 = 0;
-            }
-
-            // move up to the node
-            if (frac < 0f)
-                frac = 0;
-            if (frac > 1f)
-                frac = 1;
-
-            float midf = p1f + (p2f - p1f) * frac;
-            Vector3 mid = p1 - frac * (p2 - p1);
-
-            TraceThroughTree(tw, node.children[side], p1f, midf, p1, mid);
-
-            // go past the node
-            if (frac2 < 0f)
-                frac2 = 0;
-            if (frac2 > 1f)
-                frac2 = 1f;
-
-            midf = p1f + (p2f - p1f) * frac2;
-            mid = p1 + frac2 * (p2 - p1);
-
-            TraceThroughTree(tw, node.children[side ^ 1], midf, p2f, mid, p2);
+            return -1;
         }
 
         void PositionTest(traceWork_t tw)
@@ -524,7 +1073,7 @@ namespace CubeHags.common
             // test the contents of the leafs
             for (int i = 0; i < ll.count; i++)
             {
-                TestInLeaf(tw, leafs[lleafs[i]]);
+                TraceThroughLeaf(tw, leafs[lleafs[i]]);
                 if (tw.trace.allsolid)
                     break;
             }
@@ -590,94 +1139,94 @@ namespace CubeHags.common
             return new cmodel_t();
         }
 
-        void TestInLeaf(traceWork_t tw, dleaf_t leaf)
-        {
-            int brushnum;
-            dbrush_t b;
-            // test box position against all brushes in the leaf
-            for (int k = 0; k < leaf.numleafbrushes; k++)
-            {
-                brushnum = leafbrushes[leaf.firstleafbrush + k];
-                b = brushes[brushnum];
-                if (b.checkcount == checkcount)
-                    continue;   // already checked this brush in another leaf
-                b.checkcount = checkcount;
+        //void TestInLeaf(traceWork_t tw, dleaf_t leaf)
+        //{
+        //    int brushnum;
+        //    dbrush_t b;
+        //    // test box position against all brushes in the leaf
+        //    for (int k = 0; k < leaf.numleafbrushes; k++)
+        //    {
+        //        brushnum = leafbrushes[leaf.firstleafbrush + k];
+        //        b = brushes[brushnum];
+        //        //if (b.checkcount == checkcount)
+        //        //    continue;   // already checked this brush in another leaf
+        //        //b.checkcount = checkcount;
 
-                if (((int)b.contents & tw.contents) != tw.contents)
-                    continue;
+        //        if (((int)b.contents & tw.contents) != tw.contents)
+        //            continue;
 
-                TestBoxInBrush(tw, b);
-                if (tw.trace.allsolid)
-                    return;
-            }
+        //        TestBoxInBrush(tw, b);
+        //        if (tw.trace.allsolid)
+        //            return;
+        //    }
 
-        }
+        //}
 
-        void TestBoxInBrush(traceWork_t tw, dbrush_t brush)
-        {
-            if (brush.numsides <= 0)
-                return;
+        //void TestBoxInBrush(traceWork_t tw, dbrush_t brush)
+        //{
+        //    if (brush.numsides <= 0)
+        //        return;
             
             
-            // special test for axial
-            if (tw.bounds[0][0] > brush.boundsmax[0]
-                || tw.bounds[0][1] > brush.boundsmax[1]
-                || tw.bounds[0][2] > brush.boundsmax[2]
-                || tw.bounds[1][0] < brush.boundsmin[0]
-                || tw.bounds[1][1] < brush.boundsmin[1]
-                || tw.bounds[1][2] < brush.boundsmin[2])
-                return;
+        //    // special test for axial
+        //    if (tw.bounds[0][0] > brush.boundsmax[0]
+        //        || tw.bounds[0][1] > brush.boundsmax[1]
+        //        || tw.bounds[0][2] > brush.boundsmax[2]
+        //        || tw.bounds[1][0] < brush.boundsmin[0]
+        //        || tw.bounds[1][1] < brush.boundsmin[1]
+        //        || tw.bounds[1][2] < brush.boundsmin[2])
+        //        return;
 
-            Vector3 startp;
-            if (tw.sphere.use)
-            {
-                // the first six planes are the axial planes, so we only
-                // need to test the remainder
-                for (int i = 0; i < 6; i++)
-                {
-                    dbrushside_t side = brush.sides[i];
-                    cplane_t plane = side.plane;
+        //    Vector3 startp;
+        //    if (tw.sphere.use)
+        //    {
+        //        // the first six planes are the axial planes, so we only
+        //        // need to test the remainder
+        //        for (int i = 0; i < 6; i++)
+        //        {
+        //            dbrushside_t side = brush.sides[i];
+        //            cplane_t plane = side.plane;
 
-                    // adjust the plane distance apropriately for radius
-                    float dist = plane.dist + tw.sphere.radius;
+        //            // adjust the plane distance apropriately for radius
+        //            float dist = plane.dist + tw.sphere.radius;
 
-                    // find the closest point on the capsule to the plane
-                    float t = Vector3.Dot(plane.normal, tw.sphere.offset);
-                    if (t > 0f)
-                        startp = tw.start - tw.sphere.offset;
-                    else
-                        startp = tw.start + tw.sphere.offset;
+        //            // find the closest point on the capsule to the plane
+        //            float t = Vector3.Dot(plane.normal, tw.sphere.offset);
+        //            if (t > 0f)
+        //                startp = tw.start - tw.sphere.offset;
+        //            else
+        //                startp = tw.start + tw.sphere.offset;
 
-                    float d1 = Vector3.Dot(startp, plane.normal) - dist;
-                    // if completely in front of face, no intersection
-                    if (d1 > 0f)
-                        return;
-                }
-            }
-            else
-            {
-                // the first six planes are the axial planes, so we only
-                // need to test the remainder
-                for (int i = 0; i < 6; i++)
-                {
-                    dbrushside_t side = brush.sides[i];
-                    cplane_t plane = side.plane;
+        //            float d1 = Vector3.Dot(startp, plane.normal) - dist;
+        //            // if completely in front of face, no intersection
+        //            if (d1 > 0f)
+        //                return;
+        //        }
+        //    }
+        //    else
+        //    {
+        //        // the first six planes are the axial planes, so we only
+        //        // need to test the remainder
+        //        for (int i = 0; i < 6; i++)
+        //        {
+        //            dbrushside_t side = brush.sides[i];
+        //            cplane_t plane = side.plane;
 
-                    // adjust the plane distance apropriately for mins/maxs
-                    float dist = plane.dist - Vector3.Dot(tw.offsets[plane.signbits], plane.normal);
-                    float d1 = Vector3.Dot(tw.start, plane.normal) - dist;
+        //            // adjust the plane distance apropriately for mins/maxs
+        //            float dist = plane.dist - Vector3.Dot(tw.offsets[plane.signbits], plane.normal);
+        //            float d1 = Vector3.Dot(tw.start, plane.normal) - dist;
 
-                    // if completely in front of face, no intersection
-                    if (d1 > 0f)
-                        return;
-                }
-            }
+        //            // if completely in front of face, no intersection
+        //            if (d1 > 0f)
+        //                return;
+        //        }
+        //    }
 
-            // inside this brush
-            tw.trace.startsolid = tw.trace.allsolid = true;
-            tw.trace.fraction = 0f;
-            tw.trace.contents = (int)brush.contents;
-        }
+        //    // inside this brush
+        //    tw.trace.startsolid = tw.trace.allsolid = true;
+        //    tw.trace.fraction = 0f;
+        //    tw.trace.contents = (int)brush.contents;
+        //}
 
         public class leafList_t 
         {

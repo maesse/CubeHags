@@ -15,7 +15,6 @@ using CubeHags.client.render;
 using CubeHags.client.common;
 using CubeHags.client.input;
 using System.Windows.Forms;
-using CubeHags.client.game;
 using System.Threading;
 
 
@@ -140,7 +139,7 @@ namespace CubeHags.client
         {
             frameCount++;
             frameSceneNum = 0;
-            device.Clear(ClearFlags.Target | ClearFlags.ZBuffer, Color.FromArgb(0, Color.Black), 1.0f, 0);
+            device.Clear(ClearFlags.Target | ClearFlags.ZBuffer, Color.FromArgb(0, Color.Beige), 1.0f, 0);
         }
 
         /*
@@ -264,6 +263,13 @@ namespace CubeHags.client
             // Swich drawcall list
             FlushDrawCalls();
             int nDrawCalls = currentdrawCalls.Count;
+
+            // Sort calls
+            currentdrawCalls.Sort((firstPair, secondPair) =>
+            {
+                return secondPair.Key.CompareTo(firstPair.Key);
+            });
+            
             // Render drawcalls
             RenderDrawCallsNew();
 
@@ -392,10 +398,13 @@ namespace CubeHags.client
                 {
                     //Camera.position = originalPosition;
                     //Camera.PositionCamera();
+                    Camera.RotateForViewer();
+                    // Resetting will just be a call to rotateforviewer now
+                    
                     Matrix worldview = device.GetTransform(TransformState.View) * Camera.World;
                     effect.SetValue("WorldViewProj", worldview * Camera.Projection);
 
-                    device.Clear(ClearFlags.ZBuffer, Color.FromArgb(0, Color.CornflowerBlue), 1.0f, 0);
+                    //device.Clear(ClearFlags.ZBuffer, Color.FromArgb(0, Color.CornflowerBlue), 1.0f, 0);
                 }
                 else if (currentVPLayer == SortItem.VPLayer.SKYBOX)
                 {
@@ -406,29 +415,37 @@ namespace CubeHags.client
                 {
                     device.SetRenderState(RenderState.ZEnable, true);
                 }
+                else if (currentVPLayer == SortItem.VPLayer.EFFECT)
+                {
+                    device.SetRenderState(RenderState.ZWriteEnable, true);
+                }
                 currentVPLayer = vpLayer;
                 // Layer change.
                 switch (vpLayer)
                 {
                     case SortItem.VPLayer.SKYBOX3D:
                         if (effect.Technique != technique)
-                            effect.Technique = technique;
+                            effect.Technique = "Sky3d";
                         if (SourceMap != null)
                         {
                             SourceMap.SetupVertexBuffer(device);
-                            //Vector3 pos = SourceMap.skybox3d.GetSkyboxPosition(originalPosition);
+                            Vector3 oldPos = Camera.position;
+                            Vector3 pos = SourceMap.skybox3d.GetSkyboxPosition(Camera.position);
+                            Renderer.Instance.viewParams.Origin.origin = pos;
                             //Camera.position = pos;
-                            //Camera.PositionCamera();
+                            Camera.RotateForViewer();
+                            // Resetting will just be a call to rotateforviewer now
+                            Renderer.Instance.viewParams.Origin.origin = oldPos;
                             Matrix worldview = device.GetTransform(TransformState.View) * Camera.World;
                             effect.SetValue("WorldViewProj", worldview * Camera.Projection);
+                            //device.SetRenderState(RenderState.z
                         }
                         break;
                     case SortItem.VPLayer.SKYBOX:
                         effect.Technique = "Sky";
-                        //device.SetRenderState(RenderState.ZWriteEnable, false);
+                        device.SetRenderState(RenderState.ZWriteEnable, false);
                         if (SourceMap != null)
                             SourceMap.skybox.SetupRender(device);
-                        GameWorld.Instance.SetupStarsRender(device, effect);
                         break;
                     case SortItem.VPLayer.HUD:
                         device.SetRenderState(RenderState.ZEnable, false);
@@ -442,7 +459,10 @@ namespace CubeHags.client
                             effect.Technique = technique;
                         if (SourceMap != null)
                             SourceMap.SetupVertexBuffer(device);
-                        GameWorld.Instance.SetupRender(device, effect);
+                        break;
+                    case SortItem.VPLayer.EFFECT:
+                        effect.Technique = "PositionColorAlpha";
+                        device.SetRenderState(RenderState.ZWriteEnable, false);
                         break;
                 }
             }
@@ -481,7 +501,9 @@ namespace CubeHags.client
                 switch (trans)
                 {
                     case SortItem.Translucency.OPAQUE:
-                        if (vpLayer != SortItem.VPLayer.HUD && currentViewport != SortItem.Viewport.INSTANCED)
+                        if (vpLayer == SortItem.VPLayer.SKYBOX3D)
+                            effect.Technique = "Sky3d";
+                        else if (vpLayer != SortItem.VPLayer.HUD && currentViewport != SortItem.Viewport.INSTANCED)
                             effect.Technique = technique;
                         else if (currentViewport != SortItem.Viewport.INSTANCED)
                             effect.Technique = "FinalPass_RGBE8";
@@ -489,11 +511,18 @@ namespace CubeHags.client
                     case SortItem.Translucency.ADDITIVE:
                     case SortItem.Translucency.SUBSTRACTIVE:
                     case SortItem.Translucency.NORMAL:
-                        //if (vpLayer != SortItem.VPLayer.HUD && currentViewport != SortItem.Viewport.INSTANCED)
-                        //    effect.Technique = "TexturedLightmapAlpha";
-                        //else 
-                        //if (currentViewport != SortItem.Viewport.INSTANCED)
-                        //    effect.Technique = "GUIAlpha";
+                        if (vpLayer == SortItem.VPLayer.SKYBOX3D)
+                        {
+                            effect.Technique = "Sky3d";
+                        }
+                        else if (vpLayer != SortItem.VPLayer.HUD && currentViewport != SortItem.Viewport.INSTANCED && vpLayer != SortItem.VPLayer.EFFECT)
+                            effect.Technique = "TexturedLightmapAlpha";
+                        else if (currentViewport != SortItem.Viewport.INSTANCED && vpLayer == SortItem.VPLayer.HUD)
+                                effect.Technique = "GUIAlpha";
+                        else if (vpLayer == SortItem.VPLayer.EFFECT)
+                        {
+                            effect.Technique = "PositionColorAlpha";
+                        }
                         break;
                 }
             }
@@ -854,7 +883,7 @@ namespace CubeHags.client
             // Set up view
             float aspect = (float)RenderSize.Width / (float)RenderSize.Height;
             projMatrix = Matrix.PerspectiveFovLH(FOV,
-                aspect, 1.0f, 10000.0f);
+                aspect, 1.0f, 40000.0f);
             device.SetTransform(TransformState.Projection, projMatrix);
             viewMatrix = Matrix.LookAtLH(new Vector3(0, 0, 5.0f), new Vector3(), new Vector3(0, 1, 0));
             device.SetTransform(TransformState.View, viewMatrix);

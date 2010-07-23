@@ -6,6 +6,7 @@ using SlimDX.Direct3D9;
 using System.Drawing;
 using CubeHags.client.map.Source;
 using SlimDX;
+using CubeHags.client.render.Formats;
 
 namespace CubeHags.client.render
 {
@@ -81,43 +82,117 @@ namespace CubeHags.client.render
             //}
         }
 
-        public static VertexPosTex[] GetQuadPoints(RectangleF destination)
+        public static VertexPositionColorTex[] GetQuadPoints(RectangleF destination, Color4 color)
         {
-            return GetQuadPoints(destination, DefRect, DefSize);
+            return GetQuadPoints(destination, DefRect, DefSize, color);
         }
 
-        public static VertexPosTex[] GetQuadPoints2(RectangleF destination)
+        public static VertexPositionColorTex[] GetQuadPoints(RectangleF destination)
+        {
+            return GetQuadPoints(destination, DefRect, DefSize, new Color4(Color.White));
+        }
+
+        public static VertexPositionColorTex[] GetQuadPoints2(RectangleF destination)
         {
             return GetQuadPoints2(destination, DefRect, DefSize);
         }
 
         // Used for sprites.. generates 6 vertex points
-        public static VertexPosTex[] GetQuadPoints2(RectangleF destination, RectangleF texture, SizeF texureSize)
+        public static VertexPositionColorTex[] GetQuadPoints2(RectangleF destination, RectangleF texture, SizeF texureSize)
         {
-            VertexPosTex[] result = new VertexPosTex[6];
-            result[0] = new VertexPosTex(new Vector3(destination.X, destination.Y, 0f), new Vector2((texture.X) / texureSize.Width, (texture.Y) / texureSize.Height));
-            result[1] = new VertexPosTex(new Vector3(destination.X, destination.Y - destination.Height, 0f), new Vector2((texture.X) / texureSize.Width, (texture.Y + texture.Height) / texureSize.Height));
-            result[2] = new VertexPosTex(new Vector3(destination.X + destination.Width, destination.Y, 0f), new Vector2((texture.X + texture.Width) / texureSize.Width, (texture.Y) / texureSize.Height));
+            return GetQuadPoints2(destination, texture, texureSize, new Color4(Color.White));
+        }
+
+        public static VertexPositionColorTex[] GetQuadPoints2(RectangleF destination, RectangleF texture, SizeF texureSize, Color4 color)
+        {
+            VertexPositionColorTex[] result = new VertexPositionColorTex[6];
+            result[0] = new VertexPositionColorTex(new Vector3(destination.X, destination.Y, 0f), color, new Vector2((texture.X) / texureSize.Width, (texture.Y) / texureSize.Height));
+            result[1] = new VertexPositionColorTex(new Vector3(destination.X, destination.Y - destination.Height, 0f), color, new Vector2((texture.X) / texureSize.Width, (texture.Y + texture.Height) / texureSize.Height));
+            result[2] = new VertexPositionColorTex(new Vector3(destination.X + destination.Width, destination.Y, 0f), color, new Vector2((texture.X + texture.Width) / texureSize.Width, (texture.Y) / texureSize.Height));
             result[3] = result[2];
             result[4] = result[1];
-            result[5] = new VertexPosTex(new Vector3(destination.X + destination.Width, destination.Y - destination.Height, 0f), new Vector2((texture.X + texture.Width) / texureSize.Width, (texture.Y + texture.Height) / texureSize.Height));
+            result[5] = new VertexPositionColorTex(new Vector3(destination.X + destination.Width, destination.Y - destination.Height, 0f), color, new Vector2((texture.X + texture.Width) / texureSize.Width, (texture.Y + texture.Height) / texureSize.Height));
             return result;
         }
 
-        // Used for sprites.. generates 6 vertex points
-        public static VertexPosTex[] GetQuadPoints(RectangleF destination, RectangleF texture, SizeF texureSize)
+        public static VertexPositionColorTex[] GetQuadPoints(RectangleF destination, RectangleF texture, SizeF texureSize)
         {
-            VertexPosTex[] result = new VertexPosTex[6];
+            return GetQuadPoints(destination, texture, texureSize, new Color4(Color.White));
+        }
+        // Used for sprites.. generates 6 vertex points
+        public static VertexPositionColorTex[] GetQuadPoints(RectangleF destination, RectangleF texture, SizeF texureSize, Color4 color)
+        {
+            VertexPositionColorTex[] result = new VertexPositionColorTex[6];
             Size renderSize = Renderer.Instance.RenderSize;
             float fWidth5 = (0.5f / (float)renderSize.Width);// (float)rtDescr.Width - 1f;
             float fHeight5 = (-0.5f / (float)renderSize.Height);//(float)rtDescr.Height -1f;
-            result[0] = new VertexPosTex(GetTransformed2DPoint(destination.X, renderSize.Height - destination.Y, renderSize), new Vector2((texture.X) / texureSize.Width, (texture.Y) / texureSize.Height));
-            result[1] = new VertexPosTex(GetTransformed2DPoint(destination.X, renderSize.Height - destination.Y - destination.Height, renderSize), new Vector2((texture.X ) / texureSize.Width, (texture.Y + texture.Height ) / texureSize.Height));
-            result[2] = new VertexPosTex(GetTransformed2DPoint(destination.X + destination.Width, renderSize.Height - destination.Y, renderSize), new Vector2((texture.X + texture.Width ) / texureSize.Width, (texture.Y) / texureSize.Height));
+            result[0] = new VertexPositionColorTex(GetTransformed2DPoint(destination.X, renderSize.Height - destination.Y, renderSize), color, new Vector2((texture.X) / texureSize.Width, (texture.Y) / texureSize.Height));
+            result[1] = new VertexPositionColorTex(GetTransformed2DPoint(destination.X, renderSize.Height - destination.Y - destination.Height, renderSize), color, new Vector2((texture.X) / texureSize.Width, (texture.Y + texture.Height) / texureSize.Height));
+            result[2] = new VertexPositionColorTex(GetTransformed2DPoint(destination.X + destination.Width, renderSize.Height - destination.Y, renderSize), color, new Vector2((texture.X + texture.Width) / texureSize.Width, (texture.Y) / texureSize.Height));
             result[3] = result[2];
             result[4] = result[1];
-            result[5] = new VertexPosTex(GetTransformed2DPoint(destination.X + destination.Width, renderSize.Height - destination.Y - destination.Height, renderSize), new Vector2((texture.X + texture.Width ) / texureSize.Width, (texture.Y + texture.Height ) / texureSize.Height));
+            result[5] = new VertexPositionColorTex(GetTransformed2DPoint(destination.X + destination.Width, renderSize.Height - destination.Y - destination.Height, renderSize), color, new Vector2((texture.X + texture.Width) / texureSize.Width, (texture.Y + texture.Height) / texureSize.Height));
             return result;
+        }
+
+        public static VertexPositionColor[] CreateBox(Vector3 mins, Vector3 maxs, Color4 color)
+        {
+
+            VertexPositionColor[] verts = new VertexPositionColor[36];
+
+            // Front face
+            verts[0] = new VertexPositionColor(new Vector3(mins.X, maxs.Y, maxs.Z), color);
+            verts[1] = new VertexPositionColor(new Vector3(mins.X, mins.Y, maxs.Z), color);
+            verts[2] = new VertexPositionColor(new Vector3(maxs.X, maxs.Y, maxs.Z), color);
+            verts[3] = new VertexPositionColor(new Vector3(mins.X, mins.Y, maxs.Z), color);
+            verts[4] = new VertexPositionColor(new Vector3(maxs.X, mins.Y, maxs.Z), color);
+            verts[5] = new VertexPositionColor(new Vector3(maxs.X, maxs.Y, maxs.Z), color);
+
+            // Back face (remember this is facing *away* from the camera, so vertices should be
+            //    clockwise order)
+            verts[6] = new VertexPositionColor(new Vector3(mins.X, maxs.Y, mins.Z), color);
+            verts[7] = new VertexPositionColor(new Vector3(maxs.X, maxs.Y, mins.Z), color);
+            verts[8] = new VertexPositionColor(new Vector3(mins.X, mins.Y, mins.Z), color);
+            verts[9] = new VertexPositionColor(new Vector3(mins.X, mins.Y, mins.Z), color);
+            verts[10] = new VertexPositionColor(new Vector3(maxs.X, maxs.Y, mins.Z), color);
+            verts[11] = new VertexPositionColor(new Vector3(maxs.X, mins.Y, mins.Z), color);
+
+            // Top face
+            verts[12] = new VertexPositionColor(new Vector3(mins.X, maxs.Y, maxs.Z), color);
+            verts[13] = new VertexPositionColor(new Vector3(maxs.X, maxs.Y, mins.Z), color);
+            verts[14] = new VertexPositionColor(new Vector3(mins.X, maxs.Y, mins.Z), color);
+            verts[15] = new VertexPositionColor(new Vector3(mins.X, maxs.Y, maxs.Z), color);
+            verts[16] = new VertexPositionColor(new Vector3(maxs.X, maxs.Y, maxs.Z), color);
+            verts[17] = new VertexPositionColor(new Vector3(maxs.X, maxs.Y, mins.Z), color);
+
+            // Bottom face (remember this is facing *away* from the camera, so vertices should be
+            //    clockwise order)
+            verts[18] = new VertexPositionColor(new Vector3(mins.X, mins.Y, maxs.Z), color);
+            verts[19] = new VertexPositionColor(new Vector3(mins.X, mins.Y, mins.Z), color);
+            verts[20] = new VertexPositionColor(new Vector3(maxs.X, mins.Y, mins.Z), color);
+            verts[21] = new VertexPositionColor(new Vector3(mins.X, mins.Y, maxs.Z), color);
+            verts[22] = new VertexPositionColor(new Vector3(maxs.X, mins.Y, mins.Z), color);
+            verts[23] = new VertexPositionColor(new Vector3(maxs.X, mins.Y, maxs.Z), color);
+
+            // Left face
+            verts[24] = new VertexPositionColor(new Vector3(mins.X, maxs.Y, maxs.Z), color);
+            verts[25] = new VertexPositionColor(new Vector3(mins.X, mins.Y, mins.Z), color);
+            verts[26] = new VertexPositionColor(new Vector3(mins.X, mins.Y, maxs.Z), color);
+
+            verts[27] = new VertexPositionColor(new Vector3(mins.X, maxs.Y, mins.Z), color);
+            verts[28] = new VertexPositionColor(new Vector3(mins.X, mins.Y, mins.Z), color);
+            verts[29] = new VertexPositionColor(new Vector3(mins.X, maxs.Y, maxs.Z), color);
+
+            // Right face (remember this is facing *away* from the camera, so vertices should be
+            //    clockwise order)
+            verts[30] = new VertexPositionColor(new Vector3(maxs.X, maxs.Y, maxs.Z), color);
+            verts[31] = new VertexPositionColor(new Vector3(maxs.X, mins.Y, maxs.Z), color);
+            verts[32] = new VertexPositionColor(new Vector3(maxs.X, mins.Y, mins.Z), color);
+            verts[33] = new VertexPositionColor(new Vector3(maxs.X, maxs.Y, mins.Z), color);
+            verts[34] = new VertexPositionColor(new Vector3(maxs.X, maxs.Y, maxs.Z), color);
+            verts[35] = new VertexPositionColor(new Vector3(maxs.X, mins.Y, mins.Z), color);
+
+            return verts;
         }
 
         public static Vector3 GetTransformed2DPoint(float x, float y, SizeF renderSize)

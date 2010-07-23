@@ -104,20 +104,20 @@ namespace CubeHags.common
                     case NetMessageType.ConnectionApproval:
                         // Check if we are awainting a new connection:
                         int i;
-                        for (i = 0; i < Server.Instance.svs.clients.Count; i++)
+                        for (i = 0; i < Server.Instance.clients.Count; i++)
                         {
                             // Got first packet from a known client?
-                            if (IPEndPoint.Equals(Server.Instance.svs.clients[0].netchan.remoteAddress, sender.RemoteEndpoint)
-                                && Server.Instance.svs.clients[0].netchan.incomingSequence == 0)
+                            if (IPEndPoint.Equals(Server.Instance.clients[i].netchan.remoteAddress, sender.RemoteEndpoint)
+                                && Server.Instance.clients[i].netchan.incomingSequence == 0)
                             {
                                 // Accept connection, and save NetConnection in netchan for later sending
-                                Server.Instance.svs.clients[0].netchan.connection = sender;
+                                Server.Instance.clients[i].netchan.connection = sender;
                                 sender.Approve();
                                 break;
                             }
                         }
                         // Client connection was not expected.. disapprove
-                        if (i == Server.Instance.svs.clients.Count)
+                        if (i == Server.Instance.clients.Count)
                             sender.Disapprove("Not expecting this connection");
                         break;
                     case NetMessageType.StatusChanged:
@@ -140,7 +140,7 @@ namespace CubeHags.common
                 switch (type)
                 {
                     case NetMessageType.ConnectionRejected:
-                        Client.Instance.cls.state = connstate_t.DISCONNECTED;
+                        Client.Instance.state = ConnectState.DISCONNECTED;
                         string reason = buf.ReadString();
                         Common.Instance.WriteLine("Server rejected client connection: " + reason);
                         break;
@@ -386,7 +386,7 @@ namespace CubeHags.common
 
             to.number = number;
             to.eType = msg.ReadBoolean() ? msg.ReadInt32() : from.eType;
-            to.eFlags = msg.ReadBoolean() ? msg.ReadInt32() : from.eFlags;
+            to.eFlags = msg.ReadBoolean() ? (Common.EntityFlags)Enum.Parse(typeof(Common.EntityFlags),""+ msg.ReadInt32()) : from.eFlags;
             to.pos.trBase.X = msg.ReadBoolean() ? msg.ReadFloat() : from.pos.trBase.X;
             to.pos.trBase.Y = msg.ReadBoolean() ? msg.ReadFloat() : from.pos.trBase.Y;
             to.pos.trBase.Z = msg.ReadBoolean() ? msg.ReadFloat() : from.pos.trBase.Z;
@@ -470,7 +470,7 @@ namespace CubeHags.common
             int lc = 0;
             //if (from.number != to.number) { lc = 1; buf.Write(true); buf.Write(to.number); } else { buf.Write(false); }
             if(from.eType!= to.eType){ lc = 2;buf.Write(true); buf.Write(to.eType); } else { buf.Write(false); }
-            if(from.eFlags!= to.eFlags){ lc = 3;buf.Write(true); buf.Write(to.eFlags); } else { buf.Write(false); }
+            if(from.eFlags!= to.eFlags){ lc = 3;buf.Write(true); buf.Write((int)to.eFlags); } else { buf.Write(false); }
 
             if(from.pos.trBase.X != to.pos.trBase.X){ lc = 4;buf.Write(true); buf.Write(to.pos.trBase.X); } else { buf.Write(false); }
             if(from.pos.trBase.Y != to.pos.trBase.Y){ lc = 5;buf.Write(true); buf.Write(to.pos.trBase.Y); } else { buf.Write(false); }
@@ -545,11 +545,11 @@ namespace CubeHags.common
 
         }
 
-        public static void ReadDeltaPlayerstate(NetBuffer msg, Common.playerState_t from, Common.playerState_t to)
+        public static void ReadDeltaPlayerstate(NetBuffer msg, Common.PlayerState from, Common.PlayerState to)
         {
             int startoffset = msg.Position;
             if (from == null)
-                from = new Common.playerState_t();
+                from = new Common.PlayerState();
 
             to.commandTime = msg.ReadBoolean() ? msg.ReadInt32() : from.commandTime;
             to.pm_type = msg.ReadBoolean() ? (Common.PMType)msg.ReadInt32() : from.pm_type;
@@ -572,7 +572,7 @@ namespace CubeHags.common
             to.grapplePoint.Y = msg.ReadBoolean() ? msg.ReadFloat() : from.grapplePoint.Y;
             to.grapplePoint.Z = msg.ReadBoolean() ? msg.ReadFloat() : from.grapplePoint.Z;
             
-            to.eFlags = msg.ReadBoolean() ? msg.ReadInt32() : from.eFlags;
+            to.eFlags = msg.ReadBoolean() ? (Common.EntityFlags)Enum.Parse(typeof(Common.EntityFlags), ""+msg.ReadInt32()) : from.eFlags;
             to.eventSequence = msg.ReadBoolean() ? msg.ReadInt32() : from.eventSequence;
             to.events[0] = msg.ReadBoolean() ? msg.ReadInt32() : from.events[0];
             to.events[1] = msg.ReadBoolean() ? msg.ReadInt32() : from.events[1];
@@ -607,6 +607,8 @@ namespace CubeHags.common
                             to.stats[i] = from.stats[i];
                     }
                 }
+                else
+                    to.stats = from.stats;
                 msgMiddle = msg.Position;
                 if (msg.ReadBoolean())
                 {
@@ -622,17 +624,24 @@ namespace CubeHags.common
                             to.persistant[i] = from.persistant[i];
                     }
                 }
+                else
+                    to.persistant = from.persistant;
+            }
+            else
+            {
+                to.stats = from.stats;
+                to.persistant = from.persistant;
             }
 
             //System.Console.WriteLine("Read {0}bits snapshot, {1} middle", msg.Position - startoffset, msgMiddle - startoffset);
 
         }
 
-        public static void WriteDeltaPlayerstate(NetBuffer msg, Common.playerState_t from, Common.playerState_t to)
+        public static void WriteDeltaPlayerstate(NetBuffer msg, Common.PlayerState from, Common.PlayerState to)
         {
             int msgStart = msg.LengthBits;
             if (from == null)
-                from = new Common.playerState_t();
+                from = new Common.PlayerState();
 
 
             if (from.commandTime != to.commandTime) { msg.Write(true); msg.Write(to.commandTime); } else { msg.Write(false); }
@@ -660,7 +669,7 @@ namespace CubeHags.common
             if (from.grapplePoint.Y != to.grapplePoint.Y) { msg.Write(true); msg.Write(to.grapplePoint.Y); } else { msg.Write(false); }
             if (from.grapplePoint.Z != to.grapplePoint.Z) { msg.Write(true); msg.Write(to.grapplePoint.Z); } else { msg.Write(false); }
             
-            if (from.eFlags != to.eFlags) { msg.Write(true); msg.Write(to.eFlags); } else { msg.Write(false); }
+            if (from.eFlags != to.eFlags) { msg.Write(true); msg.Write((int)to.eFlags); } else { msg.Write(false); }
             if (from.eventSequence != to.eventSequence) { msg.Write(true); msg.Write(to.eventSequence); } else { msg.Write(false); }
             if (from.events[0] != to.events[0]) { msg.Write(true); msg.Write(to.events[0]); } else { msg.Write(false); }
             if (from.events[1] != to.events[1]) { msg.Write(true); msg.Write(to.events[1]); } else { msg.Write(false); }
@@ -737,7 +746,7 @@ namespace CubeHags.common
     
 
 
-    public enum connstate_t : int
+    public enum ConnectState : int
     {
         NONE = 0,
         UNINITIALIZED,

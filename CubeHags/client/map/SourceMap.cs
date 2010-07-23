@@ -13,6 +13,7 @@ using CubeHags.client.render;
 using CubeHags.client.common;
 using CubeHags.client.input;
 using System.Windows.Forms;
+using CubeHags.common;
 
 namespace CubeHags.client.map.Source
 {
@@ -21,7 +22,7 @@ namespace CubeHags.client.map.Source
         // Imported structure
         public SkyBox skybox;
         public SkyBox3D skybox3d;
-        World world;
+        public World world;
 
         // Rendering
         public bool UseBSP = true;
@@ -114,34 +115,39 @@ namespace CubeHags.client.map.Source
             vb = new HagsVertexBuffer();
             vb.SetVB<VertexPositionNormalTexturedLightmap>(world.verts.ToArray(), vertexBytes, VertexPositionNormalTexturedLightmap.Format, Usage.WriteOnly);
             ib = new HagsIndexBuffer();
-            
-            //Entity light_environment = null;
-            //foreach (Entity ent in world.Entities)
-            //{
-            //    //System.Console.WriteLine("\n"+ ent.ClassName);
-            //    foreach (string val in ent.Values.Keys)
-            //    {
-            //        //System.Console.WriteLine("\t"+val + ": " + ent.Values[val]);
-            //    }
-            //    if (ent.ClassName == "light_environment")
-            //    {
-            //        light_environment = ent;
-            //    }
-            //    else if (ent.ClassName.Equals("sky_camera"))
-            //    {
-            //        skybox3d = new SkyBox3D(this, ent);
-            //    }
-            //}
 
-            //// Handle worldspawn entity (skybox)
-            //if (world.Entities[0].ClassName == "worldspawn")
-            //{
-            //    if (world.Entities[0].Values.ContainsKey("skyname"))
-            //    {
-            //        string skyname = world.Entities[0].Values["skyname"];
-            //        skybox = new SkyBox(this, skyname, light_environment);
-            //    }
-            //}
+            Entity light_environment = null;
+            foreach (Entity ent in world.Entities)
+            {
+                //System.Console.WriteLine("\n"+ ent.ClassName);
+                foreach (string val in ent.Values.Keys)
+                {
+                    //System.Console.WriteLine("\t"+val + ": " + ent.Values[val]);
+                }
+                if (ent.ClassName == "light_environment")
+                {
+                    light_environment = ent;
+                }
+                else if (ent.ClassName.Equals("sky_camera"))
+                {
+                    skybox3d = new SkyBox3D(this, ent);
+                }
+            }
+
+            if (skybox3d == null)
+            {
+                // Look for area 1
+            }
+
+            // Handle worldspawn entity (skybox)
+            if (world.Entities[0].ClassName == "worldspawn")
+            {
+                if (world.Entities[0].Values.ContainsKey("skyname"))
+                {
+                    string skyname = world.Entities[0].Values["skyname"];
+                    skybox = new SkyBox(this, skyname, light_environment);
+                }
+            }
 
             
 
@@ -153,8 +159,15 @@ namespace CubeHags.client.map.Source
             foreach (RenderItem item in items)
             {
                 if (!visibleRenderItems.ContainsKey(item.material.MaterialID))
+                {
                     visibleRenderItems.Add(item.material.MaterialID, new List<RenderItem>());
+                    if (skybox3d != null)
+                        skybox3d.visibleRenderItems.Add(item.material.MaterialID, new List<RenderItem>());
+                }
+                
             }
+            
+                
         }
 
         void VisualizeBSP()
@@ -202,14 +215,7 @@ namespace CubeHags.client.map.Source
 
         public void Render(Device device)
         {
-            //if (skybox3d != null)
-            //    skybox3d.Render();
-
             
-
-            int dynoffset = 0;
-            if (skybox != null)
-                skybox.Render();
 
             // Get current leaf & cluster
             if (!LockPVS)
@@ -221,6 +227,14 @@ namespace CubeHags.client.map.Source
                 //if (Renderer.Instance.window != null)
                 //    Renderer.Instance.window.CurrentCluster.Text = CurrentCluster.ToString();
             }
+            if (skybox != null)
+                skybox.Render();
+
+            if (skybox3d != null)
+                skybox3d.Render();
+
+
+            
             
             Camera cam = Renderer.Instance.Camera;
             // Update visibility if new position
@@ -237,12 +251,12 @@ namespace CubeHags.client.map.Source
                 visibleProps.Clear();
                 
                 // Mark visible leafs and nodes
-                MarkVisible(CurrentCluster);
+                MarkVisible(CurrentCluster, VisCount);
                 // Move though BSP tree
                 RecursiveWorldNode(0);
 
                 // Always show displacements
-                //foreach(RenderItem item in dispRenderItems)
+                //foreach (RenderItem item in dispRenderItems)
                 //    visibleRenderItems[item.material.MaterialID].Add(item);
 
                 List<DynamicItem> dynItems = new List<DynamicItem>();
@@ -252,74 +266,86 @@ namespace CubeHags.client.map.Source
                 SortItem.Translucency trans = SortItem.Translucency.OPAQUE;
                 DynamicItem dynItem = new DynamicItem();
                 uint min = 9999999, max = 0;
+                int dynoffset = 0;
                 // Group items that needs to be batched
-                foreach (List<RenderItem> grouplist in visibleRenderItems.Values)
+                Dictionary<int, List<RenderItem>> renderItems = visibleRenderItems;
+                for (int itemPass = 0; itemPass < 2; itemPass++)
                 {
-                    // Create new batch
-                    dynItem = new DynamicItem();
-                    dynItem.vb = this.vb;
-                    dynItem.ib = batchIB;
-                    dynItem.IndiceStartIndex = dynoffset;
-                    trans = SortItem.Translucency.OPAQUE;
-                    dist = 0;
-                    min = 9999999;
-                    max = 0;
-
-                    // Add items to batch
-                    foreach (RenderItem item in grouplist)
-                    {
-                        if (item.indices.Count == 0 || item.nVerts == 0)
-                            continue;
-
-                        // Not too sure about how alpha batching should be handled.. Maybe sort before batching?
-                        if (item.material.Alpha)
-                        {
-                            trans = SortItem.Translucency.NORMAL;
-                            dist = (ushort)CurrentDistFromPlane(item.face.plane_t);
-                        }
-
-                        dynItem.material = item.material;
-                        dynItem.Type = item.Type;
-
-                        if (item.IndiceMin < min)
-                            min = item.IndiceMin;
-                        if (item.IndiceMax > max)
-                            max = item.IndiceMax;
-
-                        // Append to current batch
-                        dynItem.nIndices += item.indices.Count;
-                        dynItem.nVerts += item.nVerts;
-
-                        if (item.face.HasDisplacement)
-                        {
-                            int test = 2;
-                        }
-                        
-                        // Ensure dynamic array is big enough
-                        if (dynoffset + item.indices.Count > dynamicIndices.Length)
-                        {
-                            uint[] newlist = new uint[dynamicIndices.Length * 2];
-                            dynamicIndices.CopyTo(newlist, 0);
-                            dynamicIndices = newlist;
-                        }
-                        // Copy indices into the indice buffer
-                        item.indices.CopyTo(0,dynamicIndices, dynoffset,item.indices.Count);
-                        dynoffset += item.indices.Count;
+                    if (itemPass == 1) {
+                        if(skybox3d != null)
+                            renderItems = skybox3d.visibleRenderItems;
+                        else
+                            break;
                     }
 
-                    // Add drawcall for batch
-                    if (dynItem.nIndices > 0)
-                    {
-                        // Important for ATI cards
-                        dynItem.nVerts = (int)max - (int)min + 1;
-                        dynItem.lowestIndiceValue = (int)min;
-                        // Complete current batch
-                        ulong k = SortItem.GenerateBits(SortItem.FSLayer.GAME, SortItem.Viewport.DYNAMIC, SortItem.VPLayer.WORLD, trans, dynItem.material.MaterialID, dist, batchIB.IndexBufferID, vb.VertexBufferID);
-                        RenderDelegate v = new RenderDelegate(dynItem.Render);
-                        calls.Add(new KeyValuePair<ulong, RenderDelegate>(k, v));
-                    }
+                        foreach (List<RenderItem> grouplist in renderItems.Values)
+                        {
+                            // Create new batch
+                            dynItem = new DynamicItem();
+                            dynItem.vb = this.vb;
+                            dynItem.ib = batchIB;
+                            dynItem.IndiceStartIndex = dynoffset;
+                            trans = SortItem.Translucency.OPAQUE;
+                            dist = 0;
+                            min = 9999999;
+                            max = 0;
+
+                            // Add items to batch
+                            foreach (RenderItem item in grouplist)
+                            {
+                                if (item.face.HasDisplacement)
+                                {
+                                    int test = 2;
+                                }
+                                if (item.indices.Count == 0 || item.nVerts == 0)
+                                    continue;
+
+                                // Not too sure about how alpha batching should be handled.. Maybe sort before batching?
+                                if (item.material.Alpha)
+                                {
+                                    trans = SortItem.Translucency.NORMAL;
+                                    dist = (ushort)CurrentDistFromPlane(item.face.plane_t);
+                                }
+
+                                dynItem.material = item.material;
+                                dynItem.Type = item.Type;
+
+                                if (item.IndiceMin < min)
+                                    min = item.IndiceMin;
+                                if (item.IndiceMax > max)
+                                    max = item.IndiceMax;
+
+                                // Append to current batch
+                                dynItem.nIndices += item.indices.Count;
+                                dynItem.nVerts += item.nVerts;
+
+
+
+                                // Ensure dynamic array is big enough
+                                if (dynoffset + item.indices.Count > dynamicIndices.Length)
+                                {
+                                    uint[] newlist = new uint[dynamicIndices.Length * 2];
+                                    dynamicIndices.CopyTo(newlist, 0);
+                                    dynamicIndices = newlist;
+                                }
+                                // Copy indices into the indice buffer
+                                item.indices.CopyTo(0, dynamicIndices, dynoffset, item.indices.Count);
+                                dynoffset += item.indices.Count;
+                            }
+
+                            // Add drawcall for batch
+                            if (dynItem.nIndices > 0)
+                            {
+                                // Important for ATI cards
+                                dynItem.nVerts = (int)max - (int)min + 1;
+                                dynItem.lowestIndiceValue = (int)min;
+                                // Complete current batch
+                                ulong k = SortItem.GenerateBits(SortItem.FSLayer.GAME, SortItem.Viewport.DYNAMIC, itemPass==0?SortItem.VPLayer.WORLD:SortItem.VPLayer.SKYBOX3D, trans, dynItem.material.MaterialID, dist, batchIB.IndexBufferID, vb.VertexBufferID);
+                                RenderDelegate v = new RenderDelegate(dynItem.Render);
+                                calls.Add(new KeyValuePair<ulong, RenderDelegate>(k, v));
+                            }
+                        }
                 }
-               
                 // Set IB data for batches
                 batchIB.SetIB<uint>(dynamicIndices, dynoffset * sizeof(uint), Usage.WriteOnly | Usage.Dynamic, false, Pool.Default, dynoffset);
                 
@@ -356,6 +382,7 @@ namespace CubeHags.client.map.Source
                     // Generate Instance vert for every prop in this group
                     foreach (SourceProp prop in props)
                     {
+                        
                         ushort propLeaf = prop.prop_t.lastVisibleLeaf;
                         //int lightid = 0;
                         //// Grap lightcube id if already added
@@ -409,8 +436,13 @@ namespace CubeHags.client.map.Source
                                 
                         //    }
                         //}
+                        float pitch, roll, yaw;
+                        pitch = prop.prop_t.Angles.Z * (float)(Math.PI / 180f);
+                        roll = prop.prop_t.Angles.Y * (float)(Math.PI / 180f);
+                        yaw = prop.prop_t.Angles.X * (float)(Math.PI / 180f);
                         // Order of multiplication very important
-                        Matrix modelMatrix = Matrix.RotationZ(prop.prop_t.Angles.Z * (float)(Math.PI / 180f)) * Matrix.RotationY(-prop.prop_t.Angles.Y * (float)(Math.PI / 180f)) * Matrix.RotationX(prop.prop_t.Angles.X * (float)(Math.PI / 180f)) * Matrix.Translation(prop.prop_t.Origin);
+                        
+                        Matrix modelMatrix = Matrix.RotationYawPitchRoll(yaw, pitch, roll) * Matrix.Translation(prop.prop_t.Origin);
                         VertexPropInstance instvert = new VertexPropInstance(modelMatrix, world.leafs[propLeaf].ambientLighting);
                         verts.Add(instvert);
                         instItem.nInstances++;
@@ -424,7 +456,7 @@ namespace CubeHags.client.map.Source
                     // Create rendercall to this instanceitem
                     ulong callkey = SortItem.GenerateBits(SortItem.FSLayer.GAME, SortItem.Viewport.INSTANCED, SortItem.VPLayer.WORLD, SortItem.Translucency.OPAQUE, 0, 0, 0, 0);
                     RenderDelegate callvalue = new RenderDelegate(instItem.Render);
-                    //calls.Add(new KeyValuePair<ulong, RenderDelegate>(callkey, callvalue));
+                    calls.Add(new KeyValuePair<ulong, RenderDelegate>(callkey, callvalue));
                 }
                 propVertexBuffer.SetVB<VertexPropInstance>(verts.ToArray(), totalBytes, VertexPropInstance.Format, Usage.Dynamic | Usage.WriteOnly, propVertexBufferOffset);
                 if (propVertexBufferOffset > 0)
@@ -498,8 +530,10 @@ namespace CubeHags.client.map.Source
 
             LastCluster = CurrentCluster;
 
-            VisualizeBSP();
+            //VisualizeBSP();
         }
+
+        
 
         // current cluster, cluster to test against
         private bool[] GetPVS(int visCluster)
@@ -554,7 +588,7 @@ namespace CubeHags.client.map.Source
         }
 
         // Returns list of RenderItems that are visible from cluster
-        public void MarkVisible(int cluster)
+        public void MarkVisible(int cluster, int VisCount)
         {
             dnode_t parent;
             // Return everything if not inside a cluster
@@ -563,7 +597,7 @@ namespace CubeHags.client.map.Source
                 for (int i = 0; i < world.leafs.Length; i++)
                 {
                     dleaf_t leaf = world.leafs[i];
-                    
+
                     leaf.lastVisibleCount = VisCount;
                     if (leaf.parent != null)
                     {
@@ -641,28 +675,36 @@ namespace CubeHags.client.map.Source
                 {
                     // leaf
                     dleaf_t leaf = world.leafs[-(nodeid + 1)];
+                    
+                    // Check for displacements
+                    leaf.lastVisibleCount = VisCount;
+                    if (leaf.DisplacementIndexes != null)
+                    {
+                        int[] indx = leaf.DisplacementIndexes;
+                        for (int i = 0; i < indx.Length; i++)
+                        {
+                            Face face2 = world.faces[indx[i]];
+                            if (face2.lastVisCount != VisCount)
+                            {
+                                face2.lastVisCount = VisCount;
+                                visibleRenderItems[face2.item.material.MaterialID].Add(face2.item);
+                            }
+                        }
+                    }
+                    
 
                     // Iterate over contained faces - this will loop a lot!
                     for (int j = 0; j < leaf.numleaffaces; j++)
                     {
                         int index = j + leaf.firstleafface;
                         
-                        Face face = world.faces_t[world.leafFaces[index]].face;
+                        Face face = world.faces[world.leafFaces[index]];
                         // is face already processed this frame?
                         if (face != null && face.lastVisCount != VisCount)
                         {
                             face.lastVisCount = VisCount;
                             if(face.item != null)
                                 visibleRenderItems[face.item.material.MaterialID].Add(face.item); // possible 10%+ optimization here
-                            if (face.HasDisplacement)
-                            {
-                                for (int i = 0; i < face.DisplaceFaces.Length; i++)
-                                {
-                                    Face face2 = world.faces_t[face.DisplaceFaces[i]].face;
-                                    visibleRenderItems[face2.item.material.MaterialID].Add(face2.item);
-                                }
-                            }
-                            
                         }
                     }
                     // Handle static props

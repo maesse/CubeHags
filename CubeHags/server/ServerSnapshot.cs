@@ -60,7 +60,7 @@ namespace CubeHags.server
                 oldframe = cl.frames[cl.deltaMessage & 31];
                 lastframe = cl.netchan.outgoingSequence - cl.deltaMessage;
                 // the snapshot's entities may still have rolled off the buffer, though
-                if (oldframe.first_entity <= svs.nextSnapshotEntities - svs.numSnapshotEntities)
+                if (oldframe.first_entity <= nextSnapshotEntities - numSnapshotEntities)
                 {
                     Common.Instance.WriteLine("{0}: Delta request from out of date entities.", cl.name);
                     oldframe = null;
@@ -87,7 +87,7 @@ namespace CubeHags.server
             // what we are delta'ing from
             msg.Write((byte)lastframe);
 
-            int snapFlags = svs.snapFlagServerBit;
+            int snapFlags = snapFlagServerBit;
             if (cl.rateDelayed)
                 snapFlags |= SNAPFLAG_RATE_DELAYED;
             if (cl.state != clientState_t.CS_ACTIVE)
@@ -133,7 +133,7 @@ namespace CubeHags.server
                     newnum = 9999;
                 else
                 {
-                    newent = svs.snapshotEntities[(from.first_entity + newindex) % svs.numSnapshotEntities];
+                    newent = snapshotEntities[(from.first_entity + newindex) % numSnapshotEntities];
                     newnum = newent.number;
                 }
 
@@ -141,7 +141,7 @@ namespace CubeHags.server
                     oldnum = 9999;
                 else
                 {
-                    oldent = svs.snapshotEntities[(from.first_entity + oldindex) % svs.numSnapshotEntities];
+                    oldent = snapshotEntities[(from.first_entity + oldindex) % numSnapshotEntities];
                     oldnum = oldent.number;
                 }
 
@@ -206,14 +206,14 @@ namespace CubeHags.server
             frame.num_entities = 0;
             frame.areabits = new byte[32];
 
-            Common.sharedEntity_t clent = client.gentity;
+            sharedEntity clent = client.gentity;
             if (clent == null || client.state == clientState_t.CS_ZOMBIE)
             {
                 return;
             }
 
             // grab the current playerState_t
-            Common.playerState_t ps = GameClientNum(index);
+            Common.PlayerState ps = GameClientNum(index);
 
             frame.ps = ps.Clone();
 
@@ -251,12 +251,12 @@ namespace CubeHags.server
 
             // copy the entity states out
             frame.num_entities = 0;
-            frame.first_entity = svs.nextSnapshotEntities;
+            frame.first_entity = nextSnapshotEntities;
             for (int i = 0; i < snapshotEntityNumbers.Count; i++)
             {
-                Common.sharedEntity_t ent = sv.gentities[snapshotEntityNumbers[i]];
+                sharedEntity ent = sv.gentities[snapshotEntityNumbers[i]];
                 //Common.entityState_t state = ;
-                svs.snapshotEntities[svs.nextSnapshotEntities % svs.numSnapshotEntities] = ent.s;
+                snapshotEntities[nextSnapshotEntities % numSnapshotEntities] = ent.s;
                 frame.num_entities++;
             }
 
@@ -279,7 +279,7 @@ namespace CubeHags.server
             frame.areabytes = ClipMap.Instance.WriteAreaBits(ref frame.areabits, clientarea);
             bool[] clientpvs = ClipMap.Instance.ClusterPVS(clientcluster);
 
-            Common.sharedEntity_t ent;
+            sharedEntity ent;
             for (int i = 0; i < sv.num_entities; i++)
             {
                 ent = sv.gentities[i];
@@ -373,7 +373,7 @@ namespace CubeHags.server
             }
         }
 
-        void AddEntToSnapshot(svEntity_t svEnt, Common.sharedEntity_t gEnt, List<int> eNums)
+        void AddEntToSnapshot(svEntity_t svEnt, sharedEntity gEnt, List<int> eNums)
         {
             // if we have already added this entity to this snapshot, don't add again
             if (svEnt.snapshotCounter == sv.snapshotCounter)
@@ -402,11 +402,12 @@ namespace CubeHags.server
         int RateMsec(client_t client, int msgSize)
         {
             int headerSize = 48;
-            // individual messages will never be larger than fragment size
-            if (msgSize > 1500)
-                msgSize = 1500;
+            //// individual messages will never be larger than fragment size
+            //if (msgSize > 1500)
+            //    msgSize = 1500;
 
-            int rate = 20000; // FIX: variable rate
+            int rate = client.rate; // FIX: variable rate
+            
             int rateMsec = (int)((msgSize + headerSize) * 1000 / rate * Common.Instance.timescale.Value);
             return rateMsec;
         }
@@ -415,11 +416,34 @@ namespace CubeHags.server
         {
             // record information about the message
             client.frames[client.netchan.outgoingSequence & 31].messageSize = msg.LengthBytes;
-            client.frames[client.netchan.outgoingSequence & 31].messageSent = (int)svs.time;
+            client.frames[client.netchan.outgoingSequence & 31].messageSent = (int)time;
             client.frames[client.netchan.outgoingSequence & 31].messageAcked = -1;
 
             // send the datagram
             NetChan_Transmit(client, msg);
+
+            // set nextSnapshotTime based on rate and requested number of updates
+            int rateMsec = RateMsec(client, msg.LengthBytes);
+            if (rateMsec < client.snapshotMsec * Common.Instance.timescale.Value)
+            {
+                // never send more packets than this, no matter what the rate is at
+                rateMsec = (int)(client.snapshotMsec * Common.Instance.timescale.Value);
+                client.rateDelayed = false;
+            }
+            else
+                client.rateDelayed = true;
+
+            client.nextSnapshotTime = (int)(time + (float)rateMsec * Common.Instance.timescale.Value);
+
+            // don't pile up empty snapshots while connecting
+            if (client.state != clientState_t.CS_ACTIVE)
+            {
+                // a gigantic connection message may have already put the nextSnapshotTime
+                // more than a second away, so don't shorten it
+                // do shorten if client is downloading
+                if (client.nextSnapshotTime < time + (int)(1000 * Common.Instance.timescale.Value))
+                    client.nextSnapshotTime = (int)(time + 1000 * Common.Instance.timescale.Value);
+            }
         }
 
         /*

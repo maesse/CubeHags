@@ -28,6 +28,13 @@ namespace CubeHags.client.render
             Renderer.Instance.VertexBuffers.Add(VertexBufferID, this);
         }
 
+        public void SetVD(VertexDeclaration vd)
+        {
+            if (_vd != null)
+                _vd.Dispose();
+            _vd = vd;
+        }
+
         // Sets data in VB with offset for insertion. If VB is too small, the old data will be copied over
         public void SetVB<T>(T[] data, int nBytes, VertexFormat format, Usage usage, int offset) where T : struct
         {

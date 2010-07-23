@@ -67,7 +67,7 @@ namespace CubeHags.client.render
             float zNear, zFar, depth;
 
             zNear = 1.0f;
-            zFar = 10000f;
+            zFar = 80000f;
             depth = zFar - zNear;
 
             ProjectionMatrix[0,2] = 0;

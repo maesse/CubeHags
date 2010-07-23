@@ -6,6 +6,7 @@ using CubeHags.common;
 using SlimDX;
 using CubeHags.client;
 using CubeHags.client.cgame;
+using CubeHags.client.common;
 
 namespace CubeHags.server
 {
@@ -15,16 +16,26 @@ namespace CubeHags.server
         private static readonly Game _Instance = new Game();
         public static Game Instance {get {return _Instance;}}
 
+        CVar sv_gravity;
+        CVar sv_speed;
+        CVar g_synchrounousClients;
+        CVar g_smoothClients;
+
+
         public level_locals_t level;
-        public List<gentity_t> g_entities;
-        public List<gclient_t> g_clients;
+        public gentity_t[] g_entities;
+        public gclient_t[] g_clients;
 
         public Game()
         {
             spawns  = new spawn_t[] { new spawn_t{Name = "info_player_start", Spawn = new SpawnDelegate(SP_info_player_start)} };
+            sv_gravity = CVars.Instance.Get("sv_gravity", "800", CVarFlags.SERVER_INFO);
+            sv_speed = CVars.Instance.Get("sv_speed", "320", CVarFlags.SERVER_INFO);
+            g_synchrounousClients = CVars.Instance.Get("g_synchrounousClients", "0", CVarFlags.SERVER_INFO);
+            g_smoothClients = CVars.Instance.Get("g_smoothClients", "0", CVarFlags.SERVER_INFO);
         }
 
-        public Server.svEntity_t SvEntityForGentity(Common.sharedEntity_t gEnt) 
+        public Server.svEntity_t SvEntityForGentity(sharedEntity gEnt) 
         {
             if (gEnt == null || gEnt.s.number < 0 || gEnt.s.number >= 1024)
                 Common.Instance.Error("SvEntityForGentity: Bad gEnt");
@@ -153,7 +164,7 @@ namespace CubeHags.server
             SendPredictableEvents(ent.client.ps);
         }
 
-        private void SendPredictableEvents(Common.playerState_t ps)
+        private void SendPredictableEvents(Common.PlayerState ps)
         {
             // if there are still events pending
             if (ps.entityEventSequence < ps.eventSequence)
@@ -171,7 +182,7 @@ namespace CubeHags.server
                 CGame.PlayerStateToEntityState(ps, t.s, true);
                 t.s.number = number;
                 t.s.eType = 13 + evt;
-                t.s.eFlags |= 0x00000010;
+                t.s.eFlags |= Common.EntityFlags.EF_BOUNCE;
                 t.s.otherEntityNum = ps.clientNum;
                 // send to everyone except the client who generated the event
                 t.r.svFlags |= Common.svFlags.NOTSINGLECLIENT;
@@ -266,7 +277,7 @@ namespace CubeHags.server
             level.num_entities++;
 
             // let the server system know that there are more entities
-            Server.Instance.LocateGameData(level.gentities, level.clients);
+            Server.Instance.LocateGameData(level.sentities, level.num_entities, level.clients);
             e = g_entities[level.num_entities - 1];
             InitGentity(e, level.num_entities-1);
             return e;
@@ -336,11 +347,7 @@ namespace CubeHags.server
         }
 
         
-        private void RunClient(gentity_t ent)
-        {
-            //ent.client.pers.cmd.serverTime = (int)level.time;
-            Client_Think(ent);
-        }
+        
 
         private void FreeEntity(gentity_t ent)
         {
@@ -378,7 +385,7 @@ namespace CubeHags.server
         public string Client_Connect(int clientNum, bool firstTime)
         {
             gentity_t ent = g_entities[clientNum];
-            string userinfo = Server.Instance.svs.clients[clientNum].userinfo;
+            string userinfo = Server.Instance.clients[clientNum].userinfo;
 
             // they can connect
             level.clients[clientNum] = new gclient_t();
@@ -521,20 +528,31 @@ namespace CubeHags.server
             throw new NotImplementedException();
         }
 
-        public void Client_Command(int clientNum, string[] tokens)
-        {
-            gentity_t ent = g_entities[clientNum];
-            if (ent.client == null)
-                return; // not fully in game yet
-            // FIX IMPLEMENT
+        
 
+
+
+        private void RunClient(gentity_t ent)
+        {
+            if (g_synchrounousClients.Integer == 0)
+                return;
+            ent.client.pers.cmd.serverTime = (int)level.time;
+            Client_Think(ent);
         }
+
+        
+
 
         public void Client_Think(int clientNum)
         {
             gentity_t ent = g_entities[clientNum];
-            Client_Think(ent);
+            ent.client.pers.cmd = GetUserCommand(clientNum);
+            ent.client.lastCmdTime = (int)level.time;
+
+            if(g_synchrounousClients.Integer == 0)
+                Client_Think(ent);
         }
+
         /*
         ==================
         ClientThink
@@ -546,14 +564,18 @@ namespace CubeHags.server
         */
         public void Client_Think(gentity_t ent)
         {
-            ent.client.pers.cmd = Server.Instance.GetUsercmd(ent.s.clientNum);
-            // mark the time we got info, so we can display the
-            // phone jack if they don't get any for a while
-            ent.client.lastCmdTime = (int)level.time;
+            gclient_t client = ent.client;
 
             // don't think if the client is not yet connected (and thus not yet spawned in)
-            if (ent.client.pers.connected != clientConnected_t.CON_CONNECTED)
+            if (client.pers.connected != clientConnected_t.CON_CONNECTED)
                 return;
+
+            
+            // mark the time we got info, so we can display the
+            //ent.client.pers.cmd = Server.Instance.GetUsercmd(ent.s.clientNum);
+
+            // phone jack if they don't get any for a while
+            ent.client.lastCmdTime = (int)level.time;
 
             Input.UserCommand ucmd = ent.client.pers.cmd;
 
@@ -565,14 +587,138 @@ namespace CubeHags.server
             if (msec > 200)
                 msec = 200;
 
-            // spectators don't do much
-            if (ent.client.sess.sessionTeam == team_t.TEAM_SPECTATOR)
+
+            CVar pmove_msec = CVars.Instance.FindVar("pmove_msec");
+            if (pmove_msec.Integer < 8)
+                CVars.Instance.Set("pmove_msec", "8");
+            else if (pmove_msec.Integer > 33)
+                CVars.Instance.Set("pmove_msec", "33");
+
+            if (CVars.Instance.FindVar("pmove_fixed").Integer == 1 || client.pers.pmoveFixed)
             {
+                ucmd.serverTime = ((ucmd.serverTime + pmove_msec.Integer - 1) / pmove_msec.Integer) * pmove_msec.Integer;
+            }
+
+            //
+            // check for exiting intermission
+            //
+            if (level.intermissiontime > 0)
+            {
+                //ClientIntermissionThink(client);
+                return;
+            }
+
+            // spectators don't do much
+            if (client.sess.sessionTeam == team_t.TEAM_SPECTATOR)
+            {
+                if (client.sess.spectatorState == spectatorState_t.SPECTATOR_SCOREBOARD)
+                    return;
                 SpectatorThink(ent, ucmd);
                 return;
             }
 
+            if (client.noclip)
+                client.ps.pm_type = Common.PMType.NOCLIP;
+            else if (client.ps.stats[0] <= 0)
+                client.ps.pm_type = Common.PMType.DEAD;
+            else
+                client.ps.pm_type = Common.PMType.NORMAL;
 
+            // Gravity & speed
+            client.ps.gravity = sv_gravity.Integer;
+            client.ps.speed = sv_speed.Integer;
+
+            // Set up for pmove
+            int oldEventSequence = client.ps.eventSequence;
+            pmove_t pm = new pmove_t();
+               //#define	MASK_ALL				(-1)
+    //#define	MASK_SOLID				(1)
+    //#define	MASK_PLAYERSOLID		(1|0x10000|0x2000000)
+    //#define	MASK_DEADSOLID			(1|0x10000)
+    //#define	MASK_WATER				(32)
+    //#define	MASK_OPAQUE				(1)
+    //#define	MASK_SHOT				(1|0x2000000|0x4000000)
+            pm.Trace = new TraceDelegate(ClipMap.Instance.SV_Trace);
+            pm.ps = client.ps;
+            pm.cmd = ucmd;
+            if (pm.ps.pm_type == Common.PMType.DEAD)
+                pm.tracemask = (1 | 0x10000);
+            else
+                pm.tracemask = (1 );
+            pm.pmove_fixed = ((CVars.Instance.FindVar("pmove_fixed").Integer==1?true:false) | client.pers.pmoveFixed)?1:0;
+            pm.pmove_msec = pmove_msec.Integer;
+            client.oldOrigin = client.ps.origin;
+            pm.mins = new Vector3(-16, -16, -36);
+            pm.maxs = new Vector3(16, 16, 36);
+            Common.Instance.Pmove(pm);
+
+
+            //client.ps.pm_type = Common.PMType.SPECTATOR;
+            //client.ps.speed = 400;  // faster than normal
+
+            
+            
+            
+
+            // save results of pmove
+            if (ent.client.ps.eventSequence != oldEventSequence)
+                ent.eventTime = (int)level.time;
+            if (g_smoothClients.Integer == 1)
+            {
+
+            }
+            else
+            {
+                CGame.PlayerStateToEntityState(ent.client.ps, ent.s, true);
+            }
+            SendPredictableEvents(ent.client.ps);
+
+            ent.r.currentOrigin = ent.s.pos.trBase;
+            ent.r.mins = pm.mins;
+            ent.r.maxs = pm.maxs;
+
+            // execute client events
+            //ClientEvents(ent, oldEventSequence);
+
+            // link entity now, after any personal teleporters have been used
+            Server.Instance.LinkEntity(GEntityToSharedEntity(ent));
+            if (!ent.client.noclip)
+            {
+                //TouchTriggers(ent);
+            }
+
+            // NOTE: now copy the exact origin over otherwise clients can be snapped into solid
+            ent.r.currentOrigin = ent.client.ps.origin;
+
+            // touch other objects
+            //ClientImpacts(ent, pm);
+
+            // save results of triggers and client events
+            if (ent.client.ps.eventSequence != oldEventSequence)
+            {
+                ent.eventTime = (int)level.time;
+            }
+
+            // swap and latch button actions
+            client.oldbuttons = client.buttons;
+            client.buttons = ucmd.buttons;
+            client.latched_buttons |= client.buttons & ~client.oldbuttons;
+
+            // check for respawning
+            if (client.ps.stats[0] <= 0)
+            {
+                // wait for the attack button to be pressed
+                if (level.time > client.respawnTime)
+                {
+                    if ((ucmd.buttons & (1 | 4)) > 0)
+                        respawn(ent);
+
+                    
+                }
+                return;
+            }
+
+            //ClientTimerActions(ent, msec);
         }
 
         void SpectatorThink(gentity_t ent, Input.UserCommand ucmd)
@@ -585,11 +731,14 @@ namespace CubeHags.server
                 
                 // set up for pmove
                 pmove_t pm = new pmove_t();
+                pm.Trace = new TraceDelegate(ClipMap.Instance.SV_Trace);
                 pm.ps = client.ps;
                 pm.cmd = ucmd;
                 pm.tracemask = 1;
-                pm.mins = new Vector3(-15, -15, -24);
-                pm.maxs = new Vector3(15, 15, 32);
+                pm.pmove_fixed = CVars.Instance.VariableIntegerValue("pmove_fixed");
+                pm.pmove_msec = CVars.Instance.VariableIntegerValue("pmove_msec");
+                pm.mins = new Vector3(-16, -16, -36);
+                pm.maxs = new Vector3(16, 16, 36);
                 //pm.Trace += new TraceDelegate(Server.Instance.Trace);
                 //pm.PointContents += new TraceContentsDelegate(Server.Instance.PointContents);
 
@@ -635,188 +784,29 @@ namespace CubeHags.server
             // want to make sure the teleport bit is set right
             // so the viewpoint doesn't interpolate through the
             // world to the new position
-            int flags = client.ps.eFlags;
-            client.ps = new Common.playerState_t();
+            Common.EntityFlags flags = client.ps.eFlags;
+            client.ps = new Common.PlayerState();
             client.ps.eFlags = flags;
 
             // locate ent at a spawn point
             ClientSpawn(ent);
 
-            Server.Instance.LocateGameData(level.gentities, level.clients);
+            Server.Instance.LocateGameData(level.sentities, level.num_entities, level.clients);
 
-            //if (client.sess.sessionTeam != 3)
-            //{
-            //    // send event
-            //    gentity_t tent = TempEntity(ent.client.ps.origin, 42); // EV_PLAYER_TELEPORT_IN
-            //    tent.s.clientNum = ent.s.clientNum;
+            if (client.sess.sessionTeam != team_t.TEAM_SPECTATOR)
+            {
+                // send event
+                //gentity_t tent = TempEntity(ent.client.ps.origin, 42); // EV_PLAYER_TELEPORT_IN
+                //tent.s.clientNum = ent.s.clientNum;
 
-            //    SendServerCommand(-1, string.Format("print \"{0} entered the game\n\"", client.pers.netname));
-            //}
+                Server.Instance.SendServerCommand(null, string.Format("print \"{0} entered the game\n\"", client.pers.netname));
+            }
 
             Common.Instance.WriteLine("Client_Begin {0}", clientNum);
         }
 
 
-        /*
-        ===========
-        ClientSpawn
-
-        Called every time a client is placed fresh in the world:
-        after the first ClientBegin, and after each respawn
-        Initializes all non-persistant parts of playerState
-        ============
-        */
-        static Vector3 playerMins = new Vector3( -15, -15, -24 );
-        static Vector3 playerMaxs = new Vector3(15, 15, 32);
-        void ClientSpawn(gentity_t ent)
-        {
-            int index = ent.s.clientNum;
-            gclient_t client = ent.client;
-
-            Vector3 spawn_origin = Vector3.Zero;
-            Vector3 spawn_angles = Vector3.Zero;
-            spawn_origin = new Vector3(0, 100, -100);
-
-            gentity_t spawnpoint;
-            // find a spawn point
-            // do it before setting health back up, so farthest
-            // ranging doesn't count this client
-            if (client.sess.sessionTeam == team_t.TEAM_SPECTATOR)
-            {
-                spawnpoint = SelectSpectatorSpawnPoint(ref spawn_origin, ref spawn_angles);
-            }
-            else
-            {
-                // the first spawn should be at a good looking spot
-                if (!client.pers.initialSpawn && client.pers.localClient)
-                {
-                    client.pers.initialSpawn = true;
-                    spawnpoint = SelectInitialSpawnPoint(ref spawn_origin, ref spawn_angles);
-                }
-                else
-                {
-                    // don't spawn near existing origin if possible
-                    spawnpoint = SelectRandomFurthestSpawnPoint(client.ps.origin, ref spawn_origin, ref spawn_angles);
-                }
-            }
-
-            client.pers.teamState.state = playerTeamStateState_t.TEAM_ACTIVE;
-
-            // toggle the teleport bit so the client knows to not lerp
-            // and never clear the voted flag
-            int flags = ent.client.ps.eFlags & 0x00000004;
-            flags ^= 0x00000004;
-
-            // clear everything but the persistant data
-            clientPersistant_t saved = client.pers;
-            clientSession_t savedSess = client.sess;
-            int savedPing = client.ps.ping;
-            int accuracyhits = client.accuracy_hits;
-            int accuracyshots = client.accuracy_shots;
-            int[] persistant = new int[16];
-            for (int i = 0; i < 16; i++)
-            {
-                persistant[i] = client.ps.persistant[i];
-            }
-            int eventSequence = client.ps.eventSequence;
-            //client = new gclient_t();
-            //ent.client = client;
-            client.pers = saved;
-            client.sess = savedSess;
-            client.ps.ping = savedPing;
-            client.accuracy_hits = accuracyhits;
-            client.accuracy_shots = accuracyshots;
-            client.lastkilled_client = -1;
-            for (int i = 0; i < 16; i++)
-            {
-                client.ps.persistant[i] = persistant[i];
-            }
-            client.ps.eventSequence = eventSequence;
-            client.ps.persistant[4]++;
-            client.ps.persistant[3] = (int)client.sess.sessionTeam;
-
-            client.airOutTime = (int)level.time + 12000;
-
-            string userinfo = GetUserInfo(index);
-            // set max health
-            client.pers.maxHealth = 100;
-            // clear entity values
-            client.ps.stats[6] = client.pers.maxHealth;
-            client.ps.eFlags = flags;
-
-            ent.s.groundEntityNum = 1023; // none?
-            //ent.client = level.clients[index];
-            ent.takedamage = true;
-            ent.inuse = true;
-            ent.classname = "player";
-            ent.r.contents = 0x2000000;
-            ent.clipmask = 0x2000000;
-            ent.waterlevel = 0;
-            ent.flags = 0;
-            ent.watertype = 0;
-            ent.r.mins = playerMins;
-            ent.r.maxs = playerMaxs;
-
-            client.ps.clientNum = index;
-            client.ps.stats[2] = 1 << 2;
-
-            // health will count down towards max_health
-            ent.health = client.ps.stats[0] = client.ps.stats[6] + 25;
-
-            SetOrigin(ent, spawn_origin);
-            client.ps.origin = spawn_origin;
-
-            // the respawned flag will be cleared after the attack and jump keys come up
-            client.ps.pm_flags |= PMFlags.RESPAWNED; // Respawned
-
-            ent.client.pers.cmd =  GetUserCommand(index);
-            SetClientViewAngle(ent, spawn_angles);
-
-            if (ent.client.sess.sessionTeam != team_t.TEAM_SPECTATOR)
-            {
-                KillBox(ent);
-                Server.Instance.LinkEntity(GEntityToSharedEntity(ent));
-            }
-
-            // don't allow full run speed for a bit
-            client.ps.pm_flags |= PMFlags.TIME_KNOCKBACK;
-            client.ps.pm_time = 100;
-
-            client.respawnTime = (int)level.time;
-            client.inactivityTime = (int)level.time + 10000;
-            client.latched_buttons = 0;
-
-            if (level.intermissiontime == 1)
-            {
-                //MoveClientToIntermission(ent);
-            }
-            else
-            {
-                // fire the targets of the spawn point
-                UseTargets(spawnpoint, ent);
-            }
-
-            // run a client frame to drop exactly to the floor,
-            // initialize animations and other things
-            client.ps.commandTime = (int)level.time - 100;
-            ent.client.pers.cmd.serverTime = (int)level.time;
-            Client_Think(ent);
-
-            // positively link the client, even if the command times are weird
-            if (ent.client.sess.sessionTeam != team_t.TEAM_SPECTATOR)
-            {
-                CGame.PlayerStateToEntityState(client.ps, ent.s, true);
-                ent.r.currentOrigin = ent.client.ps.origin;
-                Server.Instance.LinkEntity(GEntityToSharedEntity(ent));
-            }
-            
-
-            // run the presend to set anything else
-            ClientEndFrame(ent);
-
-            // clear entity state values
-            CGame.PlayerStateToEntityState(client.ps, ent.s, true);
-        }
+       
 
         /*
         ==============================
@@ -903,11 +893,11 @@ namespace CubeHags.server
 
         Input.UserCommand GetUserCommand(int index)
         {
-            if (index < 0 || index >= Server.Instance.svs.clients.Count)
+            if (index < 0 || index >= Server.Instance.clients.Count)
             {
                 Common.Instance.Error(string.Format("GetUserCommand: bad clientNum: {0}", index));
             }
-            return Server.Instance.svs.clients[index].lastUsercmd;
+            return Server.Instance.clients[index].lastUsercmd;
         }
 
         void SetOrigin(gentity_t ent, Vector3 origin)
@@ -922,53 +912,62 @@ namespace CubeHags.server
 
         string GetUserInfo(int index)
         {
-            return Server.Instance.svs.clients[index].userinfo;
+            return Server.Instance.clients[index].userinfo;
         }
 
         void InitEntity(gentity_t ent)
         {
             ent.inuse = true;
             ent.classname = "noclass";
-            ent.s.number = g_entities.Count;
+            int entid = 1024;
+            for (int i = 0; i < g_entities.Length; i++)
+            {
+                if (g_entities[i] == ent)
+                    entid = i;
+            }
+            ent.s.number = entid;
             ent.r.ownerNum = 1023; // None?
         }
 
-        public Common.sharedEntity_t GEntityToSharedEntity(gentity_t ent)
+        public sharedEntity GEntityToSharedEntity(gentity_t ent)
         {
-            Common.sharedEntity_t sent = new Common.sharedEntity_t();
-            sent.s = ent.s;
-            sent.r = ent.r;
-            return sent;
+            //sharedEntity sent = new sharedEntity();
+            //sent.s = ent.s;
+            //sent.r = ent.r;
+            return ent.shEnt;
         }
 
         public void Init(float levelTime, int randSeed, int restart)
         {
             level.time = levelTime;
             level.startTime = levelTime;
-            level.logFile = new System.IO.StreamWriter("gamelog.txt");
             level.newSession = true;
 
             // initialize all entities for this game
-            g_entities = new List<gentity_t>();
+            g_entities = new gentity_t[1024];
+            level.sentities = new sharedEntity[1024];
             for (int i = 0; i < 1024; i++)
 			{
-                g_entities.Add(new gentity_t());
+                g_entities[i] = (new gentity_t());
+                level.sentities[i] = g_entities[i].shEnt;
 			}
             level.gentities = g_entities;
 
             // initialize all clients for this game
             level.maxclients = 32;
-            g_clients = new List<gclient_t>();
+            g_clients = new gclient_t[64];
             for (int i = 0; i < level.maxclients; i++)
             {
-                g_clients.Add(new gclient_t());
+                g_clients[i] = (new gclient_t());
             }
             level.clients = g_clients;
 
             // set client fields on player ents
             for (int i = 0; i < level.maxclients; i++)
             {
-                gentity_t ent =  g_entities[i];
+                gentity_t ent = g_entities[i];
+                ent.s.number = i;
+                ent.s.clientNum = i;
                 ent.client = level.clients[i];
             }
 
@@ -977,7 +976,7 @@ namespace CubeHags.server
             // range are NEVER anything but clients
             level.num_entities = 64;
             
-            Server.Instance.LocateGameData(level.gentities, level.clients);
+            Server.Instance.LocateGameData(level.sentities, level.num_entities, level.clients);
 
             SpawnEntitiesFromString();
 

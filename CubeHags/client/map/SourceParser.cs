@@ -32,6 +32,7 @@ namespace CubeHags.client.map.Source
         public ddispinfo_t[] ddispinfos;
         public byte[] dispLightmapSamples;
         public dDispVert[] dispVerts;
+        public dDispTri[] dispTris;
 
         public List<VertexPositionNormalTexturedLightmap> verts = new List<VertexPositionNormalTexturedLightmap>();
         public Face[] faces;
@@ -49,6 +50,10 @@ namespace CubeHags.client.map.Source
         public List<int> leafFaces = new List<int>();
         public List<dbrushside_t> brushsides = new List<dbrushside_t>();
         public List<dbrush_t> brushes = new List<dbrush_t>();
+
+        public int[] DispIndexToFaceIndex;
+
+        public DispCollTree[] dispCollTrees;
 
         public int numClusters;
         public int clusterBytes;
@@ -131,6 +136,8 @@ namespace CubeHags.client.map.Source
             LoadEntities(br, sHeader);
             LoadVisibility(br, sHeader);
 
+            DispTreeLeafnum(world);
+
             SourceMap map = new SourceMap(world);
             map.Init();
             Renderer.Instance.SourceMap = map;
@@ -145,6 +152,82 @@ namespace CubeHags.client.map.Source
             //System.Console.WriteLine("# Init time:\t\t\t" + (float)(initStart) / HighResolutionTimer.Frequency);
             //System.Console.WriteLine("# Total File Load time:\t" + (float)(HighResolutionTimer.Ticks - startTime) / HighResolutionTimer.Frequency);
             //System.Console.WriteLine("#-------------------------------");
+        }
+
+        // Hook displacements into the bsp tree
+        static void DispTreeLeafnum(World world)
+        {
+            //
+            // get the number of displacements per leaf
+            //
+            for (int i = 0; i < world.DispIndexToFaceIndex.Length; i++)
+            {
+                int faceIndex = world.DispIndexToFaceIndex[i];
+                DispTreeLeafnum_r(world, faceIndex, 0);
+            }
+        }
+
+        static void DispTreeLeafnum_r(World world, int faceid, int nodeIndex)
+        {                
+            while (true)
+            {
+                //
+                // leaf
+                //
+                if (nodeIndex < 0)
+                {
+                    //
+                    // get leaf node
+                    //
+                    int leadIndex = -1 - nodeIndex;
+                    dleaf_t pLeaf = world.leafs[leadIndex];
+
+
+                    if (pLeaf.DisplacementIndexes != null)
+                    {
+                        int[] indexes = pLeaf.DisplacementIndexes;
+                        int[] newid = new int[indexes.Length+1];
+                        indexes.CopyTo(newid, 0);
+                        newid[newid.Length - 1] = faceid;
+                        pLeaf.DisplacementIndexes = newid;
+                    }
+                    else
+                    {
+                        pLeaf.DisplacementIndexes = new int[] { faceid };
+                    }
+
+                    return;
+                }
+
+                //
+                // choose side(s) to traverse
+                //
+                dnode_t pNode =  world.nodes[nodeIndex];
+                cplane_t pPlane = pNode.plane;
+
+                // get box position relative to the plane
+                Vector3 min = world.faces[faceid].BBox[0];
+                Vector3 max = world.faces[faceid].BBox[1];
+                int sideResult = Common.Instance.BoxOnPlaneSide(ref min, ref max, pPlane);
+
+                // front side
+                if (sideResult == 1)
+                {
+                    nodeIndex = pNode.children[0];
+                }
+                // back side
+                else if (sideResult == 2)
+                {
+                    nodeIndex = pNode.children[1];
+                }
+                // split
+                else
+                {
+                    DispTreeLeafnum_r(world, faceid, pNode.children[0]);
+                    nodeIndex = pNode.children[1];
+                }
+
+            }
         }
 
         static void LoadBrushes(BinaryReader br, Header header)
@@ -249,7 +332,7 @@ namespace CubeHags.client.map.Source
             StringBuilder entitiesBuilder = new StringBuilder(nEntities);
             entitiesBuilder.Append(br.ReadChars(nEntities));
             world.EntityString = entitiesBuilder.ToString();
-            //world.Entities = Entity.CreateEntities(world.EntityString);
+            world.Entities = Entity.CreateEntities(world.EntityString);
         }
 
         static void LoadTextures(BinaryReader br, Header header)
@@ -378,8 +461,13 @@ namespace CubeHags.client.map.Source
                 leaf.cluster = br.ReadInt16();
                 if (leaf.cluster > world.numClusters)
                     world.numClusters = leaf.cluster + 1;
-                leaf.area = 0;//br.ReadInt16();
-                leaf.flags = br.ReadInt16();
+                ushort packed = br.ReadUInt16();
+                leaf.area = (short)((ushort)(packed << 7) >> 7);
+                leaf.flags = (short)(packed >> 9);
+                if (packed > 0)
+                {
+                    int test = 2;
+                }
                 leaf.mins = SourceParser.SwapZY(new Vector3(br.ReadInt16(), br.ReadInt16(), br.ReadInt16()));  // 3 For frustrum culling
                 leaf.maxs = SourceParser.SwapZY(new Vector3(br.ReadInt16(), br.ReadInt16(), br.ReadInt16())); // 3
 
@@ -404,6 +492,11 @@ namespace CubeHags.client.map.Source
                         float b = SourceParser.TexLightToLinear((int)color.b, color.exp);
                         leaf.ambientLighting.Color[j] = new Vector3(r, g, b);
                     }
+                }
+                else
+                {
+                    if (world.LightGrid != null && world.LightGrid.Length > i)
+                        leaf.ambientLighting = world.LightGrid[i];
                 }
                 leaf.padding = br.ReadInt16();
                 leaf.staticProps = new List<SourceProp>();
@@ -442,7 +535,8 @@ namespace CubeHags.client.map.Source
             }
         }
 
-        static void LoadFaces(BinaryReader br, Header header)
+        static void 
+            LoadFaces(BinaryReader br, Header header)
         {
             // Read vertexes..
             br.BaseStream.Seek(header.lumps[3].fileofs, SeekOrigin.Begin);
@@ -523,6 +617,12 @@ namespace CubeHags.client.map.Source
                     nVertIndex += face.numedges;
                 world.faces[i] = face2;
                 world.faces_t[i] = face;
+
+                // Reverse mapping from displacement to face
+                if (face.dispinfo != -1 && face.dispinfo < world.ddispinfos.Length)
+                {
+                    world.DispIndexToFaceIndex[face.dispinfo] = i;
+                }
             }
 
             // Prepare lightmap texture
@@ -628,46 +728,110 @@ namespace CubeHags.client.map.Source
                     world.verts.Add(new VertexPositionNormalTexturedLightmap(vert, face.plane_t.normal, new Vector2(s, t), new Vector2(l_s, l_t)));
                     vertIndex++;
                 }
-
-                // Handle displacement face
-                if (face.face_t.dispinfo != -1)
-                {
-                    
-
-                    // Get the displacement info
-                    ddispinfo_t currentDispInfo = world.ddispinfos[face.face_t.dispinfo];
-
-                    int faceIndex = currentDispInfo.MapFace;
-                    while (true)
-                    {
-                        if (world.faces_t.Length <= faceIndex)
-                            //break;
-
-                        if (world.faces_t[faceIndex].origFace > 0 && world.faces_t[faceIndex].origFace != faceIndex)
-                        {
-                            faceIndex = world.faces_t[faceIndex].origFace;
-                            //continue;
-                        }
-                        faceIndex = 0;
-                        if (world.faces_t[faceIndex].face.DisplaceFaces == null)
-                            world.faces_t[faceIndex].face.DisplaceFaces = new int[] { i };
-                        else
-                        {
-                            int[] arr = new int[world.faces_t[faceIndex].face.DisplaceFaces.Length+1];
-                            world.faces_t[faceIndex].face.DisplaceFaces.CopyTo(arr, 0);
-                            arr[arr.Length - 1] = i;
-                            world.faces_t[faceIndex].face.DisplaceFaces = arr;
-                        }
-                        world.faces_t[faceIndex].face.HasDisplacement = true;
-                        break;
-                    }
-
-                    // Generate the displacement surface
-                    createDispSurface(face, currentDispInfo, world);
-                }
             }
 
+            //DispCollTree[] dispCollTrees = new DispCollTree[world.ddispinfos.Length];
+            //for (int i = 0; i < dispCollTrees.Length; i++)
+            //{
+            //    dispCollTrees[i] = new DispCollTree();
+            //}
 
+            // Handle displacement face
+            int iCurVert = 0, iCurTri = 0;
+            for (int i = 0; i < world.ddispinfos.Length; i++)
+            {
+                int nFaceIndex = world.DispIndexToFaceIndex[i];
+
+                // Check for missing mapping to face
+                if (nFaceIndex == 0)
+                    continue;
+                
+                // Get the displacement info
+                ddispinfo_t currentDispInfo = world.ddispinfos[i];
+                Face face = world.faces[nFaceIndex];
+
+                //// Read in vertices
+                //int nVerts = (((1 << (currentDispInfo.power)) + 1) * ((1 << (currentDispInfo.power)) + 1));
+                //List<dDispVert> dispVerts = new List<dDispVert>();
+                //for (int j = 0; j < nVerts; j++)
+                //{
+                //    dispVerts.Add(world.dispVerts[iCurVert + j]);
+                //}
+                //iCurVert += nVerts;
+
+                //// Read in triangles
+                //int nTris = ((1 << (currentDispInfo.power)) * (1 << (currentDispInfo.power)) * 2);
+                //List<dDispTri> dispTris = new List<dDispTri>();
+                //for (int j = 0; j < nTris; j++)
+                //{
+                //    dispTris.Add(world.dispTris[iCurTri + j]);
+                //}
+                //iCurTri += nTris;
+
+                //Displacement disp = new Displacement();
+                //DispSurface dispSurf = disp.Surface;
+                //dispSurf.m_PointStart = currentDispInfo.startPosition;
+                //dispSurf.m_Contents = currentDispInfo.contents;
+
+                //disp.InitDispInfo(currentDispInfo.power, currentDispInfo.minTess, currentDispInfo.smoothingAngle, dispVerts, dispTris);
+
+                //// Hook the disp surface to the face
+                //dispSurf.m_Index = nFaceIndex;
+
+                //// get points
+                //if (world.faces_t[nFaceIndex].numedges > 4)
+                //    continue;
+
+                //face_t fac = world.faces_t[nFaceIndex];
+
+                //Vector3[] surfPoints = new Vector3[4];
+                //dispSurf.m_PointCount = fac.numedges;
+                //int h = 0;
+                //for (h = 0; h < fac.numedges; h++ )
+                //{
+                //    int eIndex = surfEdges[fac.firstedge + h];
+                //    if (eIndex < 0)
+                //    {
+                //        surfPoints[h] = world.verts[edges[-eIndex].v[1]].position;
+                //    }
+                //    else
+                //    {
+                //        surfPoints[h] = world.verts[edges[eIndex].v[0]].position;
+                //    }
+                //}
+
+                //for (h = 0; h < 4; h++)
+                //{
+                //    dispSurf.m_Points[h] = surfPoints[h];
+                //}
+
+                //dispSurf.FindSurfPointStartIndex();
+                //dispSurf.AdjustSurfPointData();
+
+                ////
+                //// generate the collision displacement surfaces
+                ////
+                //DispCollTree dispTree = dispCollTrees[i];
+                //dispTree.Power = 0;
+
+                ////
+                //// check for null faces, should have been taken care of in vbsp!!!
+                ////
+                //int pointCount = dispSurf.m_PointCount;
+                //if (pointCount != 4)
+                //    continue;
+
+                //disp.Create();
+
+                //DispCollTree pDispTree = dispCollTrees[i];
+                //pDispTree.Power = 0;
+                //pDispTree.Create(disp);
+
+                // Generate the displacement surface
+                createDispSurface(face, currentDispInfo, world, nFaceIndex);
+            }
+
+            //world.dispCollTrees = dispCollTrees;
             lightmapTexture.UnlockRectangle(0);
             world.LightmapTexture = lightmapTexture;
         }
@@ -708,9 +872,19 @@ namespace CubeHags.client.map.Source
             }
         }
 
-        static void createDispSurface(Face face, ddispinfo_t dispInfo, World map)
+        static void createDispSurface(Face face, ddispinfo_t dispInfo, World map, int faceIndex)
         {
             face.HasDisplacement = true;
+            Face actualFace = face;
+            int ndx = faceIndex;
+            while (actualFace.face_t.origFace > 0 && actualFace.face_t.origFace != ndx)
+            {
+                ndx = actualFace.face_t.origFace;
+                actualFace = world.faces_t[actualFace.face_t.origFace].face;
+            }
+            actualFace.HasDisplacement = true;
+            actualFace.DisplaceFaces = new int[] { faceIndex };
+
             face.displace_offset = world.verts.Count;
 
             //// Get the texture vectors and offsets.  These are used to calculate
@@ -868,12 +1042,19 @@ namespace CubeHags.client.map.Source
                 }
             }
 
-            // Build real vertices
+            Vector3[] BBox = new Vector3[2];
+            BBox[0] = Vector3.Zero;
+            BBox[1] = Vector3.Zero;
+            // Build real vertices && BBox
             for (int i = 0; i < verts.Count; i++)
             {
+                BBox[0] = Vector3.Minimize(verts[i], BBox[0]);
+                BBox[1] = Vector3.Maximize(verts[i], BBox[1]);
                 VertexPositionNormalTexturedLightmap vert = new VertexPositionNormalTexturedLightmap(verts[i], normals[i], texcoords[i], lightcoords[i]);
                 world.verts.Add(vert);
             }
+
+            face.BBox = BBox;
 
             // Build indices
             List<uint> indices = new List<uint>();
@@ -930,6 +1111,7 @@ namespace CubeHags.client.map.Source
 
             face.nVerts = world.verts.Count - (int)firstVertex;
             face.indices = indices.ToArray();
+            
             //face.nDisplace = map.disp_primitive_set.Count - face.displace_offset;
         }
 
@@ -1049,6 +1231,7 @@ namespace CubeHags.client.map.Source
             // Read DispInfo
             br.BaseStream.Seek(header.lumps[26].fileofs, SeekOrigin.Begin);
             int nDispInfo = header.lumps[26].filelen / 176;
+            world.DispIndexToFaceIndex = new int[nDispInfo];
             ddispinfo_t[] ddispinfos = new ddispinfo_t[nDispInfo];
             for (int i = 0; i < nDispInfo; i++)
             {
@@ -1127,6 +1310,18 @@ namespace CubeHags.client.map.Source
                 dispVerts[i] = vert;
             }
             world.dispVerts = dispVerts;
+
+            // Read DispTris
+            br.BaseStream.Seek(header.lumps[48].fileofs, SeekOrigin.Begin);
+            int nDispTris = header.lumps[48].filelen / 2;
+            dDispTri[] dispTris = new dDispTri[nDispTris];
+            for (int i = 0; i < nDispTris; i++)
+            {
+                dDispTri vert = new dDispTri();
+                vert.Tags = br.ReadUInt16();
+                dispTris[i] = vert;
+            }
+            world.dispTris = dispTris;
         }
 
         static void LoadPak(BinaryReader br, Header header)

@@ -23,8 +23,22 @@ namespace CubeHags.server
         CVar sv_mapChecksum;
         CVar sv_maxclients;
         CVar sv_zombietime;
+        CVar sv_killserver;
         public server_t sv = new server_t();
-        public serverStatic_t svs;
+
+        public bool initialized;				// sv_init has completed
+
+        public float time;						// will be strictly increasing across level changes
+
+        public int snapFlagServerBit;			// ^= SNAPFLAG_SERVERCOUNT every SV_SpawnServer()
+
+        public List<client_t> clients;					// [sv_maxclients->integer];
+        public int numSnapshotEntities;		// sv_maxclients->integer*PACKET_BACKUP*MAX_PACKET_ENTITIES
+        public int nextSnapshotEntities;		// next snapshotEntities to use
+        public List<Common.entityState_t> snapshotEntities;		// [numSnapshotEntities]
+        public int nextHeartbeatTime;
+        public List<challenge_t> challenges = new List<challenge_t>();	// 1024 to prevent invalid IPs from connecting
+
         worldSector_t[]	sv_worldSectors = new worldSector_t[64];
         int			sv_numworldSectors = 0;
 
@@ -51,9 +65,9 @@ namespace CubeHags.server
             int qport = buf.ReadInt16() & 0xffff;
 
             // find which client the message is from
-            for (int i = 0; i < svs.clients.Count; i++)
+            for (int i = 0; i < clients.Count; i++)
             {
-                client_t client = svs.clients[i];
+                client_t client = clients[i];
                 if (client.state == clientState_t.CS_FREE)
                     continue;
 
@@ -83,7 +97,7 @@ namespace CubeHags.server
                 // reliable message, but they don't do any other processing
                 if (client.state != clientState_t.CS_ZOMBIE)
                 {
-                    client.lastPacketTime = svs.time; // don't timeout
+                    client.lastPacketTime = time; // don't timeout
                     ExecuteClientMessage(client, buf);
                 }
                 return;
@@ -100,11 +114,11 @@ namespace CubeHags.server
             Net.Instance.NetChan_Transmit(cl.netchan, msg);
         }
 
-        public Input.UserCommand GetUsercmd(int clientNum)
+        public Input.UserCommand GetLastUsercmd(int clientNum)
         {
             if (clientNum < 0 || clientNum >= sv_maxclients.Integer)
                 Common.Instance.Error("GetUsercmd: Bad clientNum");
-            return svs.clients[clientNum].lastUsercmd;
+            return clients[clientNum].lastUsercmd;
         }
 
         /*
@@ -153,16 +167,16 @@ namespace CubeHags.server
             int qport = int.Parse(Info.ValueForKey(userinfo, "qport"));
             int i;
             // quick reject
-            for (i = 0; i < svs.clients.Count; i++)
+            for (i = 0; i < clients.Count; i++)
             {
-                client_t cl = svs.clients[i];
+                client_t cl = clients[i];
                 if (cl.state == clientState_t.CS_FREE)
                 {
                     continue;
                 }
                 if (IPAddress.Equals(from.Address, cl.netchan.remoteAddress.Address) && (qport == cl.netchan.qport || from.Port == cl.netchan.remoteAddress.Port))
                 {
-                    if ((svs.time - cl.lastConnectTime) < 300f)
+                    if ((time - cl.lastConnectTime) < 300f)
                     {
                         Common.Instance.WriteLine("DirConnect: ({0})=>Reconnect rejected : too soon.", from.Address.ToString());
                         return;
@@ -176,29 +190,29 @@ namespace CubeHags.server
             // see if the challenge is valid (LAN clients don't need to challenge)
             if (!IPAddress.IsLoopback(from.Address))
             {
-                for (i = 0; i < svs.challenges.Count; i++)
+                for (i = 0; i < challenges.Count; i++)
                 {
-                    if (IPAddress.Equals(from.Address, svs.challenges[i].adr.Address))
+                    if (IPAddress.Equals(from.Address, challenges[i].adr.Address))
                     {
-                        if (challenge == svs.challenges[i].challenge)
+                        if (challenge == challenges[i].challenge)
                             break;
                     }
                 }
 
-                if (i == svs.challenges.Count)
+                if (i == challenges.Count)
                 {
                     Net.Instance.OutOfBandMessage(Net.NetSource.SERVER, from, "print\nNo or bad challenge for your address\n");
                     return;
                 }
 
-                challenge_t chal = svs.challenges[i];
+                challenge_t chal = challenges[i];
                 if (chal.wasrefused)
                 {
                     // Return silently, so that error messages written by the server keep being displayed.
                     return;
                 }
 
-                int ping = (int)svs.time - chal.pingTime;
+                int ping = (int)time - chal.pingTime;
 
                 // never reject a LAN client based on ping
                 if (!Net.Instance.IsLanAddress(from.Address))
@@ -219,9 +233,9 @@ namespace CubeHags.server
             bool gotcl = false;
             client_t newCl = new client_t();
             // if there is already a slot for this ip, reuse it
-            for (i = 0; i < svs.clients.Count; i++)
+            for (i = 0; i < clients.Count; i++)
             {
-                client_t cl = svs.clients[i];
+                client_t cl = clients[i];
                 if (cl.state == clientState_t.CS_FREE)
                 {
                     continue;
@@ -239,9 +253,9 @@ namespace CubeHags.server
             {
                 newCl = null;
                 // find a client slot
-                for (i = 0; i < svs.clients.Count; i++)
+                for (i = 0; i < clients.Count; i++)
                 {
-                    client_t cl = svs.clients[i];
+                    client_t cl = clients[i];
                     if (cl.state == clientState_t.CS_FREE)
                     {
                         newCl = cl;
@@ -252,8 +266,8 @@ namespace CubeHags.server
                 if (newCl == null && i < sv_maxclients.Integer)
                 {
                     newCl = new client_t();
-                    svs.clients.Add(newCl);
-                    i = svs.clients.Count - 1;
+                    clients.Add(newCl);
+                    i = clients.Count - 1;
                     newCl.id = i;
                 }
 
@@ -272,9 +286,9 @@ namespace CubeHags.server
             // build a new connection
             // accept the new client
             // this is the only place a client_t is ever initialized
-            if (sv.gentities.Count <= i)
-                sv.gentities.Add(new Common.sharedEntity_t());
-            Common.sharedEntity_t ent = sv.gentities[i];
+            //if (sv.num_entities <= i)
+            //    sv.gentities[(new sharedEntity());
+            sharedEntity ent = sv.gentities[i];
             newCl.gentity = ent;
 
             // save the challenge
@@ -302,9 +316,9 @@ namespace CubeHags.server
 
             Common.Instance.WriteLine("Going from CS_FREE to CS_CONNECTED for {0}", i);
             newCl.state = clientState_t.CS_CONNECTED;
-            newCl.nextSnapshotTime = (int)svs.time;
-            newCl.lastPacketTime = svs.time;
-            newCl.lastConnectTime = (int)svs.time;
+            newCl.nextSnapshotTime = (int)time;
+            newCl.lastPacketTime = time;
+            newCl.lastConnectTime = (int)time;
 
             // when we receive the first packet from the client, we will
             // notice that it is from a different serverid and that the
@@ -313,15 +327,15 @@ namespace CubeHags.server
 
         }
 
-        public void LocateGameData(List<gentity_t> gEnts, List<gclient_t> clients)
+        public void LocateGameData(sharedEntity[] gEnts, int entityCount, gclient_t[] clients)
         {
-            
-            sv.gentities = new List<Common.sharedEntity_t>();
-            for (int i = 0; i < gEnts.Count; i++)
-            {
-                sv.gentities.Add(Game.Instance.GEntityToSharedEntity(gEnts[i]));
-            }
-            sv.num_entities = gEnts.Count;
+            sv.gentities = gEnts;
+            //sv.gentities = new List<sharedEntity>();
+            //for (int i = 0; i < gEnts.Count; i++)
+            //{
+            //    sv.gentities.Add(Game.Instance.GEntityToSharedEntity(gEnts[i]));
+            //}
+            sv.num_entities = entityCount;
             sv.gameClients = clients;
         }
 
@@ -338,7 +352,7 @@ namespace CubeHags.server
         void UserInfoChanged(client_t cl)
         {
             cl.name = Info.ValueForKey(cl.userinfo, "name");
-
+            string val;
             // rate command
             // if the client is on the same subnet as the server and we aren't running an
             // internet public server, assume they don't need a rate choke
@@ -348,12 +362,28 @@ namespace CubeHags.server
             }
             else
             {
-                cl.rate = 20000;
+                cl.rate = 25000;
+                val = Info.ValueForKey(cl.userinfo, "rate");
+                if (val != null)
+                {
+                    int i;
+                    if (int.TryParse(val, out i))
+                    {
+                        cl.rate = i;
+                        if (cl.rate < 1000)
+                            cl.rate = 1000;
+                        else if (cl.rate > 90000)
+                            cl.rate = 90000;
+                    }
+                    else
+                        cl.rate = 25000;
+                }
+                
             }
 
             // snaps command
-            string val = Info.ValueForKey(cl.userinfo, "snaps");
-            if (val.Length > 0)
+            val = Info.ValueForKey(cl.userinfo, "snaps");
+            if (val != null && val.Length > 0)
             {
                 int i = 1;
                 int.TryParse(val, out i);
@@ -397,12 +427,14 @@ namespace CubeHags.server
         */
         void GetChallenge(IPEndPoint from, string clientChallenge)
         {
+            if (from == null)
+                return;
             int oldestTime = int.MaxValue;
             int oldest = 0;
             // see if we already have a challenge for this ip
-            for (int i = 0; i < svs.challenges.Count; i++)
+            for (int i = 0; i < challenges.Count; i++)
             {
-                challenge_t challenge = svs.challenges[i];
+                challenge_t challenge = challenges[i];
                 if (!challenge.connected && IPAddress.Equals(from.Address, challenge.adr.Address))
                 {
                     break;
@@ -422,16 +454,16 @@ namespace CubeHags.server
                 
                 challeng.clientChallenge = 0;
                 challeng.adr = from;
-                challeng.firstTime = (int)svs.time;
-                challeng.time = (int)svs.time;
+                challeng.firstTime = (int)time;
+                challeng.time = (int)time;
                 challeng.connected = false;
             }
 
             // always generate a new challenge number, so the client cannot circumvent sv_maxping
-            challeng.challenge = ((new Random().Next() << 16) ^ new Random().Next()) ^ (int)svs.time;
+            challeng.challenge = ((new Random().Next() << 16) ^ new Random().Next()) ^ (int)time;
             challeng.wasrefused = false;
-            challeng.pingTime = (int)svs.time;
-            svs.challenges.Add(challeng);
+            challeng.pingTime = (int)time;
+            challenges.Add(challeng);
             Net.Instance.OutOfBandMessage(Net.NetSource.SERVER, challeng.adr, string.Format("challengeResponse {0} {1}", challeng.challenge, clientChallenge));
         }
 
@@ -453,7 +485,7 @@ namespace CubeHags.server
             // clear collision map data
             ClipMap.Instance.ClearMap();
 
-            // init client structures and svs.numSnapshotEntities 
+            // init client structures and numSnapshotEntities 
             if (CVars.Instance.VariableValue("sv_running") == 0f)
             {
                 Startup();
@@ -469,18 +501,18 @@ namespace CubeHags.server
             // FileCache clear pak ref
 
             // allocate the snapshot entities on the hunk
-            svs.snapshotEntities = new List<Common.entityState_t>();
-            svs.nextSnapshotEntities = 0;
+            snapshotEntities = new List<Common.entityState_t>();
+            nextSnapshotEntities = 0;
 
             // toggle the server bit so clients can detect that a
             // server has changed
-            svs.snapFlagServerBit ^= 4;
+            snapFlagServerBit ^= 4;
 
 
-            foreach (client_t client in svs.clients)
+            foreach (client_t client in clients)
             {
                 // save when the server started for each client already connected
-                if ((int)client.state >= (int)connstate_t.CONNECTED)
+                if ((int)client.state >= (int)ConnectState.CONNECTED)
                 {
                     client.oldServerTime = sv.time;
                 }
@@ -518,17 +550,17 @@ namespace CubeHags.server
             {
                 Game.Instance.RunFrame(sv.time);
                 sv.time += 100;
-                svs.time += 100;
+                time += 100;
             }
 
             // create a baseline for more efficient communications
             CreateBaseline();
 
-            for(int i=0; i<svs.clients.Count; i++)
+            for(int i=0; i<clients.Count; i++)
             {
-                client_t client = svs.clients[i];
+                client_t client = clients[i];
                 // send the new gamestate to all connected clients
-                if ((int)client.state >= (int)connstate_t.CONNECTED)
+                if ((int)client.state >= (int)ConnectState.CONNECTED)
                 {
                     // connect the client again
                     string denied = Game.Instance.Client_Connect(i, false);
@@ -543,11 +575,11 @@ namespace CubeHags.server
                         // when we get the next packet from a connected client,
                         // the new gamestate will be sent
                         client.state = clientState_t.CS_CONNECTED;
-                        Common.sharedEntity_t ent = sv.gentities[i];
+                        sharedEntity ent = sv.gentities[i];
                         ent.s.number = i;
                         client.gentity = ent;
                         client.deltaMessage = -1;
-                        client.nextSnapshotTime = (int)svs.time; // generate a snapshot immediately
+                        client.nextSnapshotTime = (int)time; // generate a snapshot immediately
                         Game.Instance.Client_Begin(i);
                         //ClientBegin(i);
                         
@@ -558,7 +590,7 @@ namespace CubeHags.server
             // run another frame to allow things to look at all the players
             Game.Instance.RunFrame(sv.time);
             sv.time += 100;
-            svs.time += 100;
+            time += 100;
 
             // save systeminfo and serverinfo strings
             string systemInfo = CVars.Instance.InfoString(CVarFlags.SYSTEM_INFO);
@@ -589,7 +621,7 @@ namespace CubeHags.server
         {
             for (int i = 1; i < sv.svEntities.Length; i++)
             {
-                Common.sharedEntity_t svent = sv.gentities[i];
+                sharedEntity svent = sv.gentities[i];
                 if (!svent.r.linked)
                     continue;
 
@@ -646,6 +678,7 @@ namespace CubeHags.server
 
         private void ClearServer()
         {
+            sv = new server_t();
             sv.configstrings = new Dictionary<int, string>();
         }
 
@@ -661,15 +694,15 @@ namespace CubeHags.server
         */
         private void Startup()
         {
-            if (svs.initialized)
+            if (initialized)
             {
-                Common.Instance.WriteLine("Startup: svs.initialized");
+                Common.Instance.WriteLine("Startup: initialized");
                 return;
             }
 
-            svs.clients = new List<client_t>();
-            svs.numSnapshotEntities = sv_maxclients.Integer * 4 * 64;
-            svs.initialized = true;
+            clients = new List<client_t>();
+            numSnapshotEntities = sv_maxclients.Integer * 4 * 64;
+            initialized = true;
 
             CVars.Instance.Set("sv_running", "1");
         }
@@ -682,6 +715,14 @@ namespace CubeHags.server
         // happen before SV_Frame is called
         internal void Frame(float msec)
         {
+            // Killing server from UI
+            if (sv_killserver.Integer > 0)
+            {
+                Shutdown("Server was killed");
+                CVars.Instance.Set("sv_killserver", "0");
+                return;
+            }
+
             if (Common.Instance.sv_running.Integer == 0)
             {
                 // Running as a server, but no map loaded
@@ -692,15 +733,14 @@ namespace CubeHags.server
             if (sv_fps.Integer < 1)
                 CVars.Instance.Set("sv_fps", "10");
 
-            float frameMsec = 1000f / sv_fps.Integer * Common.Instance.timescale.Value;
+            int frameMsec = (int)(1000f / sv_fps.Integer * Common.Instance.timescale.Value);
             // don't let it scale below 1ms
             if (frameMsec < 1)
             {
                 CVars.Instance.Set("timescale", string.Format("{0}", sv_fps.Integer / 1000f));
                 frameMsec = 1;
             }
-
-            sv.timeResidual += msec;
+            sv.timeResidual += (int)msec;
 
             if (sv.restartTime > 0 && sv.time >= sv.restartTime)
             {
@@ -728,7 +768,7 @@ namespace CubeHags.server
             while (sv.timeResidual >= frameMsec)
             {
                 sv.timeResidual -= frameMsec;
-                svs.time += frameMsec;
+                time += frameMsec;
                 sv.time += frameMsec;
 
                 // let everything in the world think and move
@@ -744,15 +784,15 @@ namespace CubeHags.server
 
         private void SendClientMessages()
         {
-            for (int i = 0; i < svs.clients.Count; i++)
+            for (int i = 0; i < clients.Count; i++)
             {
-                client_t client = svs.clients[i];
+                client_t client = clients[i];
                 if ((int)client.state <= 0 || client.netchan.connection == null || client.netchan.connection.Status != NetConnectionStatus.Connected)
                 {
                     continue;       // not connected
                 }
 
-                if (svs.time < client.nextSnapshotTime)
+                if (time < client.nextSnapshotTime)
                 {
                     continue;   // not time yet
                 }
@@ -780,15 +820,15 @@ namespace CubeHags.server
         */
         private void CheckTimeouts()
         {
-            int droppoint = (int)(svs.time - 1000 * sv_timeout.Integer);
-            int zombiepoint = (int)(svs.time - 1000 * sv_zombietime.Integer);
-            for (int i = 0; i < svs.clients.Count; i++)
+            int droppoint = (int)(time - 1000 * sv_timeout.Integer);
+            int zombiepoint = (int)(time - 1000 * sv_zombietime.Integer);
+            for (int i = 0; i < clients.Count; i++)
             {
-                client_t cl = svs.clients[i];
+                client_t cl = clients[i];
 
                 // message times may be wrong across a changelevel
-                if (cl.lastPacketTime > svs.time)
-                    cl.lastPacketTime = svs.time;
+                if (cl.lastPacketTime > time)
+                    cl.lastPacketTime = time;
 
                 if (cl.state == clientState_t.CS_ZOMBIE && cl.lastPacketTime < zombiepoint)
                 {
@@ -820,7 +860,7 @@ namespace CubeHags.server
 
             // see if we already have a challenge for this ip
             challenge_t toRemove = null;
-            foreach (challenge_t challenge in svs.challenges)
+            foreach (challenge_t challenge in challenges)
             {
                 if (cl.netchan.remoteAddress.Equals(challenge.adr))
                 {
@@ -838,7 +878,7 @@ namespace CubeHags.server
             // call the prog function for removing a client
             // this will remove the body, among other things
             Game.Instance.Client_Disconnect(cl.gentity.s.number);
-            //VM_Call(gvm, GAME_CLIENT_DISCONNECT, drop - svs.clients);
+            //VM_Call(gvm, GAME_CLIENT_DISCONNECT, drop - clients);
 
             // add the disconnect command
             SendServerCommand(cl, string.Format("disconnect \"{0}\"", reason));
@@ -850,12 +890,12 @@ namespace CubeHags.server
 
         }
 
-        public void UnlinkEntity(Common.sharedEntity_t gEnt)
+        public void UnlinkEntity(sharedEntity gEnt)
         {
 
         }
 
-        public void LinkEntity(Common.sharedEntity_t gEnt)
+        public void LinkEntity(sharedEntity gEnt)
         {
             svEntity_t ent =  sv.svEntities[gEnt.s.number];
             if (ent.worldSector != null)
@@ -950,7 +990,7 @@ namespace CubeHags.server
             if (cl == null || p == null)
                 return;
 
-            foreach (client_t client in svs.clients)
+            foreach (client_t client in clients)
             {
                 if (client.Equals(cl))
                 {
@@ -981,7 +1021,7 @@ namespace CubeHags.server
             }
 
             // send the data to all relevent clients
-            foreach (client_t client in svs.clients)
+            foreach (client_t client in clients)
             {
                 AddServerCommand(client, fmt);
             }
@@ -1018,9 +1058,9 @@ namespace CubeHags.server
 
         private void CalcPings()
         {
-            for (int i = 0; i < svs.clients.Count; i++)
+            for (int i = 0; i < clients.Count; i++)
             {
-                client_t cl = svs.clients[i];
+                client_t cl = clients[i];
                 if (cl.state != clientState_t.CS_ACTIVE)
                 {
                     cl.ping = 999;
@@ -1053,12 +1093,12 @@ namespace CubeHags.server
                 }
 
                 // let the game dll know about the ping
-                Common.playerState_t ps = GameClientNum(i);
+                Common.PlayerState ps = GameClientNum(i);
                 ps.ping = cl.ping;
             }
         }
 
-        private Common.playerState_t GameClientNum(int i)
+        private Common.PlayerState GameClientNum(int i)
         {
             return sv.gameClients[i].ps;
         }
@@ -1069,7 +1109,7 @@ namespace CubeHags.server
         {
             AddOperatorCommands();
 
-            sv_fps = CVars.Instance.Get("sv_fps", "40", CVarFlags.TEMP);
+            sv_fps = CVars.Instance.Get("sv_fps", "100", CVarFlags.TEMP);
             sv_timeout = CVars.Instance.Get("sv_timeout", "200", CVarFlags.TEMP);
             sv_hostname = CVars.Instance.Get("sv_hostname", "noname", CVarFlags.SERVER_INFO | CVarFlags.ARCHIVE);
             sv_mapname = CVars.Instance.Get("mapname", "nomap", CVarFlags.SERVER_INFO | CVarFlags.ARCHIVE);
@@ -1077,6 +1117,7 @@ namespace CubeHags.server
             sv_mapChecksum = CVars.Instance.Get("sv_mapChecksum", "", CVarFlags.ROM);
             sv_maxclients = CVars.Instance.Get("sv_maxclients", "32", CVarFlags.SERVER_INFO | CVarFlags.LATCH);
             sv_zombietime = CVars.Instance.Get("sv_zombietime", "2", CVarFlags.TEMP);
+            sv_killserver = CVars.Instance.Get("sv_killserver", "0", CVarFlags.TEMP);
             CVars.Instance.Get("sv_serverid", "0", CVarFlags.SERVER_INFO | CVarFlags.ROM);
         }
 
@@ -1099,7 +1140,7 @@ namespace CubeHags.server
         	// the serverId associated with the current checksumFeed (always <= serverId)
         	public int       checksumFeedServerId;	
         	public int				snapshotCounter;	// incremented for each snapshot built
-        	public float				timeResidual;		// <= 1000 / sv_frame->value
+        	public int				timeResidual;		// <= 1000 / sv_frame->value
         	public int				nextFrameTime;		// when time > nextFrameTime, process world
         	public Common.cmodel_t[]	models; // 256
         	public Dictionary<int, string>			configstrings = new Dictionary<int, string>(); // 1024
@@ -1109,15 +1150,15 @@ namespace CubeHags.server
             public string[] entityParseString;
 
         	// the game virtual machine will update these on init and changes
-        	public List<Common.sharedEntity_t>	gentities;
+            public sharedEntity[] gentities;
         	public int				gentitySize;
         	public int				num_entities;		// current number, <= MAX_GENTITIES
 
-        	public List<gclient_t>	gameClients;
+        	public gclient_t[]	gameClients;
         	public int				gameClientSize;		// will be > sizeof(playerState_t) due to game private data
 
         	public int				restartTime;
-        	public float				time;
+        	public int				time;
         } 
 
             public enum serverState_t {
@@ -1145,25 +1186,6 @@ namespace CubeHags.server
             	public int			snapshotCounter;	// used to prevent double adding from portal views
             }
 
-        // this structure will be cleared only when the game dll changes
-            public struct serverStatic_t {
-            	public bool	initialized;				// sv_init has completed
-
-                public float time;						// will be strictly increasing across level changes
-
-                public int snapFlagServerBit;			// ^= SNAPFLAG_SERVERCOUNT every SV_SpawnServer()
-
-                public List<client_t> clients;					// [sv_maxclients->integer];
-                public int numSnapshotEntities;		// sv_maxclients->integer*PACKET_BACKUP*MAX_PACKET_ENTITIES
-                public int nextSnapshotEntities;		// next snapshotEntities to use
-                public List<Common.entityState_t> snapshotEntities;		// [numSnapshotEntities]
-                public int nextHeartbeatTime;
-                public List<challenge_t> challenges;	// 1024 to prevent invalid IPs from connecting
-                //netadr_t	redirectAddress;			// for rcon return messages
-
-                //netadr_t	authorizeAddress;			// for rcon return messages
-            }
-
         public class client_t {
             public client_t()
             {
@@ -1188,14 +1210,14 @@ namespace CubeHags.server
             public int lastMessageNum;		// for delta compression
             public int lastClientCommand;	// reliable client message sequence
             public string lastClientCommandString = ""; // 1024
-            public Common.sharedEntity_t gentity;			// SV_GentityNum(clientnum)
+            public sharedEntity gentity;			// SV_GentityNum(clientnum)
             public string name;			// 32 extracted from userinfo, high bits masked
 
             public int deltaMessage;		// frame last client usercmd message
-            public int nextReliableTime;	// svs.time when another reliable command will be allowed
-            public float lastPacketTime;		// svs.time when packet was last received
-            public int lastConnectTime;	// svs.time when connection started
-            public int nextSnapshotTime;	// send another snapshot when svs.time >= nextSnapshotTime
+            public int nextReliableTime;	// time when another reliable command will be allowed
+            public float lastPacketTime;		// time when packet was last received
+            public int lastConnectTime;	// time when connection started
+            public int nextSnapshotTime;	// send another snapshot when time >= nextSnapshotTime
             public bool rateDelayed;		// true if nextSnapshotTime was set based on rate instead of snapshotMsec
             public int timeoutCount;		// must timeout a few frames in a row so debugging doesn't break
             public clientSnapshot_t[] frames = new clientSnapshot_t[32];	// 32 updates can be delta'd from here
@@ -1221,7 +1243,7 @@ namespace CubeHags.server
         public class clientSnapshot_t {
         	public int				areabytes;
             public byte[] areabits = new byte[32];		// 32 portalarea visibility bits
-            public Common.playerState_t ps = new Common.playerState_t();
+            public Common.PlayerState ps = new Common.PlayerState();
             public int num_entities;
             public int first_entity;		// into the circular sv_packet_entities[]
         										// the entities MUST be in increasing state number

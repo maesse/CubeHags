@@ -79,13 +79,13 @@ namespace CubeHags.server
             Common.Instance.WriteLine("map: {0}", sv_mapname.String);
             Common.Instance.WriteLine("num score ping name                lastmsg address            qport rate");
             Common.Instance.WriteLine("--- ----- ---- ------------------- ------- ------------------ ----- -----");
-            for (int i = 0; i < svs.clients.Count; i++)
+            for (int i = 0; i < clients.Count; i++)
             {
-                client_t cl = svs.clients[i];
+                client_t cl = clients[i];
                 if ((int)cl.state <= 0)
                     continue;
                 Common.Instance.Write("{0,-3} ", i);
-                Common.playerState_t ps = GameClientNum(i);
+                Common.PlayerState ps = GameClientNum(i);
                 Common.Instance.Write("{0,-5} ", ps.persistant[0]);
 
                 if (cl.state == clientState_t.CS_CONNECTED)
@@ -100,7 +100,7 @@ namespace CubeHags.server
 
                 Common.Instance.Write("{0,-32} ", cl.name);
 
-                Common.Instance.Write("{0,-7} ", svs.time - cl.lastPacketTime);
+                Common.Instance.Write("{0,-7} ", time - cl.lastPacketTime);
                 Common.Instance.Write("{0,-22} ", cl.netchan.remoteAddress.ToString());
                 Common.Instance.Write("{0,-5} ", cl.netchan.qport);
                 Common.Instance.Write("{0,-5}\n", cl.rate);

@@ -442,10 +442,10 @@ namespace CubeHags.common
                 node.mins = SourceParser.SwapZY(new Vector3(br.ReadInt16(), br.ReadInt16(), br.ReadInt16())); // 3 For frustrum culling
                 node.maxs = SourceParser.SwapZY(new Vector3(br.ReadInt16(), br.ReadInt16(), br.ReadInt16())); // 3
                 node.firstface = br.ReadUInt16(); // index into face array
-                node.numfaces = br.ReadUInt16(); ;  // counting both sides
-                node.area = br.ReadInt16(); ;    // If all leaves below this node are in the same area, then
+                node.numfaces = br.ReadUInt16();  // counting both sides
+                node.area = br.ReadInt16();     // If all leaves below this node are in the same area, then
                 // this is the area index. If not, this is -1.
-                node.paddding = br.ReadInt16(); ;	 // pad to 32 bytes length
+                node.paddding = br.ReadInt16(); 	 // pad to 32 bytes length
 
                 node.plane = planes[node.planenum];
 
@@ -557,7 +557,7 @@ namespace CubeHags.common
             for (int i = 0; i < numPlanes; i++)
             {
                 cplane_t plane = new cplane_t();
-                plane.normal = SourceParser.SwapZY(new Vector3(br.ReadSingle(), br.ReadSingle(), br.ReadSingle()));
+                plane.normal = new Vector3(br.ReadSingle(), br.ReadSingle(), br.ReadSingle());
                 plane.dist = br.ReadSingle();
                 plane.type = br.ReadInt32();
                 int bits = 0;

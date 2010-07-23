@@ -120,7 +120,7 @@ namespace CubeHags.server
             }
 
             // don't allow another command for one second
-            cl.nextReliableTime = (int)svs.time + 1000;
+            cl.nextReliableTime = (int)time + 1000;
 
             ExecuteClientCommand(cl, s);
             cl.lastClientCommand = seq;
@@ -266,7 +266,7 @@ namespace CubeHags.server
             }
 
             // save time for ping calculation
-            cl.frames[cl.messageAcknowledge & 31].messageAcked = (int)svs.time;
+            cl.frames[cl.messageAcknowledge & 31].messageAcked = (int)time;
 
             // if this is the first usercmd we have received
             // this gamestate, put the client into the world
@@ -325,27 +325,25 @@ namespace CubeHags.server
 
             // set up the entity for the client
             int clientNum = cl.id;
-            Common.sharedEntity_t ent = sv.gentities[clientNum];
+            sharedEntity ent = sv.gentities[clientNum];
             ent.s.number = clientNum;
             cl.gentity = ent;
 
             cl.deltaMessage = -1;
-            cl.nextSnapshotTime = (int)svs.time; // generate a snapshot immediately
+            cl.nextSnapshotTime = (int)time; // generate a snapshot immediately
             cl.lastUsercmd = cmd;
 
             Game.Instance.Client_Begin(clientNum);
-
-
         }
 
         
 
-        public trace_t Trace(Vector3 start, Vector3 mins, Vector3 maxs, Vector3 end, int passEntityNum, int contentmask)
-        {
-            //results.fraction = 1f;
-            //trace_t t  = new trace_t();
-            return ClipMap.Instance.Box_Trace( start, end, mins, maxs, 0, contentmask, 0);
-        }
+        //public trace_t Trace(Vector3 start, Vector3 mins, Vector3 maxs, Vector3 end, int passEntityNum, int contentmask)
+        //{
+        //    //results.fraction = 1f;
+        //    //trace_t t  = new trace_t();
+        //    return ClipMap.Instance.Box_Trace( start, end, mins, maxs, 0, contentmask, 0);
+        //}
 
         public void PointContents(Vector3 p, int passEntityNum)
         {
