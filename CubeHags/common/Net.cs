@@ -362,6 +362,7 @@ namespace CubeHags.common
         */
         public void MSG_ReadDeltaEntity(NetBuffer msg, ref Common.entityState_t from, ref Common.entityState_t to, int number)
         {
+            int startBit = msg.Position-32;
             if (number < 0 || number >= 1024)
             {
                 Common.Instance.Error("ReadDeltaEntity: number < 0 || number >= 1024");
@@ -377,16 +378,18 @@ namespace CubeHags.common
             }
 
             // Check for no delta
-            if (msg.ReadBoolean())
+            if (!msg.ReadBoolean())
             {
                 to = from;
                 to.number = number;
                 return;
             }
-
+            
             to.number = number;
+            int dataStart = msg.Position;
             to.eType = msg.ReadBoolean() ? msg.ReadInt32() : from.eType;
-            to.eFlags = msg.ReadBoolean() ? (Common.EntityFlags)Enum.Parse(typeof(Common.EntityFlags),""+ msg.ReadInt32()) : from.eFlags;
+            to.eFlags = msg.ReadBoolean() ? (Common.EntityFlags)msg.ReadInt32() : from.eFlags;
+            int middle = msg.Position;
             to.pos.trBase.X = msg.ReadBoolean() ? msg.ReadFloat() : from.pos.trBase.X;
             to.pos.trBase.Y = msg.ReadBoolean() ? msg.ReadFloat() : from.pos.trBase.Y;
             to.pos.trBase.Z = msg.ReadBoolean() ? msg.ReadFloat() : from.pos.trBase.Z;
@@ -409,7 +412,7 @@ namespace CubeHags.common
 
             to.time = msg.ReadBoolean() ? msg.ReadInt32() : from.time;
             to.time2 = msg.ReadBoolean() ? msg.ReadInt32() : from.time2;
-
+            
             to.origin.X = msg.ReadBoolean() ? msg.ReadFloat() : from.origin.X;
             to.origin.Y = msg.ReadBoolean() ? msg.ReadFloat() : from.origin.Y;
             to.origin.Z = msg.ReadBoolean() ? msg.ReadFloat() : from.origin.Z;
@@ -423,7 +426,7 @@ namespace CubeHags.common
             to.angles2.X = msg.ReadBoolean() ? msg.ReadFloat() : from.angles2.X;
             to.angles2.Y = msg.ReadBoolean() ? msg.ReadFloat() : from.angles2.Y;
             to.angles2.Z = msg.ReadBoolean() ? msg.ReadFloat() : from.angles2.Z;
-
+            
             to.otherEntityNum = msg.ReadBoolean() ? msg.ReadInt32() : from.otherEntityNum;
             to.otherEntityNum2 = msg.ReadBoolean() ? msg.ReadInt32() : from.otherEntityNum2;
             to.groundEntityNum = msg.ReadBoolean() ? msg.ReadInt32() : from.groundEntityNum;
@@ -433,6 +436,17 @@ namespace CubeHags.common
             to.frame = msg.ReadBoolean() ? msg.ReadInt32() : from.frame;
             to.solid = msg.ReadBoolean() ? msg.ReadInt32() : from.solid;
             to.generic1 = msg.ReadBoolean() ? msg.ReadInt32() : from.generic1;
+            int lenghtBits = msg.ReadInt32();
+
+            dataStart = msg.Position - dataStart;
+            lenghtBits -= dataStart;
+            for (int i = 0; i < lenghtBits; i++)
+            {
+                msg.ReadBoolean();
+            }
+            middle = msg.Position - middle;
+            
+            Common.Instance.WriteLine("MSG_ReadDeltaEntity: Read {0} bits", msg.Position - startBit);
         }
 
 
@@ -449,13 +463,13 @@ namespace CubeHags.common
         */
         public void MSG_WriteDeltaEntity(NetBuffer msg, ref Common.entityState_t from, ref Common.entityState_t to, bool force)
         {
-            int msgStart = msg.Position;
+            int msgStart = msg.LengthBits;
             // a NULL to is a delta remove message
             if (to == null)
             {
                 if (from == null)
                     return;
-                msg.Write((uint)from.number, 10);
+                msg.Write(from.number);
                 msg.Write(true);
                 return;
             }
@@ -466,21 +480,21 @@ namespace CubeHags.common
             }
 
             NetBuffer buf = new NetBuffer();
-
+            //NetBuffer buf = msg;
             int lc = 0;
             //if (from.number != to.number) { lc = 1; buf.Write(true); buf.Write(to.number); } else { buf.Write(false); }
-            if(from.eType!= to.eType){ lc = 2;buf.Write(true); buf.Write(to.eType); } else { buf.Write(false); }
-            if(from.eFlags!= to.eFlags){ lc = 3;buf.Write(true); buf.Write((int)to.eFlags); } else { buf.Write(false); }
-
-            if(from.pos.trBase.X != to.pos.trBase.X){ lc = 4;buf.Write(true); buf.Write(to.pos.trBase.X); } else { buf.Write(false); }
-            if(from.pos.trBase.Y != to.pos.trBase.Y){ lc = 5;buf.Write(true); buf.Write(to.pos.trBase.Y); } else { buf.Write(false); }
-            if(from.pos.trBase.Z != to.pos.trBase.Z){ lc = 6;buf.Write(true); buf.Write(to.pos.trBase.Z); } else { buf.Write(false); }
-            if(from.pos.trDelta.X != to.pos.trDelta.X){ lc = 7;buf.Write(true); buf.Write(to.pos.trDelta.X); } else { buf.Write(false); }
-            if(from.pos.trDelta.Y != to.pos.trDelta.Y){ lc = 8;buf.Write(true); buf.Write(to.pos.trDelta.Y); } else { buf.Write(false); }
-            if(from.pos.trDelta.Z != to.pos.trDelta.Z) {lc = 9;buf.Write(true); buf.Write(to.pos.trDelta.Z); } else { buf.Write(false); }
-            if(from.pos.trDuration != to.pos.trDuration){ lc = 10;buf.Write(true); buf.Write(to.pos.trDuration); } else { buf.Write(false); }
-            if(from.pos.trTime != to.pos.trTime){ lc = 11;buf.Write(true); buf.Write(to.pos.trTime); } else { buf.Write(false); }
-            if(from.pos.trType != to.pos.trType){ lc = 12;buf.Write(true); buf.Write((int)to.pos.trType); } else { buf.Write(false); }
+            if (from.eType != to.eType) { lc = 2; buf.Write(true); buf.Write(to.eType); } else { buf.Write(false); }
+            if (from.eFlags != to.eFlags) { lc = 3; buf.Write(true); buf.Write((int)to.eFlags); } else { buf.Write(false); }
+            int middle = buf.LengthBits;
+            if (from.pos.trBase.X != to.pos.trBase.X) { lc = 4; buf.Write(true); buf.Write(to.pos.trBase.X); } else { buf.Write(false); }
+            if (from.pos.trBase.Y != to.pos.trBase.Y) { lc = 5; buf.Write(true); buf.Write(to.pos.trBase.Y); } else { buf.Write(false); }
+            if (from.pos.trBase.Z != to.pos.trBase.Z) { lc = 6; buf.Write(true); buf.Write(to.pos.trBase.Z); } else { buf.Write(false); }
+            if (from.pos.trDelta.X != to.pos.trDelta.X) { lc = 7; buf.Write(true); buf.Write(to.pos.trDelta.X); } else { buf.Write(false); }
+            if (from.pos.trDelta.Y != to.pos.trDelta.Y) { lc = 8; buf.Write(true); buf.Write(to.pos.trDelta.Y); } else { buf.Write(false); }
+            if (from.pos.trDelta.Z != to.pos.trDelta.Z) { lc = 9; buf.Write(true); buf.Write(to.pos.trDelta.Z); } else { buf.Write(false); }
+            if (from.pos.trDuration != to.pos.trDuration) { lc = 10; buf.Write(true); buf.Write(to.pos.trDuration); } else { buf.Write(false); }
+            if (from.pos.trTime != to.pos.trTime) { lc = 11; buf.Write(true); buf.Write(to.pos.trTime); } else { buf.Write(false); }
+            if (from.pos.trType != to.pos.trType) { lc = 12; buf.Write(true); buf.Write((int)to.pos.trType); } else { buf.Write(false); }
 
             if (from.apos.trBase.X != to.apos.trBase.X) { lc = 13; buf.Write(true); buf.Write(to.apos.trBase.X); } else { buf.Write(false); }
             if (from.apos.trBase.Y != to.apos.trBase.Y) { lc = 14; buf.Write(true); buf.Write(to.apos.trBase.Y); } else { buf.Write(false); }
@@ -488,38 +502,38 @@ namespace CubeHags.common
             if (from.apos.trDelta.X != to.apos.trDelta.X) { lc = 16; buf.Write(true); buf.Write(to.apos.trDelta.X); } else { buf.Write(false); }
             if (from.apos.trDelta.Y != to.apos.trDelta.Y) { lc = 17; buf.Write(true); buf.Write(to.apos.trDelta.Y); } else { buf.Write(false); }
             if (from.apos.trDelta.Z != to.apos.trDelta.Z) { lc = 18; buf.Write(true); buf.Write(to.apos.trDelta.Z); } else { buf.Write(false); }
-            if(from.apos.trDuration != to.apos.trDuration){ lc = 19;buf.Write(true); buf.Write(to.apos.trDuration); } else { buf.Write(false); }
-            if(from.apos.trTime != to.apos.trTime) {lc = 20;buf.Write(true); buf.Write(to.apos.trTime); } else { buf.Write(false); }
-            if(from.apos.trType != to.apos.trType){ lc = 21;buf.Write(true); buf.Write((int)to.apos.trType); } else { buf.Write(false); }
+            if (from.apos.trDuration != to.apos.trDuration) { lc = 19; buf.Write(true); buf.Write(to.apos.trDuration); } else { buf.Write(false); }
+            if (from.apos.trTime != to.apos.trTime) { lc = 20; buf.Write(true); buf.Write(to.apos.trTime); } else { buf.Write(false); }
+            if (from.apos.trType != to.apos.trType) { lc = 21; buf.Write(true); buf.Write((int)to.apos.trType); } else { buf.Write(false); }
 
 
-            if(from.time!= to.time) {lc = 22;buf.Write(true); buf.Write(to.time); } else { buf.Write(false); }
-            if(from.time2!= to.time2) {lc = 23;buf.Write(true); buf.Write(to.time2); } else { buf.Write(false); }
-
-            if(from.origin.X!= to.origin.X) {lc = 24;buf.Write(true); buf.Write(to.origin.X); } else { buf.Write(false); }
+            if (from.time != to.time) { lc = 22; buf.Write(true); buf.Write(to.time); } else { buf.Write(false); }
+            if (from.time2 != to.time2) { lc = 23; buf.Write(true); buf.Write(to.time2); } else { buf.Write(false); }
+            
+            if (from.origin.X != to.origin.X) { lc = 24; buf.Write(true); buf.Write(to.origin.X); } else { buf.Write(false); }
             if (from.origin.Y != to.origin.Y) { lc = 25; buf.Write(true); buf.Write(to.origin.Y); } else { buf.Write(false); }
             if (from.origin.Z != to.origin.Z) { lc = 26; buf.Write(true); buf.Write(to.origin.Z); } else { buf.Write(false); }
             if (from.origin2.X != to.origin2.X) { lc = 27; buf.Write(true); buf.Write(to.origin2.X); } else { buf.Write(false); }
             if (from.origin2.Y != to.origin2.Y) { lc = 28; buf.Write(true); buf.Write(to.origin2.Y); } else { buf.Write(false); }
             if (from.origin2.Z != to.origin2.Z) { lc = 29; buf.Write(true); buf.Write(to.origin2.Z); } else { buf.Write(false); }
 
-            if(from.angles.X!= to.angles.X){ lc = 30;buf.Write(true); buf.Write(to.angles.X); } else { buf.Write(false); }
+            if (from.angles.X != to.angles.X) { lc = 30; buf.Write(true); buf.Write(to.angles.X); } else { buf.Write(false); }
             if (from.angles.Y != to.angles.Y) { lc = 31; buf.Write(true); buf.Write(to.angles.Y); } else { buf.Write(false); }
             if (from.angles.Z != to.angles.Z) { lc = 32; buf.Write(true); buf.Write(to.angles.Z); } else { buf.Write(false); }
             if (from.angles2.X != to.angles2.X) { lc = 33; buf.Write(true); buf.Write(to.angles2.X); } else { buf.Write(false); }
             if (from.angles2.Y != to.angles2.Y) { lc = 34; buf.Write(true); buf.Write(to.angles2.Y); } else { buf.Write(false); }
             if (from.angles2.Z != to.angles2.Z) { lc = 35; buf.Write(true); buf.Write(to.angles2.Z); } else { buf.Write(false); }
+            
+            if (from.otherEntityNum != to.otherEntityNum) { lc = 36; buf.Write(true); buf.Write(to.otherEntityNum); } else { buf.Write(false); }
+            if (from.otherEntityNum2 != to.otherEntityNum2) { lc = 37; buf.Write(true); buf.Write(to.otherEntityNum2); } else { buf.Write(false); }
 
-            if(from.otherEntityNum!= to.otherEntityNum) {lc = 36;buf.Write(true); buf.Write(to.otherEntityNum); } else { buf.Write(false); }
-            if(from.otherEntityNum2!= to.otherEntityNum2){ lc = 37;buf.Write(true); buf.Write(to.otherEntityNum2); } else { buf.Write(false); }
+            if (from.groundEntityNum != to.groundEntityNum) { lc = 38; buf.Write(true); buf.Write(to.groundEntityNum); } else { buf.Write(false); }
 
-            if(from.groundEntityNum!= to.groundEntityNum){ lc = 38;buf.Write(true); buf.Write(to.groundEntityNum); } else { buf.Write(false); }
+            if (from.modelindex != to.modelindex) { lc = 39; buf.Write(true); buf.Write(to.modelindex); } else { buf.Write(false); }
+            if (from.clientNum != to.clientNum) { lc = 40; buf.Write(true); buf.Write(to.clientNum); } else { buf.Write(false); }
+            if (from.frame != to.frame) { lc = 41; buf.Write(true); buf.Write(to.frame); } else { buf.Write(false); }
 
-            if(from.modelindex!= to.modelindex){ lc = 39;buf.Write(true); buf.Write(to.modelindex); } else { buf.Write(false); }
-            if(from.clientNum!= to.clientNum){ lc = 40;buf.Write(true); buf.Write(to.clientNum); } else { buf.Write(false); }
-            if(from.frame!= to.frame){ lc = 41;buf.Write(true); buf.Write(to.frame); } else { buf.Write(false); }
-
-            if(from.solid!= to.solid){ lc = 42;buf.Write(true); buf.Write(to.solid); } else { buf.Write(false); }
+            if (from.solid != to.solid) { lc = 42; buf.Write(true); buf.Write(to.solid); } else { buf.Write(false); }
             if (from.generic1 != to.generic1) { lc = 43; buf.Write(true); buf.Write(to.generic1); } else { buf.Write(false); }
 
             if (lc == 0)
@@ -530,21 +544,88 @@ namespace CubeHags.common
                     return;		// nothing at all
                 }
                 // write two bits for no change
-                msg.Write((uint)to.number, 10);
+                msg.Write(to.number);
                 msg.Write(false);   // not removed
                 msg.Write(false);   // no delta
                 return;
             }
 
-            msg.Write((uint)to.number, 10);
+            msg.Write(to.number);
             msg.Write(false);   // not removed
             msg.Write(true);    // we have a delta
+
+            
+            
             //msg.Write(lc);  // # of changes
-            msg.Write(buf.Data);
-            Common.Instance.WriteLine("MSG_WriteDeltaEntity: Wrote {0} bits", msg.Position - msgStart);
+            //msg.CopyFrom(buf);
+            int msgPos = msg.LengthBits;
+            //msg.Write(buf.Data);
+            WriteDeltaEntityHags(msg, ref  from,ref  to);
+            msg.Write(buf.LengthBits);
+            if (msgPos + buf.LengthBits != msg.LengthBits)
+            {
+                int test = 2;
+            }
+
+            Common.Instance.WriteLine("MSG_WriteDeltaEntity: Wrote {0} bits", msg.LengthBits - msgStart);
 
         }
+        public static void WriteDeltaEntityHags(NetBuffer buf, ref Common.entityState_t from, ref Common.entityState_t to)
+        {
+            int lc = 0;
+            if (from.eType != to.eType) { lc = 2; buf.Write(true); buf.Write(to.eType); } else { buf.Write(false); }
+            if (from.eFlags != to.eFlags) { lc = 3; buf.Write(true); buf.Write((int)to.eFlags); } else { buf.Write(false); }
+            int middle = buf.LengthBits;
+            if (from.pos.trBase.X != to.pos.trBase.X) { lc = 4; buf.Write(true); buf.Write(to.pos.trBase.X); } else { buf.Write(false); }
+            if (from.pos.trBase.Y != to.pos.trBase.Y) { lc = 5; buf.Write(true); buf.Write(to.pos.trBase.Y); } else { buf.Write(false); }
+            if (from.pos.trBase.Z != to.pos.trBase.Z) { lc = 6; buf.Write(true); buf.Write(to.pos.trBase.Z); } else { buf.Write(false); }
+            if (from.pos.trDelta.X != to.pos.trDelta.X) { lc = 7; buf.Write(true); buf.Write(to.pos.trDelta.X); } else { buf.Write(false); }
+            if (from.pos.trDelta.Y != to.pos.trDelta.Y) { lc = 8; buf.Write(true); buf.Write(to.pos.trDelta.Y); } else { buf.Write(false); }
+            if (from.pos.trDelta.Z != to.pos.trDelta.Z) { lc = 9; buf.Write(true); buf.Write(to.pos.trDelta.Z); } else { buf.Write(false); }
+            if (from.pos.trDuration != to.pos.trDuration) { lc = 10; buf.Write(true); buf.Write(to.pos.trDuration); } else { buf.Write(false); }
+            if (from.pos.trTime != to.pos.trTime) { lc = 11; buf.Write(true); buf.Write(to.pos.trTime); } else { buf.Write(false); }
+            if (from.pos.trType != to.pos.trType) { lc = 12; buf.Write(true); buf.Write((int)to.pos.trType); } else { buf.Write(false); }
 
+            if (from.apos.trBase.X != to.apos.trBase.X) { lc = 13; buf.Write(true); buf.Write(to.apos.trBase.X); } else { buf.Write(false); }
+            if (from.apos.trBase.Y != to.apos.trBase.Y) { lc = 14; buf.Write(true); buf.Write(to.apos.trBase.Y); } else { buf.Write(false); }
+            if (from.apos.trBase.Z != to.apos.trBase.Z) { lc = 15; buf.Write(true); buf.Write(to.apos.trBase.Z); } else { buf.Write(false); }
+            if (from.apos.trDelta.X != to.apos.trDelta.X) { lc = 16; buf.Write(true); buf.Write(to.apos.trDelta.X); } else { buf.Write(false); }
+            if (from.apos.trDelta.Y != to.apos.trDelta.Y) { lc = 17; buf.Write(true); buf.Write(to.apos.trDelta.Y); } else { buf.Write(false); }
+            if (from.apos.trDelta.Z != to.apos.trDelta.Z) { lc = 18; buf.Write(true); buf.Write(to.apos.trDelta.Z); } else { buf.Write(false); }
+            if (from.apos.trDuration != to.apos.trDuration) { lc = 19; buf.Write(true); buf.Write(to.apos.trDuration); } else { buf.Write(false); }
+            if (from.apos.trTime != to.apos.trTime) { lc = 20; buf.Write(true); buf.Write(to.apos.trTime); } else { buf.Write(false); }
+            if (from.apos.trType != to.apos.trType) { lc = 21; buf.Write(true); buf.Write((int)to.apos.trType); } else { buf.Write(false); }
+
+
+            if (from.time != to.time) { lc = 22; buf.Write(true); buf.Write(to.time); } else { buf.Write(false); }
+            if (from.time2 != to.time2) { lc = 23; buf.Write(true); buf.Write(to.time2); } else { buf.Write(false); }
+
+            if (from.origin.X != to.origin.X) { lc = 24; buf.Write(true); buf.Write(to.origin.X); } else { buf.Write(false); }
+            if (from.origin.Y != to.origin.Y) { lc = 25; buf.Write(true); buf.Write(to.origin.Y); } else { buf.Write(false); }
+            if (from.origin.Z != to.origin.Z) { lc = 26; buf.Write(true); buf.Write(to.origin.Z); } else { buf.Write(false); }
+            if (from.origin2.X != to.origin2.X) { lc = 27; buf.Write(true); buf.Write(to.origin2.X); } else { buf.Write(false); }
+            if (from.origin2.Y != to.origin2.Y) { lc = 28; buf.Write(true); buf.Write(to.origin2.Y); } else { buf.Write(false); }
+            if (from.origin2.Z != to.origin2.Z) { lc = 29; buf.Write(true); buf.Write(to.origin2.Z); } else { buf.Write(false); }
+
+            if (from.angles.X != to.angles.X) { lc = 30; buf.Write(true); buf.Write(to.angles.X); } else { buf.Write(false); }
+            if (from.angles.Y != to.angles.Y) { lc = 31; buf.Write(true); buf.Write(to.angles.Y); } else { buf.Write(false); }
+            if (from.angles.Z != to.angles.Z) { lc = 32; buf.Write(true); buf.Write(to.angles.Z); } else { buf.Write(false); }
+            if (from.angles2.X != to.angles2.X) { lc = 33; buf.Write(true); buf.Write(to.angles2.X); } else { buf.Write(false); }
+            if (from.angles2.Y != to.angles2.Y) { lc = 34; buf.Write(true); buf.Write(to.angles2.Y); } else { buf.Write(false); }
+            if (from.angles2.Z != to.angles2.Z) { lc = 35; buf.Write(true); buf.Write(to.angles2.Z); } else { buf.Write(false); }
+
+            if (from.otherEntityNum != to.otherEntityNum) { lc = 36; buf.Write(true); buf.Write(to.otherEntityNum); } else { buf.Write(false); }
+            if (from.otherEntityNum2 != to.otherEntityNum2) { lc = 37; buf.Write(true); buf.Write(to.otherEntityNum2); } else { buf.Write(false); }
+
+            if (from.groundEntityNum != to.groundEntityNum) { lc = 38; buf.Write(true); buf.Write(to.groundEntityNum); } else { buf.Write(false); }
+
+            if (from.modelindex != to.modelindex) { lc = 39; buf.Write(true); buf.Write(to.modelindex); } else { buf.Write(false); }
+            if (from.clientNum != to.clientNum) { lc = 40; buf.Write(true); buf.Write(to.clientNum); } else { buf.Write(false); }
+            if (from.frame != to.frame) { lc = 41; buf.Write(true); buf.Write(to.frame); } else { buf.Write(false); }
+
+            if (from.solid != to.solid) { lc = 42; buf.Write(true); buf.Write(to.solid); } else { buf.Write(false); }
+            if (from.generic1 != to.generic1) { lc = 43; buf.Write(true); buf.Write(to.generic1); } else { buf.Write(false); }
+        }
         public static void ReadDeltaPlayerstate(NetBuffer msg, Common.PlayerState from, Common.PlayerState to)
         {
             int startoffset = msg.Position;

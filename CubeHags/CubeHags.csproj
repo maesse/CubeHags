@@ -94,6 +94,7 @@
   <ItemGroup>
     <Compile Include="client\cgame\CGame.cs" />
     <Compile Include="client\cgame\CGameEnts.cs" />
+    <Compile Include="client\cgame\CGamePlayers.cs" />
     <Compile Include="client\cgame\CGamePlayerState.cs" />
     <Compile Include="client\cgame\CGamePredict.cs" />
     <Compile Include="client\cgame\CGameServerCmds.cs" />
@@ -202,7 +203,6 @@
     <Compile Include="client\input\Input.cs" />
     <Compile Include="client\input\InputArgs.cs" />
     <Compile Include="client\input\KeyEvent.cs" />
-    <Compile Include="client\net\Network.cs" />
     <Compile Include="client\gfx\ParallaxTest.cs" />
     <Compile Include="common\Profiler.cs" />
     <Compile Include="client\render\Formats\VertexPropInstance.cs" />

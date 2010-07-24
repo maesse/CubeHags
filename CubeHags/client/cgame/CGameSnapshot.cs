@@ -276,7 +276,11 @@ namespace CubeHags.client.cgame
                 cg.nextFrameTeleport = true;
             }
 
+            // sort out solid entities
+            BuildSolidList();
         }
+
+
 
         /*
         ===============

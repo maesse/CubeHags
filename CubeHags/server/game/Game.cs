@@ -159,6 +159,8 @@ namespace CubeHags.server
             if (level.intermissiontime > 0)
                 return;
 
+            ent.client.ps.stats[0] = ent.health;
+
             // set the latest infor
             CGame.PlayerStateToEntityState(ent.client.ps, ent.s, true);
             SendPredictableEvents(ent.client.ps);
@@ -737,8 +739,6 @@ namespace CubeHags.server
                 pm.tracemask = 1;
                 pm.pmove_fixed = CVars.Instance.VariableIntegerValue("pmove_fixed");
                 pm.pmove_msec = CVars.Instance.VariableIntegerValue("pmove_msec");
-                pm.mins = new Vector3(-16, -16, -36);
-                pm.maxs = new Vector3(16, 16, 36);
                 //pm.Trace += new TraceDelegate(Server.Instance.Trace);
                 //pm.PointContents += new TraceContentsDelegate(Server.Instance.PointContents);
 

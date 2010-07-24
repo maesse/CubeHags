@@ -17,6 +17,51 @@ namespace CubeHags.client.cgame
         int cg_numTriggerEntities;
         centity_t[] cg_triggerEntities = new centity_t[256];
 
+        /*
+        ====================
+        CG_BuildSolidList
+
+        When a new cg.snap has been set, this function builds a sublist
+        of the entities that are actually solid, to make for more
+        efficient collision detection
+        ====================
+        */
+        void BuildSolidList()
+        {
+            cg_numSolidEntities = 0;
+            cg_numTriggerEntities = 0;
+
+            snapshot_t snap;
+            if (cg.nextSnap != null && !cg.nextFrameTeleport && !cg.thisFrameTeleport)
+            {
+                snap = cg.nextSnap;
+            }
+            else
+                snap = cg.snap;
+
+            Common.entityState_t ent;
+            centity_t cent;
+            for (int i = 0; i < snap.numEntities; i++)
+            {
+                cent = Entities[snap.entities[i].number];
+                ent = cent.currentState;
+
+                if (ent.eType == 2 || ent.eType == 8 || ent.eType == 9)
+                {
+                    cg_triggerEntities[cg_numTriggerEntities++] = cent;
+                    continue;
+                }
+
+                if (cent.nextState.solid > 0)
+                {
+                    cg_solidEntities[cg_numSolidEntities++] = cent;
+                    continue;
+                }
+
+
+            }
+        }
+
         void PredictPlayerState()
         {
             // if this is the first frame we must guarantee
@@ -26,6 +71,12 @@ namespace CubeHags.client.cgame
             {
                 cg.validPPS = true;
                 cg.predictedPlayerState = cg.snap.ps;
+            }
+
+            if ((cg.snap.ps.pm_flags & PMFlags.FOLLOW) == PMFlags.FOLLOW)
+            {
+                InterpolatePlayerState(false);
+                return;
             }
 
             // non-predicting local movement will grab the latest angles
@@ -38,6 +89,7 @@ namespace CubeHags.client.cgame
             // prepare for pmove
             pmove.ps = cg.predictedPlayerState;
             pmove.Trace = new TraceDelegate(CG_Trace);
+
             // save the state before the pmove so we can detect transitions
             Common.PlayerState oldPlayerStateref = cg.predictedPlayerState;
             int current = Client.Instance.cl.cmdNumber;

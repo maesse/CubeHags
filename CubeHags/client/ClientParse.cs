@@ -33,7 +33,7 @@ namespace CubeHags.client
                 }
                 else if (cmd == (int)svc_ops_e.svc_baseline)
                 {
-                    int newnum = msg.ReadInt32(10);
+                    int newnum = msg.ReadInt32();
                     if (newnum < 0 || newnum >= 1024)
                     {
                         Common.Instance.Error("ParseGameState: Baseline number out of range: " + newnum);
@@ -265,7 +265,7 @@ namespace CubeHags.client
             while (true)
             {
                 // read the entity index number
-                int newnum = (int)msg.ReadUInt32(10);
+                int newnum = msg.ReadInt32();
 
                 if (newnum == 1023)
                     break;

@@ -35,7 +35,7 @@ namespace CubeHags.server
         public List<client_t> clients;					// [sv_maxclients->integer];
         public int numSnapshotEntities;		// sv_maxclients->integer*PACKET_BACKUP*MAX_PACKET_ENTITIES
         public int nextSnapshotEntities;		// next snapshotEntities to use
-        public List<Common.entityState_t> snapshotEntities;		// [numSnapshotEntities]
+        public Common.entityState_t[] snapshotEntities = new Common.entityState_t[2048];		// [numSnapshotEntities]
         public int nextHeartbeatTime;
         public List<challenge_t> challenges = new List<challenge_t>();	// 1024 to prevent invalid IPs from connecting
 
@@ -453,7 +453,7 @@ namespace CubeHags.server
             {
                 
                 challeng.clientChallenge = 0;
-                challeng.adr = from;
+                challeng.adr = new IPEndPoint(from.Address, from.Port);
                 challeng.firstTime = (int)time;
                 challeng.time = (int)time;
                 challeng.connected = false;
@@ -501,7 +501,7 @@ namespace CubeHags.server
             // FileCache clear pak ref
 
             // allocate the snapshot entities on the hunk
-            snapshotEntities = new List<Common.entityState_t>();
+            snapshotEntities = new Common.entityState_t[numSnapshotEntities];
             nextSnapshotEntities = 0;
 
             // toggle the server bit so clients can detect that a
@@ -619,7 +619,7 @@ namespace CubeHags.server
         */
         void CreateBaseline()
         {
-            for (int i = 1; i < sv.svEntities.Length; i++)
+            for (int i = 1; i < sv.num_entities; i++)
             {
                 sharedEntity svent = sv.gentities[i];
                 if (!svent.r.linked)
@@ -643,7 +643,11 @@ namespace CubeHags.server
             sv_numworldSectors = 0;
 
             Vector3 mins = Vector3.Zero, maxs = Vector3.Zero;
+            dnode_t node = ClipMap.Instance.nodes[0];
+            
             ClipMap.Instance.ModelBounds(0, ref mins, ref maxs);
+            mins = node.mins;
+            maxs = node.maxs;
             CreateWorldSector(0, mins, maxs);
         }
 
@@ -701,7 +705,8 @@ namespace CubeHags.server
             }
 
             clients = new List<client_t>();
-            numSnapshotEntities = sv_maxclients.Integer * 4 * 64;
+            
+            numSnapshotEntities = sv_maxclients.Integer * 32 * 64;
             initialized = true;
 
             CVars.Instance.Set("sv_running", "1");
@@ -892,7 +897,30 @@ namespace CubeHags.server
 
         public void UnlinkEntity(sharedEntity gEnt)
         {
+            svEntity_t ent = Game.Instance.SvEntityForGentity(gEnt);
+            gEnt.r.linked = false;
+            worldSector_t ws = ent.worldSector;
+            if (ws == null)
+                return; // not linked in anywhere
 
+            ent.worldSector = null;
+            if (ws.entities == ent)
+            {
+                ws.entities = ent.nextEntityInWorldSector;
+                return;
+            }
+
+            svEntity_t scan;
+            for (scan = ent; scan != null; scan = scan.nextEntityInWorldSector)
+            {
+                if (scan.nextEntityInWorldSector == ent)
+                {
+                    scan.nextEntityInWorldSector = ent.nextEntityInWorldSector;
+                    return;
+                }
+            }
+
+            Common.Instance.WriteLine("Warning: SV_UnlinkEntity: not found in worldsector");
         }
 
         public void LinkEntity(sharedEntity gEnt)
@@ -970,6 +998,86 @@ namespace CubeHags.server
             ent.areanum2 = -1;
 
             //get all leafs, including solids
+            ClipMap.leafList_t ll = new ClipMap.leafList_t();
+            ll.lastLeaf = -1;
+            ll.bounds = new Vector3[2];
+            ll.maxcount = 128;
+            ll.bounds[0] = gEnt.r.absmin;
+            ll.bounds[1] = gEnt.r.absmax;
+            ll.list = new int[128];
+            ClipMap.Instance.BoxLeafnums(ll, 0);
+
+            // if none of the leafs were inside the map, the
+            // entity is outside the world and can be considered unlinked
+            if (ll.count <= 0)
+                return;
+
+            // set areas, even from clusters that don't fit in the entity array
+            for (int i = 0; i < ll.count; i++)
+            {
+                int area = ClipMap.Instance.LeafArea(ll.list[i]);
+                if (area != -1)
+                {
+                    // doors may legally straggle two areas,
+                    // but nothing should evern need more than that
+                    if (ent.areanum != -1 && ent.areanum != area)
+                    {
+                        if (ent.areanum2 != -1 && ent.areanum2 != area && sv.state == serverState_t.SS_LOADING)
+                        {
+                            Common.Instance.WriteLine("Object {0} touching 3 areas at {1}", gEnt.s.number, gEnt.r.absmin);
+                        }
+                        ent.areanum2 = area;
+                    }
+                }
+                else
+                {
+                    ent.areanum = area;
+                }
+            }
+
+            // store as many explicit clusters as we can
+            ent.numClusters = 0;
+            int actual = 0;
+            for (int i = 0; i < ll.count; i++)
+            {
+                actual = i;
+                int cluster = ClipMap.Instance.LeafCluster(ll.list[i]);
+                if (cluster != -1)
+                {
+                    ent.clusternums[ent.numClusters++] = cluster;
+                    if (ent.numClusters == 16)
+                        break;
+                }
+            }
+
+            // store off a last cluster if we need to
+            if (actual != ll.count && ll.lastLeaf != -1)
+                ent.lastCluster = ClipMap.Instance.LeafCluster(ll.lastLeaf);
+
+            gEnt.r.linkcount++;
+
+            // find the first world sector node that the ent's box crosses
+            worldSector_t node = sv_worldSectors[0];
+            while (true)
+            {
+                if (node.axis == -1)
+                    break;
+                if (gEnt.r.absmin[node.axis] > node.dist)
+                    node = node.children[0];
+                else if (gEnt.r.absmax[node.axis] < node.dist)
+                    node = node.children[1];
+                else
+                    break; // crosses the node
+            }
+
+            // link it in
+            ent.worldSector = node;
+            ent.nextEntityInWorldSector = node.entities;
+            node.entities = ent;
+
+            // find the first world sector node that the ent's box crosses
+            gEnt.r.linked = true;
+
         }
 
         public static float RadiusFromBounds(Vector3 mins, Vector3 maxs)
@@ -1171,16 +1279,16 @@ namespace CubeHags.server
         	public int		axis;		// -1 = leaf node
         	public float	dist;
         	public worldSector_t[]	children = new worldSector_t[2]; // 2
-        	public List<svEntity_t>	entities = new List<svEntity_t>();
+            public svEntity_t entities;
         } 
 
             public class svEntity_t {
             	public worldSector_t worldSector;
             	public svEntity_t nextEntityInWorldSector;
             	
-            	public Common.entityState_t	baseline;		// for delta compression of initial sighting
+            	public Common.entityState_t	baseline = new Common.entityState_t();		// for delta compression of initial sighting
             	public int			numClusters;		// if -1, use headnode instead
-            	public int[]			clusternums; // 16
+            	public int[]			clusternums = new int[16]; // 16
             	public int			lastCluster;		// if all the clusters don't fit in clusternums
             	public int			areanum, areanum2;
             	public int			snapshotCounter;	// used to prevent double adding from portal views

@@ -232,7 +232,7 @@ namespace CubeHags.common
                 {
                     // try to stand up
                     pm.maxs[2] = 32;
-                    trace_t trace = pm.DoTrace(pm.ps.origin, pm.mins, pm.maxs, pm.ps.origin, pm.ps.clientNum, pm.tracemask);
+                    trace_t trace = pm.DoTrace(pm.ps.origin, pm.ps.origin, pm.mins, pm.maxs, pm.ps.clientNum, pm.tracemask);
                     if (!trace.allsolid)
                         pm.ps.pm_flags &= ~PMFlags.DUCKED;
                 }
@@ -426,7 +426,7 @@ namespace CubeHags.common
         {
             Vector3 point = pm.ps.origin;
             point[2] -= 0.25f;
-            trace_t trace = pm.DoTrace(pm.ps.origin, pm.mins, pm.maxs, point, pm.ps.clientNum, pm.tracemask);
+            trace_t trace = pm.DoTrace(pm.ps.origin, point, pm.mins, pm.maxs, pm.ps.clientNum, pm.tracemask);
             pml.groundTrace = trace;
 
             // do something corrective if the trace starts in a solid...
@@ -507,7 +507,7 @@ namespace CubeHags.common
                 Vector3 point = pm.ps.origin;
                 point[2] -= 0.25f;
 
-                trace_t trace = pm.DoTrace(pm.ps.origin, pm.mins, pm.maxs, point, pm.ps.clientNum, pm.tracemask);
+                trace_t trace = pm.DoTrace(pm.ps.origin, point, pm.mins, pm.maxs, pm.ps.clientNum, pm.tracemask);
                 if (trace.fraction == 1.0f)
                 {
                     if(pm.cmd.forwardmove >= 0)
@@ -540,13 +540,13 @@ namespace CubeHags.common
                         point[0] += (float)i;
                         point[1] += (float)j;
                         point[2] += (float)k;
-                        trace = pm.DoTrace(point, pm.mins, pm.maxs, point, pm.ps.clientNum, pm.tracemask);
+                        trace = pm.DoTrace(point, point, pm.mins, pm.maxs, pm.ps.clientNum, pm.tracemask);
                         if (!trace.allsolid)
                         {
                             point = pm.ps.origin;
                             point[2] -= 0.25f;
 
-                            trace = pm.DoTrace(pm.ps.origin, pm.mins, pm.maxs, point, pm.ps.clientNum, pm.tracemask);
+                            trace = pm.DoTrace(pm.ps.origin, point, pm.mins, pm.maxs, pm.ps.clientNum, pm.tracemask);
                             pml.groundTrace = trace;
                             return true;
                         }
@@ -629,7 +629,7 @@ namespace CubeHags.common
             
             Vector3 down = start_o;
             down[2] -= 18;
-            trace_t trace = pm.DoTrace(start_o, pm.mins, pm.maxs, down, pm.ps.clientNum, pm.tracemask);
+            trace_t trace = pm.DoTrace(start_o, down, pm.mins, pm.maxs, pm.ps.clientNum, pm.tracemask);
             Vector3 up = new Vector3(0f, 0f, 1f);
             // never step up when you still have up velocity
             float dotUp = Vector3.Dot(trace.plane.normal, up);
@@ -644,7 +644,7 @@ namespace CubeHags.common
             up[2] += 18;
 
             // test the player position if they were a stepheight higher
-            trace = pm.DoTrace(start_o, pm.mins, pm.maxs, up, pm.ps.clientNum, pm.tracemask);
+            trace = pm.DoTrace(start_o, up, pm.mins, pm.maxs, pm.ps.clientNum, pm.tracemask);
             if (trace.allsolid)
             {
                 return; // can't step up
@@ -660,7 +660,7 @@ namespace CubeHags.common
             // push down the final amount
             down = pm.ps.origin;
             down[2] -= 18;
-            trace = pm.DoTrace(pm.ps.origin, pm.mins, pm.maxs, down, pm.ps.clientNum, pm.tracemask);
+            trace = pm.DoTrace(pm.ps.origin, down, pm.mins, pm.maxs, pm.ps.clientNum, pm.tracemask);
             if (!trace.allsolid)
                 pm.ps.origin = trace.endpos;
             if (trace.fraction < 1.0f)
@@ -740,7 +740,7 @@ namespace CubeHags.common
                 Vector3 end = ViewParams.VectorMA(pm.ps.origin, time_left, pm.ps.velocity);
 
                 // see if we can make it there
-                trace_t trace = pm.DoTrace( pm.ps.origin, pm.mins, pm.maxs, end, pm.ps.clientNum, pm.tracemask);
+                trace_t trace = pm.DoTrace(pm.ps.origin, end, pm.mins, pm.maxs, pm.ps.clientNum, pm.tracemask);
                 
                 if (trace.allsolid)
                 {

@@ -47,7 +47,7 @@ namespace CubeHags.server
                 oldframe = null;
                 lastframe = 0;
             }
-            else if (cl.netchan.outgoingSequence - cl.deltaMessage >= (31 - 3))
+            else if (cl.netchan.outgoingSequence - cl.deltaMessage >= (32 - 3))
             {
                 // client hasn't gotten a good message through in a long time
                 Common.Instance.WriteLine("{0}:  Delta request from out of date packet.", cl.name);
@@ -122,18 +122,18 @@ namespace CubeHags.server
 
             if (from != null)
                 fromnumentities = from.num_entities;
+            
 
             Common.entityState_t oldent = null, newent = null;
             int oldindex = 0, newindex = 0;
             int newnum, oldnum;
-
             while (newindex < to.num_entities || oldindex < fromnumentities)
             {
                 if (newindex >= to.num_entities)
                     newnum = 9999;
                 else
                 {
-                    newent = snapshotEntities[(from.first_entity + newindex) % numSnapshotEntities];
+                    newent = snapshotEntities[(to.first_entity + newindex) % numSnapshotEntities];
                     newnum = newent.number;
                 }
 
@@ -174,7 +174,7 @@ namespace CubeHags.server
                 }
             }
 
-            msg.Write((uint)1023, 10);    // end of packetentities
+            msg.Write(1023);    // end of packetentities
         }
 
         
@@ -215,6 +215,7 @@ namespace CubeHags.server
             // grab the current playerState_t
             Common.PlayerState ps = GameClientNum(index);
 
+            //frame.ps = ps;
             frame.ps = ps.Clone();
 
             // never send client's own entity, because it can
@@ -255,8 +256,7 @@ namespace CubeHags.server
             for (int i = 0; i < snapshotEntityNumbers.Count; i++)
             {
                 sharedEntity ent = sv.gentities[snapshotEntityNumbers[i]];
-                //Common.entityState_t state = ;
-                snapshotEntities[nextSnapshotEntities % numSnapshotEntities] = ent.s;
+                snapshotEntities[nextSnapshotEntities++ % numSnapshotEntities] = ent.s;
                 frame.num_entities++;
             }
 
@@ -331,15 +331,15 @@ namespace CubeHags.server
                     continue;
                 }
 
-                // ignore if not touching a PV leaf
-                // check area
-                if (!ClipMap.Instance.AreasConnected(clientarea, svEnt.areanum))
-                {
-                    // doors can legally straddle two areas, so
-                    // we may need to check another one
-                    if (!ClipMap.Instance.AreasConnected(clientarea, svEnt.areanum2))
-                        continue;   // blocked by a door
-                }
+                //// ignore if not touching a PV leaf
+                //// check area
+                //if (!ClipMap.Instance.AreasConnected(clientarea, svEnt.areanum))
+                //{
+                //    // doors can legally straddle two areas, so
+                //    // we may need to check another one
+                //    if (!ClipMap.Instance.AreasConnected(clientarea, svEnt.areanum2))
+                //        continue;   // blocked by a door
+                //}
 
                 if (svEnt.numClusters <= 0)
                     continue;
@@ -347,7 +347,7 @@ namespace CubeHags.server
                 for (i = 0; i < svEnt.numClusters; i++)
                 {
                     l = svEnt.clusternums[i];
-                    if (clientpvs[l])
+                    if (clientpvs != null && clientpvs[l])
                         break;
                 }
 

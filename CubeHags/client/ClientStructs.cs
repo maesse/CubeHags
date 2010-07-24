@@ -42,21 +42,20 @@ namespace CubeHags.client
     // this is regenerated each time a client's configstring changes,
     // usually as a result of a userinfo (name, model, etc) change
     // #define	MAX_CUSTOM_SOUNDS	32
-
     public struct clientInfo_t {
-    	bool		infoValid;
+    	public bool		infoValid;
 
-    	string			name;
-    	team_t			team;
+        public string name;
+        public team_t team;
 
-    	Vector3			color1;
-    	Vector3			color2;
+        public Vector3 color1;
+        public Vector3 color2;
 
-    	int				score;			// updated by score servercmds
-    	int				location;		// location index for team mode
-    	int				health;			// you only get this info about your teammates
-    	int				armor;
-    	int				curWeapon;
+        public int score;			// updated by score servercmds
+        public int location;		// location index for team mode
+        public int health;			// you only get this info about your teammates
+        public int armor;
+        public int curWeapon;
 
         //int				handicap;
         //int				wins, losses;	// in tourney mode
@@ -201,7 +200,6 @@ namespace CubeHags.client
         {
             return Trace(start, end, mins, maxs, passEntityNum, contentMask);
             //return ClipMap.Instance.Box_Trace(start, end, mins, maxs, 0, contentMask, 0);
-            //return ClipMap.Instance.Box_Trace( start, end, maxs, mins, passEntityNum, contentMask); 
         }
         //public void DoPointContents(Vector3 point, int passEntityNum) { PointContents( point,  passEntityNum); }
     }
@@ -281,7 +279,7 @@ namespace CubeHags.client
     	public snapshot_t	nextSnap;			// cg.nextSnap->serverTime > cg.time, or NULL
     	public snapshot_t[]	activeSnapshots = new snapshot_t[2]; // 2
 
-    	float		frameInterpolation;	// (float)( cg.time - cg.frame->serverTime ) / (cg.nextFrame->serverTime - cg.frame->serverTime)
+    	public float		frameInterpolation;	// (float)( cg.time - cg.frame->serverTime ) / (cg.nextFrame->serverTime - cg.frame->serverTime)
 
     	public bool	thisFrameTeleport;
         public bool nextFrameTeleport;
@@ -305,6 +303,7 @@ namespace CubeHags.client
     	bool	hyperspace;				// true if prediction has hit a trigger_teleport
 
     	public CubeHags.common.Common.PlayerState	predictedPlayerState;
+        public centity_t predictedPlayerEntity = new centity_t();
     	public bool	validPPS;				// clear until the first call to CG_PredictPlayerState
     	public int			predictedErrorTime;
     	public Vector3		predictedError;

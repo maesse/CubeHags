@@ -16,6 +16,7 @@ using CubeHags.client.common;
 using CubeHags.client.input;
 using System.Windows.Forms;
 using System.Threading;
+using CubeHags.client.cgame;
 
 
 namespace CubeHags.client
@@ -237,12 +238,6 @@ namespace CubeHags.client
 
                     _pp.BackBufferWidth = RenderSize.Width;
                     _pp.BackBufferHeight = RenderSize.Height;
-                }
-                else
-                {
-                    // Hardcoded fullscreen
-                    //_pp.BackBufferWidth = RenderSize.Width = 1680;
-                    //_pp.BackBufferHeight = RenderSize.Height = 1050;
                 }
 
                 _pp.Windowed = r_fs.Integer == 0?true:false;

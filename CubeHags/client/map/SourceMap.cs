@@ -48,6 +48,8 @@ namespace CubeHags.client.map.Source
 
         HagsVertexBuffer bspVB = new HagsVertexBuffer();
 
+        public List<VertexPositionColor> bboxVerts = new List<VertexPositionColor>();
+
         public SourceMap(World world)
         {
             this.world = world;
@@ -170,12 +172,27 @@ namespace CubeHags.client.map.Source
                 
         }
 
+        public void VisualizeBBox()
+        {
+            if (bboxVerts.Count == 0)
+                return;
+            bspVB.SetVB<VertexPositionColor>(bboxVerts.ToArray(), bboxVerts.Count * VertexPositionColor.SizeInBytes, VertexPositionColor.Format, Usage.WriteOnly);
+            bspVB.SetVD(new VertexDeclaration(Renderer.Instance.device, VertexPositionColor.Elements));
+            RenderDelegate dlg = new RenderDelegate((effect, device, setMaterial) =>
+            {
+                device.DrawPrimitives(PrimitiveType.TriangleList, 0, bboxVerts.Count / 3);
+            });
+            ulong id = SortItem.GenerateBits(SortItem.FSLayer.EFFECT, SortItem.Viewport.STATIC, SortItem.VPLayer.EFFECT, SortItem.Translucency.NORMAL, 0, 0, 0, bspVB.VertexBufferID);
+            Renderer.Instance.drawCalls.Add(new KeyValuePair<ulong, RenderDelegate>(id, dlg));
+        }
+
         void VisualizeBSP()
         {
             List<VertexPositionColor> verts = new List<VertexPositionColor>();
             float red = 1.0f;
             float green = 0.0f;
 
+            
 
             int i = 0;
             foreach (dleaf_t nod in world.leafs)
@@ -215,8 +232,8 @@ namespace CubeHags.client.map.Source
 
         public void Render(Device device)
         {
-            
 
+            
             // Get current leaf & cluster
             if (!LockPVS)
             {
@@ -234,7 +251,7 @@ namespace CubeHags.client.map.Source
                 skybox3d.Render();
 
 
-            
+            bboxVerts.Clear();
             
             Camera cam = Renderer.Instance.Camera;
             // Update visibility if new position

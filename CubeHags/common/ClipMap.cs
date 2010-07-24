@@ -115,7 +115,7 @@ namespace CubeHags.common
             {
                 //int floodnum = areas
             }
-
+            return 255;
             return bytes;
         }
 

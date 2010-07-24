@@ -1080,7 +1080,7 @@ namespace CubeHags.common
 
         }
 
-        void BoxLeafnums(leafList_t ll, int nodenum)
+        public void BoxLeafnums(leafList_t ll, int nodenum)
         {
             cplane_t plane;
             dnode_t node;

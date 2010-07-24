@@ -53,6 +53,11 @@ namespace CubeHags.client.cgame
             ViewParams view = CalcViewValues();
             view.time = cg.time;
 
+            AddPacketEntities();
+
+            if(Renderer.Instance.SourceMap != null)
+                Renderer.Instance.SourceMap.VisualizeBBox();
+
             AddLagometerFrameInfo();
 
             Renderer.Instance.Render(view);
@@ -142,6 +147,7 @@ namespace CubeHags.client.cgame
         {
             // clear everything
             cgs = new cgs_t();
+            cgs.clientinfo = new clientInfo_t[64];
             cg = new cg_t();
             Entities = new centity_t[1024];
             for (int i = 0; i < 1024; i++)
@@ -174,7 +180,7 @@ namespace CubeHags.client.cgame
             RegisterGraphics();
 
             LoadString("Clients");
-            //RegisterClients();
+            RegisterClients();
 
             cg.loading = false; // future players will be deferred
 
@@ -185,6 +191,29 @@ namespace CubeHags.client.cgame
 
             LoadString("");
         }
+
+        void RegisterClients()
+        {
+            //LoadingClient(cg.clientNum);
+            NewClientInfo(cg.clientNum);
+
+            for (int i = 0; i < 64; i++)
+            {
+                if (cg.clientNum == i)
+                    continue;
+
+                if (!cgs.gameState.data.ContainsKey(544 + i))
+                    continue;
+
+                string clientInfo = cgs.gameState.data[544+i];
+                //LoadingClient(i);
+                NewClientInfo(i);
+            }
+
+            //BuildSpectatorString();
+        }
+
+
 
         public static Vector3 SnapVector(Vector3 v)
         {
