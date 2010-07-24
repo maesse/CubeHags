@@ -498,6 +498,8 @@ namespace CubeHags.server
                 }
             }
 
+            Net.Instance.SetAllowDiscovery(true);
+
             // FileCache clear pak ref
 
             // allocate the snapshot entities on the hunk
@@ -517,7 +519,6 @@ namespace CubeHags.server
                     client.oldServerTime = sv.time;
                 }
             }
-
             // wipe the entire per-level structure
             ClearServer();
             sv.configstrings = new Dictionary<int, string>();
@@ -706,7 +707,7 @@ namespace CubeHags.server
 
             clients = new List<client_t>();
             
-            numSnapshotEntities = sv_maxclients.Integer * 32 * 64;
+            numSnapshotEntities =2048;
             initialized = true;
 
             CVars.Instance.Set("sv_running", "1");

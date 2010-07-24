@@ -10,16 +10,10 @@ namespace CubeHags.client
 {
     public sealed partial class Client
     {
-        public cg_t cg = new cg_t();
-        public cgs_t cgs;
-        public centity_t[] cg_entities = new centity_t[1024];
+        
 
         void InitCGame()
         {
-            for (int i = 0; i < 1024; i++)
-            {
-                cg_entities[i] = new centity_t();
-            }
             float t1 = Common.Instance.Milliseconds();
 
             // find the current mapname

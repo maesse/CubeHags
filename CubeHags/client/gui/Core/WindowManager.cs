@@ -25,6 +25,9 @@ namespace CubeHags.client.gui
         public MenuGUI menuGUI;
         public SettingsGUI settingsGUI;
         public InfoUI info;
+
+        public ServerListUI serverList;
+
         public enum CursorType
         {
             NORMAL=0,
@@ -60,6 +63,11 @@ namespace CubeHags.client.gui
         {
 
             
+        }
+
+        public void MoveToFront(Window window)
+        {
+            window.Zvalue = nextZvalue++;
         }
 
         public void Init(SlimDX.Direct3D9.Device device)

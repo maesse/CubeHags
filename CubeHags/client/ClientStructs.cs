@@ -463,7 +463,7 @@ namespace CubeHags.client
 
     public struct serverInfo_t
     {
-        public IPAddress adr;
+        public IPEndPoint adr;
         public string hostName;
         public string mapName;
         public string game;

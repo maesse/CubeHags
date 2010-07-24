@@ -243,7 +243,7 @@ namespace CubeHags.client.input
                             foreach (string keyStr in Enum.GetNames(typeof(Keys)))
                             {
                                 if (keyStr.ToUpper().Equals(str))
-                                    return (Keys)Enum.Parse(typeof(Keys), str);
+                                    return (Keys)Enum.Parse(typeof(Keys), keyStr);
                             }
                         }
 

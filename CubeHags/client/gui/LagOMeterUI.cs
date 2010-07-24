@@ -15,8 +15,10 @@ namespace CubeHags.client.gui
         HagsTexture tex;
         public LagOMeterUI()
         {
+            this.WindowSpawnPosition = Corner.BOTRIGHT;
             this.Title = "Lag-o-Meter";
-            this.Size = new System.Drawing.Size(400, 300);
+            this.Size = new System.Drawing.Size(300, 200);
+            this.Bound.Size = this.Size;
             tex = new HagsTexture("white.png");
             this.AlwaysVisible = true;
         }

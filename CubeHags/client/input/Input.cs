@@ -963,6 +963,8 @@ namespace CubeHags.client
             KeyHags.Instance.SetBind(Keys.S, "+back");
             KeyHags.Instance.SetBind(Keys.A, "+moveleft");
             KeyHags.Instance.SetBind(Keys.D, "+moveright");
+            //KeyHags.Instance.SetBind(Keys.C, "+movedown");
+            KeyHags.Instance.SetBind(Keys.Space, "+moveup");
             HiddenMousePosition = new Point(Renderer.Instance.form.DesktopLocation.X + (Renderer.Instance.form.DesktopBounds.Width / 2), Renderer.Instance.form.DesktopLocation.Y + (Renderer.Instance.form.DesktopBounds.Height / 2));
         }
 

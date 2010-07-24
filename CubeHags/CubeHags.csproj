@@ -111,6 +111,7 @@
     <Compile Include="client\gui\LagOMeterUI.cs" />
     <Compile Include="client\gui\MenuGUI.cs" />
     <Compile Include="client\gui\Misc\ScrollbarStyle.cs" />
+    <Compile Include="client\gui\ServerListUI.cs" />
     <Compile Include="client\gui\SettingsGUI.cs" />
     <Compile Include="client\render\Formats\VertexPositionColor.cs" />
     <Compile Include="client\render\Formats\VertexPositionColorTex.cs" />

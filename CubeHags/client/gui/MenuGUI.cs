@@ -49,7 +49,17 @@ namespace CubeHags.client.gui
 
         void JoinGameHandler()
         {
-            Commands.Instance.ExecuteText(Commands.EXECTYPE.EXEC_NOW, "connect 10.111.9.144");
+            if (WindowManager.Instance.serverList == null)
+            {
+                WindowManager.Instance.serverList = new ServerListUI();
+                WindowManager.Instance.AddWindow(WindowManager.Instance.serverList);
+            }
+            else
+            {
+                WindowManager.Instance.serverList.Visible = true;
+                WindowManager.Instance.MoveToFront(WindowManager.Instance.serverList);
+            }
+            Commands.Instance.ExecuteText(Commands.EXECTYPE.EXEC_NOW, "localservers");
         }
 
         void StartGameHandler()

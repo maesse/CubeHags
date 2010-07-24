@@ -203,14 +203,14 @@ namespace CubeHags.client.cgame
         void SetInitialSnapshot(snapshot_t snap)
         {
             cg.snap = snap;
-            PlayerStateToEntityState(snap.ps, Client.Instance.cg_entities[snap.ps.clientNum].currentState, false);
+            PlayerStateToEntityState(snap.ps, Entities[snap.ps.clientNum].currentState, false);
 
             ExecuteNewServerCommands(snap.serverCommandSequence);
 
             for (int i = 0; i < cg.snap.numEntities; i++)
             {
                 Common.entityState_t state = cg.snap.entities[i];
-                centity_t cent = Client.Instance.cg_entities[state.number];
+                centity_t cent = Entities[state.number];
                 cent.currentState = state;
                 cent.interpolate = false;
                 cent.currentValid = true;
@@ -234,14 +234,14 @@ namespace CubeHags.client.cgame
         void SetNextSnap(snapshot_t snap)
         {
             cg.nextSnap = snap;
-            PlayerStateToEntityState(snap.ps, Client.Instance.cg_entities[snap.ps.clientNum].nextState, false);
-            Client.Instance.cg_entities[cg.snap.ps.clientNum].interpolate = true;
+            PlayerStateToEntityState(snap.ps, Entities[snap.ps.clientNum].nextState, false);
+            Entities[cg.snap.ps.clientNum].interpolate = true;
 
-            // check for extrapolation errors
+            // check for extrapolation errors   
             for (int i = 0; i < snap.numEntities; i++)
             {
                 Common.entityState_t es = snap.entities[i];
-                centity_t cent = Client.Instance.cg_entities[es.number];
+                centity_t cent = Entities[es.number];
 
                 cent.nextState = es;
 
@@ -304,6 +304,13 @@ namespace CubeHags.client.cgame
             cent.interpolate = false;
 
             // Todo: Check for events
+            CheckEvents(cent);
+        }
+
+        void CheckEvents(centity_t cent)
+        {
+            // calculate the position at exactly the frame time
+            Common.Instance.EvaluateTrajectory(cent.currentState.pos, cg.snap.serverTime, out cent.lerpOrigin);
         }
 
         snapshot_t GetSnapshot(int snapshotNumber)
@@ -372,7 +379,7 @@ namespace CubeHags.client.cgame
             // clear the currentValid flag for all entities in the existing snapshot
             for (int i = 0; i < cg.snap.numEntities; i++)
             {
-                centity_t cent = Client.Instance.cg_entities[cg.snap.entities[i].number];
+                centity_t cent = Entities[cg.snap.entities[i].number];
                 cent.currentValid = false;
             }
 
@@ -380,12 +387,12 @@ namespace CubeHags.client.cgame
             snapshot_t oldFrame = cg.snap;
             cg.snap = cg.nextSnap;
 
-            PlayerStateToEntityState(cg.snap.ps, Client.Instance.cg_entities[cg.snap.ps.clientNum].currentState, false);
-            Client.Instance.cg_entities[cg.snap.ps.clientNum].interpolate = false;
+            PlayerStateToEntityState(cg.snap.ps, Entities[cg.snap.ps.clientNum].currentState, false);
+            Entities[cg.snap.ps.clientNum].interpolate = false;
 
             for (int i = 0; i < cg.snap.numEntities; i++)
             {
-                centity_t cent = Client.Instance.cg_entities[cg.snap.entities[i].number];
+                centity_t cent = Entities[cg.snap.entities[i].number];
                 TransitionEntity(cent);
 
                 // remember time of snapshot this entity was last updated in

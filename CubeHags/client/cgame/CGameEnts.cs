@@ -26,7 +26,7 @@ namespace CubeHags.client.cgame
                 return;
             }
 
-            centity_t cent = Client.Instance.cg_entities[moverNum];
+            centity_t cent = Entities[moverNum];
             if (cent.currentState.eType != 4)
             {
                 outv = inv;
@@ -160,11 +160,13 @@ namespace CubeHags.client.cgame
 
             // it is possible to see corpses from disconnected players that may
             // not have valid clientinfo
-            if (!ci.infoValid)
+            //if (!ci.infoValid)
+            //    return;
+
+            if (clientNum == Client.Instance.cl.snap.ps.clientNum)
                 return;
 
-
-            VertexPositionColor[] vecs = MiscRender.CreateBox(new Vector3(-15, -15, -24), new Vector3(15, 15, 32), new Color4(System.Drawing.Color.Red));
+            VertexPositionColor[] vecs = MiscRender.CreateBox(new Vector3(-15, -15, -24), new Vector3(15, 15, 32), new Color4(System.Drawing.Color.Red) { Alpha = 0.5f });
             Matrix posmat = Matrix.Translation(ent.lerpOrigin);
             for (int i = 0; i < vecs.Length; i++)
             {

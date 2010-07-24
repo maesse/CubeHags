@@ -41,6 +41,9 @@ namespace CubeHags.client
 
         public Lagometer lagometer = new Lagometer();
 
+        public List<serverInfo_t> localServers = new List<serverInfo_t>();
+        public bool HasNewServers = false;
+
         public Client()
         {
 
@@ -229,6 +232,7 @@ namespace CubeHags.client
             cin = new Cinematic();
             Commands.Instance.AddCommand("cinematic", new CommandDelegate(cin.PlayCinematic_f));
             Commands.Instance.AddCommand("connect", new CommandDelegate(CL_Connect_f));
+            Commands.Instance.AddCommand("localservers", new CommandDelegate(CL_LocalServers_f));
             
             Common.Instance.WriteLine("------- Client initialization Complete --------");
         }
@@ -451,6 +455,33 @@ namespace CubeHags.client
             return cl.cmds[cmdNumber & 63];
         }
 
+        void CL_LocalServers_f(string[] tokens)
+        {
+            Common.Instance.WriteLine("Scanning for server on the local network.");
+
+            // Reset list
+            localServers.Clear();
+            HasNewServers = true;
+
+            // The 'xxx' in the message is a challenge that will be echoed back
+            // by the server.  We don't care about that here, but master servers
+            // can use that to prevent spoofed server responses from invalid ip
+            
+            //string message = "\x377\x377\x377\x377getinfo xxx";
+            //NetBuffer buf = new NetBuffer(message);
+            // send each message twice in case one is dropped
+            //for (int i = 0; i < 2; i++)
+            //{
+                // send a broadcast packet on each server port
+                // we support multiple server ports so a single machine
+                // can nicely run multiple servers
+                for (int j = 0; j < 4; j++)
+                {
+                    Net.Instance.DiscoverLocalServers(27960 + j);
+                }
+            //}
+        }
+
         void CL_Connect_f(string[] tokens)
         {
             if (tokens.Length != 2)
@@ -481,7 +512,7 @@ namespace CubeHags.client
             if (portIndex > 0)
             {
                 int portParse;
-                if (int.TryParse(server.Substring(portIndex), out portParse))
+                if (int.TryParse(server.Substring(portIndex+1), out portParse))
                 {
                     port = portParse;
                     addr = server.Substring(0, portIndex);

@@ -66,6 +66,17 @@ namespace CubeHags.common
             
         }
 
+        public void DiscoverLocalServers(int port) 
+        {
+            client.DiscoverLocalServers(port);
+            
+        }
+
+        public void SetAllowDiscovery(bool valu)
+        {
+            server.Configuration.AnswerDiscoveryRequests =valu;
+        }
+
         public bool IsLanAddress(IPAddress adr)
         {
             if (IPAddress.IsLoopback(adr))
@@ -153,6 +164,16 @@ namespace CubeHags.common
                     case NetMessageType.Data:
                     case NetMessageType.OutOfBandData:
                         return new Packet(buf, type, endpoint);
+                    case NetMessageType.ServerDiscovered:
+                        for (int i = 0; i < Client.Instance.localServers.Count; i++)
+                        {
+                            if (Client.Instance.localServers[i].adr == endpoint)
+                                return null;
+                        }
+                        Common.Instance.WriteLine("Discovered lan server at {0}", endpoint);
+                        Client.Instance.localServers.Add(new serverInfo_t() { adr = endpoint });
+                        Client.Instance.HasNewServers = true;
+                        break;
                     default:
                         str = buf.ReadString();
                         Common.Instance.WriteLine("Lidgren Client: " + str);
@@ -241,10 +262,20 @@ namespace CubeHags.common
             svConfig.MaxConnections = 64;
             svConfig.Port = port;
             server = new NetServer(svConfig);
+            server.Configuration.AnswerDiscoveryRequests = false;
             server.EnabledMessageTypes |= NetMessageType.OutOfBandData;
             //server.SimulatedMinimumLatency = 0.7f;
             server.SetMessageTypeEnabled(NetMessageType.ConnectionApproval, true);
-            server.Start();
+            try
+            {
+                server.Start();
+            }
+            catch (NetException ex)
+            {
+                // Try the next port
+                server.Configuration.Port = ++port;
+                server.Start();
+            }
             client = new NetClient(clConfig);
             client.EnabledMessageTypes |= NetMessageType.OutOfBandData;
             client.Start();
@@ -312,8 +343,9 @@ namespace CubeHags.common
             client.Connect(end);
         }
 
-        void SendPacket(NetSource sock, NetBuffer data, NetConnection conn)
+        public void SendPacket(NetSource sock, NetBuffer data, NetConnection conn)
         {
+            
             if (sock == NetSource.CLIENT)
             {
                 client.SendMessage(data, NetChannel.Unreliable);
@@ -446,7 +478,7 @@ namespace CubeHags.common
             }
             middle = msg.Position - middle;
             
-            Common.Instance.WriteLine("MSG_ReadDeltaEntity: Read {0} bits", msg.Position - startBit);
+            //Common.Instance.WriteLine("MSG_ReadDeltaEntity: Read {0} bits", msg.Position - startBit);
         }
 
 
@@ -489,7 +521,8 @@ namespace CubeHags.common
             if (from.pos.trBase.X != to.pos.trBase.X) { lc = 4; buf.Write(true); buf.Write(to.pos.trBase.X); } else { buf.Write(false); }
             if (from.pos.trBase.Y != to.pos.trBase.Y) { lc = 5; buf.Write(true); buf.Write(to.pos.trBase.Y); } else { buf.Write(false); }
             if (from.pos.trBase.Z != to.pos.trBase.Z) { lc = 6; buf.Write(true); buf.Write(to.pos.trBase.Z); } else { buf.Write(false); }
-            if (from.pos.trDelta.X != to.pos.trDelta.X) { lc = 7; buf.Write(true); buf.Write(to.pos.trDelta.X); } else { buf.Write(false); }
+            if (from.pos.trDelta.X != to.pos.trDelta.X) { 
+                lc = 7; buf.Write(true); buf.Write(to.pos.trDelta.X); } else { buf.Write(false); }
             if (from.pos.trDelta.Y != to.pos.trDelta.Y) { lc = 8; buf.Write(true); buf.Write(to.pos.trDelta.Y); } else { buf.Write(false); }
             if (from.pos.trDelta.Z != to.pos.trDelta.Z) { lc = 9; buf.Write(true); buf.Write(to.pos.trDelta.Z); } else { buf.Write(false); }
             if (from.pos.trDuration != to.pos.trDuration) { lc = 10; buf.Write(true); buf.Write(to.pos.trDuration); } else { buf.Write(false); }
@@ -562,12 +595,8 @@ namespace CubeHags.common
             //msg.Write(buf.Data);
             WriteDeltaEntityHags(msg, ref  from,ref  to);
             msg.Write(buf.LengthBits);
-            if (msgPos + buf.LengthBits != msg.LengthBits)
-            {
-                int test = 2;
-            }
 
-            Common.Instance.WriteLine("MSG_WriteDeltaEntity: Wrote {0} bits", msg.LengthBits - msgStart);
+            //Common.Instance.WriteLine("MSG_WriteDeltaEntity: Wrote {0} bits", msg.LengthBits - msgStart);
 
         }
         public static void WriteDeltaEntityHags(NetBuffer buf, ref Common.entityState_t from, ref Common.entityState_t to)

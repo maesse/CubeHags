@@ -255,8 +255,11 @@ namespace CubeHags.server
             frame.first_entity = nextSnapshotEntities;
             for (int i = 0; i < snapshotEntityNumbers.Count; i++)
             {
+                
                 sharedEntity ent = sv.gentities[snapshotEntityNumbers[i]];
-                snapshotEntities[nextSnapshotEntities++ % numSnapshotEntities] = ent.s;
+                snapshotEntities[nextSnapshotEntities++ % numSnapshotEntities] = new Common.entityState_t() { angles = ent.s.angles, angles2 = ent.s.angles2, apos = ent.s.apos, clientNum = ent.s.clientNum, eFlags = ent.s.eFlags, eType = ent.s.eType
+                , frame = ent.s.frame, groundEntityNum = ent.s.groundEntityNum, number = ent.s.number, pos = ent.s.pos, solid = ent.s.solid, origin = ent.s.origin, otherEntityNum = ent.s.otherEntityNum, time = ent.s.time, modelindex = ent.s.modelindex};
+                //Common.Instance.WriteLine("Sending ent {0} to client {1}", snapshotEntityNumbers[i], index);
                 frame.num_entities++;
             }
 
