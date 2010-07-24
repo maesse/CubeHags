@@ -167,7 +167,13 @@ namespace CubeHags.client.cgame
                 return;
 
             VertexPositionColor[] vecs = MiscRender.CreateBox(new Vector3(-15, -15, -24), new Vector3(15, 15, 32), new Color4(System.Drawing.Color.Red) { Alpha = 0.5f });
-            Matrix posmat = Matrix.Translation(ent.lerpOrigin);
+            float pitch, roll, yaw;
+            pitch = ent.lerpAngles.Z * (float)(Math.PI / 180f);
+            roll = ent.lerpAngles.Y * (float)(Math.PI / 180f);
+            yaw = ent.lerpAngles.X * (float)(Math.PI / 180f);
+            Common.Instance.WriteLine("{0}, {1}, {2}", yaw, pitch, roll);
+
+            Matrix posmat = Matrix.RotationX(yaw) * Matrix.RotationZ(roll) * Matrix.Translation(ent.lerpOrigin);
             for (int i = 0; i < vecs.Length; i++)
             {
                 Vector4 vec = Vector3.Transform(vecs[i].Position, posmat);
