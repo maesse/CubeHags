@@ -1,6 +1,6 @@
-﻿using System;
+﻿
 using System.Collections.Generic;
- 
+using System;
 using System.Text;
 using SlimDX.Direct3D9;
 using SlimDX;
@@ -62,7 +62,7 @@ namespace CubeHags.client
         public Size RenderSize = new Size(1280, 800);
         //public bool Windowed = true;
         //public bool VSync = true;
-        public MultisampleType MultiSampling = MultisampleType.None;
+        public MultisampleType MultiSampling = MultisampleType.FourSamples;
         private FillMode _fillMode = FillMode.Solid;
         public FillMode FillMode { get { return _fillMode; } set { _fillMode = value; device.SetRenderState<FillMode>(RenderState.FillMode, value); } }
         public Camera Camera;
@@ -270,6 +270,7 @@ namespace CubeHags.client
 
             // Render UI
             WindowManager.Instance.Render();
+            HagsConsole.Instance.Render();
             FlushDrawCalls();
             nDrawCalls += currentdrawCalls.Count;
             // Do unsorted UI render (Added to drawcalls list back to front)
@@ -571,10 +572,10 @@ namespace CubeHags.client
             // Texture samplers
             device.SetSamplerState(0, SamplerState.MipFilter, (int)TextureFilter.Linear);
             device.SetSamplerState(0, SamplerState.MinFilter, (int)TextureFilter.Linear);
-            //device.SetSamplerState(0, SamplerState.MinFilter, (int)TextureFilter.Anisotropic);
-            //device.SetSamplerState(0, SamplerState.MaxAnisotropy, 4);
-            //device.SetRenderState(RenderState.SrgbWriteEnable, true);
-            //device.SetSamplerState(0, SamplerState.SrgbTexture, 1);
+            device.SetSamplerState(0, SamplerState.MinFilter, (int)TextureFilter.Anisotropic);
+            device.SetSamplerState(0, SamplerState.MaxAnisotropy, 4);
+            device.SetRenderState(RenderState.SrgbWriteEnable, true);
+            device.SetSamplerState(0, SamplerState.SrgbTexture, 1);
             device.SetSamplerState(0, SamplerState.MagFilter, (int)TextureFilter.Linear);
             device.SetSamplerState(1, SamplerState.MipFilter, (int)TextureFilter.Linear);
             device.SetSamplerState(1, SamplerState.MinFilter, (int)TextureFilter.Linear);
@@ -598,7 +599,7 @@ namespace CubeHags.client
         {
             this.form = form;
             
-            form.ResizeBegin += new EventHandler((o, e) => { formIsResizing = true; });
+            form.ResizeBegin += new System.EventHandler((o, e) => { formIsResizing = true; });
             form.ResizeEnd += new EventHandler((o, e) => { formIsResizing = false; if(form.ClientSize != RenderSize) _sizeChanged = true; });
 
             //VSync = CVars.Instance.Get("r_vsync", "1", CVarFlags.ARCHIVE).Integer == 1 ? true : false;

@@ -121,6 +121,8 @@ namespace CubeHags.client
         private float oldFrameTime;
         private int buttons;
 
+        List<char> keysPressed = new List<char>();
+
         Input()
         {
             SlimDX.RawInput.Device.RegisterDevice(SlimDX.Multimedia.UsagePage.Generic, SlimDX.Multimedia.UsageId.Mouse, DeviceFlags.None);
@@ -214,9 +216,9 @@ namespace CubeHags.client
             // few packet, so even if a couple packets are dropped in a row,
             // all the cmds will make it to the server
             if (Client.Instance.cl_packetdup.Integer < 0)
-                CVars.Instance.Set("cl_packetdup", "0");
+                CVars.Instance.Set("cl_cmdbackup", "0");
             else if (Client.Instance.cl_packetdup.Integer > 5)
-                CVars.Instance.Set("cl_packetdup", "5");
+                CVars.Instance.Set("cl_cmdbackup", "5");
 
 
             int oldPacketNum = (Client.Instance.clc.netchan.outgoingSequence - 1 - Client.Instance.cl_packetdup.Integer) & 31;
@@ -262,6 +264,8 @@ namespace CubeHags.client
             Client.Instance.cl.outPackets[packetNum].p_serverTime = ((oldcmd == -1) ? 0 : Client.Instance.cl.cmds[oldcmd].serverTime);
             Client.Instance.cl.outPackets[packetNum].p_cmdNumber = Client.Instance.cl.cmdNumber;
             Client.Instance.clc.lastPacketSentTime = (int)Client.Instance.realtime;
+
+            Common.Instance.clientSent++;
 
             // Bam, send...
             Client.Instance.NetChan_Transmit(Client.Instance.clc.netchan, buffer);
@@ -394,9 +398,9 @@ namespace CubeHags.client
                 return true;
 
             if (Client.Instance.cl_maxpackets.Integer < 15)
-                CVars.Instance.Set("cl_maxpackets", "15");
+                CVars.Instance.Set("cl_cmdrate", "15");
             else if (Client.Instance.cl_maxpackets.Integer > 125)
-                CVars.Instance.Set("cl_maxpackets", "125");
+                CVars.Instance.Set("cl_cmdrate", "125");
 
             int oldpacketNum = (Client.Instance.clc.netchan.outgoingSequence - 1) & 31;
             int delta = Client.Instance.realtime - Client.Instance.cl.outPackets[oldpacketNum].p_realtime;
@@ -483,8 +487,8 @@ namespace CubeHags.client
 
         void MouseMove(ref UserCommand cmd)
         {
-            Client.Instance.cl.viewAngles[1] -= mousedx * Client.Instance.cl_sensitivity.Value * 0.05f;
-            Client.Instance.cl.viewAngles[0] += mousedy * Client.Instance.cl_sensitivity.Value * 0.05f;
+            Client.Instance.cl.viewAngles[1] -= mousedx * Client.Instance.sensitivity.Value * 0.05f;
+            Client.Instance.cl.viewAngles[0] += mousedy * Client.Instance.sensitivity.Value * 0.05f;
         }
 
         void KeyMove(ref UserCommand cmd)
@@ -683,6 +687,21 @@ namespace CubeHags.client
                 compatNextMouseArgs.Add(e);
         }
 
+        void renderForm_KeyPress(object sender, KeyPressEventArgs e)
+        {
+            if (hasFocus)
+            {
+                if ((int)e.KeyChar == 27)
+                {
+                    compatNewKeyEvents.Add(new KeyEventPacked() { time = HighResolutionTimer.Ticks, Pressed = true, Args = new KeyEventArgs(Keys.Enter) });
+                    compatNewKeyEvents.Add(new KeyEventPacked() { time = HighResolutionTimer.Ticks+10, Pressed = false, Args = new KeyEventArgs(Keys.Enter) });
+                    return;
+                }
+                keysPressed.Add(e.KeyChar);
+            }
+        }
+        
+
         void renderForm_KeyDown(object sender, System.Windows.Forms.KeyEventArgs e)
         {
             if (hasFocus)
@@ -699,7 +718,6 @@ namespace CubeHags.client
                 evt.Pressed = true;
                 evt.time = HighResolutionTimer.Ticks;
                 compatNewKeyEvents.Add(evt);
-                //System.Console.Write(KeyHags.GetStringFromKey(e.KeyCode, true));
                 e.Handled = true;
             }
         }
@@ -767,9 +785,35 @@ namespace CubeHags.client
                             Renderer.Instance._sizeChanged = true;
                             return;
                         }
+                        else if (key == Keys.Oem5)
+                        {
+                            HagsConsole.Instance.ToggleConsole();
+                        }
 
                         // Handle binds
-                        if(MouseState == client.MouseState.GAME)
+                        if (HagsConsole.Instance.IsVisible)
+                        {
+                            switch (key)
+                            {
+                                case Keys.Right:
+                                    HagsConsole.Instance.MoveCaret(true);
+                                    break;
+                                case Keys.Left:
+                                    HagsConsole.Instance.MoveCaret(false);
+                                    break;
+                                case Keys.Enter:
+                                    HagsConsole.Instance.ExecuteLine();
+                                    break;
+                                case Keys.Up:
+                                    HagsConsole.Instance.MoveHistory(true);
+                                    break;
+                                case Keys.Down:
+                                    HagsConsole.Instance.MoveHistory(false);
+                                    break;
+                            }
+                            //HagsConsole.Instance.HandleKeyPress(key);
+                        }
+                        else if(MouseState == client.MouseState.GAME)
                             KeyHags.Instance.ParseBinding(key, evt.Pressed, evt.time);
                     }
                     else
@@ -791,6 +835,15 @@ namespace CubeHags.client
             }
             newKeyEvents.Clear();
             compatNewKeyEvents.Clear();
+
+            if (HagsConsole.Instance.IsVisible)
+            {
+                for (int i = 0; i < keysPressed.Count; i++)
+                {
+                    HagsConsole.Instance.AddChar(keysPressed[i]);
+                }
+            }
+            keysPressed.Clear();
 
             // Fire events
             FireEvent(new InputArgs(events));
@@ -940,7 +993,7 @@ namespace CubeHags.client
             renderForm.LostFocus += new EventHandler(renderForm_LostFocus);
             renderForm.GotFocus += new EventHandler(renderForm_GotFocus);
             renderForm.MouseMove += new System.Windows.Forms.MouseEventHandler(renderForm_MouseMove);
-            //renderForm.KeyPress += new KeyPressEventHandler(renderForm_KeyPress);
+            renderForm.KeyPress += new KeyPressEventHandler(renderForm_KeyPress);
             renderForm.KeyUp += new System.Windows.Forms.KeyEventHandler(renderForm_KeyUp);
             renderForm.KeyDown += new System.Windows.Forms.KeyEventHandler(renderForm_KeyDown);
             renderForm.MouseDown += new MouseEventHandler(renderForm_MouseDown);
@@ -967,6 +1020,8 @@ namespace CubeHags.client
             KeyHags.Instance.SetBind(Keys.Space, "+moveup");
             HiddenMousePosition = new Point(Renderer.Instance.form.DesktopLocation.X + (Renderer.Instance.form.DesktopBounds.Width / 2), Renderer.Instance.form.DesktopLocation.Y + (Renderer.Instance.form.DesktopBounds.Height / 2));
         }
+
+        
 
         // Method used to fire event to all listeners
         public void FireEvent(InputArgs e)

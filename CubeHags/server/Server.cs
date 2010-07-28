@@ -24,6 +24,11 @@ namespace CubeHags.server
         CVar sv_maxclients;
         CVar sv_zombietime;
         CVar sv_killserver;
+        CVar sv_reconnectlimit;
+        CVar sv_maxping;
+        CVar sv_minping;
+        CVar sv_minrate;
+        CVar sv_maxrate;
         public server_t sv = new server_t();
 
         public bool initialized;				// sv_init has completed
@@ -171,12 +176,12 @@ namespace CubeHags.server
             {
                 client_t cl = clients[i];
                 if (cl.state == clientState_t.CS_FREE)
-                {
                     continue;
-                }
-                if (IPAddress.Equals(from.Address, cl.netchan.remoteAddress.Address) && (qport == cl.netchan.qport || from.Port == cl.netchan.remoteAddress.Port))
+
+                if (IPAddress.Equals(from.Address, cl.netchan.remoteAddress.Address)
+                    && (qport == cl.netchan.qport || from.Port == cl.netchan.remoteAddress.Port))
                 {
-                    if ((time - cl.lastConnectTime) < 300f)
+                    if ((time - cl.lastConnectTime) < sv_reconnectlimit.Integer * 1000f)
                     {
                         Common.Instance.WriteLine("DirConnect: ({0})=>Reconnect rejected : too soon.", from.Address.ToString());
                         return;
@@ -188,23 +193,28 @@ namespace CubeHags.server
             Info.SetValueForKey(userinfo, "ip", ip);
 
             // see if the challenge is valid (LAN clients don't need to challenge)
-            if (!IPAddress.IsLoopback(from.Address))
+            if (!Net.Instance.IsLanAddress(from.Address))
             {
+
                 for (i = 0; i < challenges.Count; i++)
                 {
-                    if (IPAddress.Equals(from.Address, challenges[i].adr.Address))
+                    if (IPEndPoint.Equals(from, challenges[i].adr))
                     {
                         if (challenge == challenges[i].challenge)
                             break;
+                        else
+                            Common.Instance.WriteLine("FIXFIX");
                     }
                 }
 
+                // No challenge found
                 if (i == challenges.Count)
                 {
                     Net.Instance.OutOfBandMessage(Net.NetSource.SERVER, from, "print\nNo or bad challenge for your address\n");
                     return;
                 }
 
+                // Challenge found
                 challenge_t chal = challenges[i];
                 if (chal.wasrefused)
                 {
@@ -217,7 +227,14 @@ namespace CubeHags.server
                 // never reject a LAN client based on ping
                 if (!Net.Instance.IsLanAddress(from.Address))
                 {
-                    if (ping > 2000)
+                    if (sv_minping.Integer > 0 && ping < sv_minping.Value)
+                    {
+                        Net.Instance.OutOfBandMessage(Net.NetSource.SERVER, from, "print\nServer is for high pings only.\n");
+                        Common.Instance.WriteLine("Client rejected due to low ping");
+                        chal.wasrefused = true;
+                        return;
+                    }
+                    if (sv_maxping.Integer > 0 && ping > sv_maxping.Value)
                     {
                         Net.Instance.OutOfBandMessage(Net.NetSource.SERVER, from, "print\nServer is for low pings only.\n");
                         Common.Instance.WriteLine("Client rejected due to high ping");
@@ -237,11 +254,10 @@ namespace CubeHags.server
             {
                 client_t cl = clients[i];
                 if (cl.state == clientState_t.CS_FREE)
-                {
                     continue;
-                }
 
-                if (IPAddress.Equals(from.Address, cl.netchan.remoteAddress.Address) && (qport == cl.netchan.qport || from.Port == cl.netchan.remoteAddress.Port))
+                if (IPAddress.Equals(from.Address, cl.netchan.remoteAddress.Address) 
+                    && (qport == cl.netchan.qport || from.Port == cl.netchan.remoteAddress.Port))
                 {
                     Common.Instance.WriteLine("{0}:reconnect", from.Address.ToString());
                     newCl = cl;
@@ -286,8 +302,10 @@ namespace CubeHags.server
             // build a new connection
             // accept the new client
             // this is the only place a client_t is ever initialized
-            //if (sv.num_entities <= i)
-            //    sv.gentities[(new sharedEntity());
+            if (newCl.id != i)
+            {
+                int test = 2;
+            }
             sharedEntity ent = sv.gentities[i];
             newCl.gentity = ent;
 
@@ -382,7 +400,7 @@ namespace CubeHags.server
             }
 
             // snaps command
-            val = Info.ValueForKey(cl.userinfo, "snaps");
+            val = Info.ValueForKey(cl.userinfo, "cl_updaterate");
             if (val != null && val.Length > 0)
             {
                 int i = 1;
@@ -859,24 +877,22 @@ namespace CubeHags.server
             }
         }
 
+        // Called when clients leaves server completely. Not called if server is crashing or quitting, handled in FinalMessage()
         private void DropClient(client_t cl, string reason)
         {
             if (cl.state == clientState_t.CS_ZOMBIE)
                 return;     // already dropped
 
             // see if we already have a challenge for this ip
-            challenge_t toRemove = null;
-            foreach (challenge_t challenge in challenges)
+            int i;
+            IPEndPoint clEndPoint = cl.netchan.remoteAddress;
+            for (i = 0; i < challenges.Count; i++)
             {
-                if (cl.netchan.remoteAddress.Equals(challenge.adr))
-                {
-                    toRemove = challenge;
-                    //toRemove = challenge;
+                if (clEndPoint.Equals(challenges[i]))
                     break;
-                }
             }
-            if (toRemove != null)
-                toRemove = new challenge_t();
+            if (i != challenges.Count)
+                challenges.RemoveAt(i); // Remove old challenge
 
             // tell everyone why they got dropped
             SendServerCommand(null, string.Format("print \"{0} {1}\"\n", cl.name, reason));
@@ -884,7 +900,6 @@ namespace CubeHags.server
             // call the prog function for removing a client
             // this will remove the body, among other things
             Game.Instance.Client_Disconnect(cl.gentity.s.number);
-            //VM_Call(gvm, GAME_CLIENT_DISCONNECT, drop - clients);
 
             // add the disconnect command
             SendServerCommand(cl, string.Format("disconnect \"{0}\"", reason));
@@ -1227,6 +1242,11 @@ namespace CubeHags.server
             sv_maxclients = CVars.Instance.Get("sv_maxclients", "32", CVarFlags.SERVER_INFO | CVarFlags.LATCH);
             sv_zombietime = CVars.Instance.Get("sv_zombietime", "2", CVarFlags.TEMP);
             sv_killserver = CVars.Instance.Get("sv_killserver", "0", CVarFlags.TEMP);
+            sv_reconnectlimit = CVars.Instance.Get("sv_reconnectlimit", "3", CVarFlags.SERVER_INFO | CVarFlags.ARCHIVE);
+            sv_minping = CVars.Instance.Get("sv_minping", "0", CVarFlags.ARCHIVE | CVarFlags.SERVER_INFO);
+            sv_maxping = CVars.Instance.Get("sv_maxping", "0", CVarFlags.ARCHIVE | CVarFlags.SERVER_INFO);
+            sv_minrate = CVars.Instance.Get("sv_minrate", "0", CVarFlags.ARCHIVE | CVarFlags.SERVER_INFO);
+            sv_maxrate = CVars.Instance.Get("sv_maxrate", "0", CVarFlags.ARCHIVE | CVarFlags.SERVER_INFO);
             CVars.Instance.Get("sv_serverid", "0", CVarFlags.SERVER_INFO | CVarFlags.ROM);
         }
 

@@ -35,8 +35,6 @@ namespace CubeHags.common
             public NetBuffer Buffer;
         }
 
-        
-
         public enum NetSource
         {
             CLIENT,
@@ -56,7 +54,7 @@ namespace CubeHags.common
         NetConfiguration svConfig = new NetConfiguration("Cubehags");
         NetServer server;
         NetConfiguration clConfig = new NetConfiguration("Cubehags");
-        NetClient client;
+        public NetClient client;
 
         private List<string> lanStrings = new List<string>();
         public NetBaseStatistics ClientStatistic { get { if (client != null) return client.Statistics; return null; } }
@@ -108,6 +106,7 @@ namespace CubeHags.common
             NetMessageType type;
             NetConnection sender;
             IPEndPoint endpoint;
+            
             if (server.ReadMessage(buf, out type, out sender, out endpoint))
             {
                 switch (type)
@@ -255,6 +254,12 @@ namespace CubeHags.common
 
         }
 
+        public void Pump()
+        {
+            client.Pump();
+            server.Pump();
+        }
+
         void OpenIP()
         {
             int port = net_port.Integer;
@@ -277,6 +282,8 @@ namespace CubeHags.common
                 server.Start();
             }
             client = new NetClient(clConfig);
+            client.SimulatedMinimumLatency = 0.5f;
+            //client.RunSleep = 0;
             client.EnabledMessageTypes |= NetMessageType.OutOfBandData;
             client.Start();
         }

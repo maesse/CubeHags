@@ -12,6 +12,7 @@ using Lidgren.Network;
 using CubeHags.client.render;
 using CubeHags.client.gfx;
 using CubeHags.server;
+using CubeHags.client.gui;
 
 namespace CubeHags.client
 {
@@ -22,10 +23,10 @@ namespace CubeHags.client
         public RenderForm form;
 
         public CVar cl_timeout = CVars.Instance.Get("cl_timeout", "200", CVarFlags.NONE);
-        public CVar cl_maxpackets = CVars.Instance.Get("cl_maxpackets", "116", CVarFlags.ARCHIVE);
-        public CVar cl_packetdup = CVars.Instance.Get("cl_packetdup", "1", CVarFlags.ARCHIVE);
+        public CVar cl_maxpackets = CVars.Instance.Get("cl_cmdrate", "116", CVarFlags.ARCHIVE);
+        public CVar cl_packetdup = CVars.Instance.Get("cl_cmdbackup", "1", CVarFlags.ARCHIVE);
         public CVar cl_timeNudge = CVars.Instance.Get("cl_timeNudge", "0", CVarFlags.TEMP);
-        public CVar cl_sensitivity = CVars.Instance.Get("cl_sensitivity", "1", CVarFlags.ARCHIVE);
+        public CVar sensitivity = CVars.Instance.Get("sensitivity", "1", CVarFlags.ARCHIVE);
         public CVar cl_nodelta = CVars.Instance.Get("cl_nodelta", "0", CVarFlags.NONE);
 
         public ConnectState state;				// connection status
@@ -223,10 +224,11 @@ namespace CubeHags.client
             CVars.Instance.Get("name", "UnknownCube", CVarFlags.USER_INFO | CVarFlags.ARCHIVE);
             CVars.Instance.Get("rate", "25000", CVarFlags.USER_INFO | CVarFlags.ARCHIVE);
             CVars.Instance.Get("model", "unknown", CVarFlags.USER_INFO | CVarFlags.ARCHIVE);
-            CVars.Instance.Get("snaps", "40", CVarFlags.USER_INFO | CVarFlags.ARCHIVE);
+            CVars.Instance.Get("cl_updaterate", "40", CVarFlags.USER_INFO | CVarFlags.ARCHIVE);
 
             Renderer.Instance.Init(form);
             Input.Instance.InitializeInput();
+            HagsConsole.Instance.Init();
 
             CVars.Instance.Set("cl_running", "1");
             cin = new Cinematic();

@@ -111,7 +111,7 @@ struct VS_OUT
 	float2 texcoord : TEXCOORD0;
 	float2 lightmap : TEXCOORD1;
 	float3 normal : TEXCOORD2;
-	float3 color : TEXCOORD3;
+	float4 color : TEXCOORD3;
 	float4 realpos : TEXCOORD4;
 };
 
@@ -219,9 +219,10 @@ VS_OUT VertexNorTexInstancing(float4 vPos : POSITION0,
 	isNegative *= nSquared;
 	isPositive *= nSquared;
 
-	Out.color = isPositive.x * cubex1 + isNegative.x * cubex +
+	Out.color.rgb = isPositive.x * cubex1 + isNegative.x * cubex +
 				  isPositive.y * cubey1 + isNegative.y * cubey +
 				  isPositive.z * cubez + isNegative.z * cubez1;
+	Out.color.a = 1.0f;
 	
 	//Out.color = zero;
 
@@ -524,8 +525,9 @@ float4 PixelColorAlpha( float4 color : COLOR ) : COLOR
 
 float4 PixelGUIAlpha( VS_OUT input ) : COLOR
 {
+
     float4 vColor = tex2D( BaseTextureSampler, input.texcoord );
-	vColor.rgb *= input.color;
+	vColor *= input.color;
 	vColor.rgb *= vColor.a;
 	return vColor; 
 }
@@ -667,7 +669,7 @@ technique GUIAlpha
 {
 	pass p0
 	{
-		CullMode = CW;
+		CullMode = None;
 		AlphaBlendEnable = true;
 		SrcBlend = SrcAlpha;
 		DestBlend = InvSrcAlpha;

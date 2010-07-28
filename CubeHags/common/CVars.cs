@@ -11,17 +11,17 @@ namespace CubeHags.client.common
     public enum CVarFlags : int
     {
         NONE = 0,
-        ARCHIVE, // will save to file
-        INIT, // No change from console
-        LATCH, // Value will not have effect before cvar is used in the game again
-        ROM, // Read-only by user
-        USER_CREATED, // Created by user
-        SYSTEM_INFO,
-        SERVER_CREATED,
-        NONEXISTANT,
-        SERVER_INFO,
-        TEMP,
-        USER_INFO
+        ARCHIVE = 1, // will save to file
+        INIT = 2, // No change from console
+        LATCH = 4, // Value will not have effect before cvar is used in the game again
+        ROM = 8, // Read-only by user
+        USER_CREATED = 16, // Created by user
+        SYSTEM_INFO = 32,
+        SERVER_CREATED = 64,
+        NONEXISTANT = 128,
+        SERVER_INFO = 256,
+        TEMP = 512,
+        USER_INFO = 1024
     }
 
     public class CVar
@@ -123,6 +123,7 @@ namespace CubeHags.client.common
             if (tokens.Length == 1)
             {
                 // Print TODO
+                Print(nvar);
                 return true;
             }
 

@@ -44,7 +44,7 @@ namespace CubeHags.client
             state = ConnectState.ACTIVE;
 
             // set the timedelta so we are exactly on this first frame
-            cl.serverTimeDelta = cl.snap.serverTime - realtime;// -(1000 / CVars.Instance.VariableIntegerValue("snaps"));
+            cl.serverTimeDelta = cl.snap.serverTime - realtime;// -(1000 / CVars.Instance.VariableIntegerValue("cl_updaterate"));
             cl.oldServerTime = cl.snap.serverTime;
         }
 

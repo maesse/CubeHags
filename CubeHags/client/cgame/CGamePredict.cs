@@ -115,6 +115,8 @@ namespace CubeHags.client.cgame
 
             // get the latest command so we can know which commands are from previous map_restarts
             Input.UserCommand latestCmd = Client.Instance.GetUserCommand(current);
+
+            
             
             // get the most recent information we have, even if
             // the server time is beyond our current cg.time,

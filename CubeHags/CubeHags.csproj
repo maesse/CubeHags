@@ -107,6 +107,7 @@
     <Compile Include="client\ClientStructs.cs" />
     <Compile Include="client\gfx\Cinematic.cs" />
     <Compile Include="client\gui\ConnectGUI.cs" />
+    <Compile Include="client\gui\Console.cs" />
     <Compile Include="client\gui\Controls\Scrollbar.cs" />
     <Compile Include="client\gui\LagOMeterUI.cs" />
     <Compile Include="client\gui\MenuGUI.cs" />
@@ -241,6 +242,9 @@
     </None>
   </ItemGroup>
   <ItemGroup>
+    <Content Include="data\gui\consolebg.png">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
     <Content Include="data\gui\ribbon\blacktransgrad.png">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
@@ -302,6 +306,9 @@
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
     <Content Include="data\gui\window-theme\window-borders.png">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+    <Content Include="data\gui\Terminus.png">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
     <Content Include="DirectShowLib-2005.dll">

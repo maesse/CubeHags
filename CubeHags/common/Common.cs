@@ -12,6 +12,7 @@ using CubeHags.client.map.Source;
 using CubeHags.client.render;
 using System.Runtime.InteropServices;
 using CubeHags.client.input;
+using CubeHags.client.gui;
 
 namespace CubeHags.common
 {
@@ -42,6 +43,9 @@ namespace CubeHags.common
 
         public static Random Rand = new Random();
 
+        public int clientSent = 0;
+        //public int serverSent = 0;
+        private readonly object padlock = new object();
         public Common()
         {
         }
@@ -57,16 +61,20 @@ namespace CubeHags.common
 
             // we may want to spin here if things are going too fast
             int minMsec = (int)(1000f / maxfps.Integer);
-
+            
             int msec = minMsec;
             do
             {
-                int timeRemaining = minMsec - msec;
-                if (timeRemaining >= 7)
-                {
-                    //Thread.Sleep(1);
-                    //Thread.Sleep((int)timeRemaining);
-                }
+                //int timeRemaining = minMsec - msec;
+                //if (timeRemaining >= 11)
+                //{
+                //    //lock (padlock)
+                //    //{
+                //    //    Monitor.Wait(padlock, timeRemaining-8);
+                //    //}
+                //    //Thread.Sleep(0);
+                //    Thread.Sleep(timeRemaining-8);
+                //}
 
                 frameTime = (int)EventLoop();
                 if (lastTime > frameTime)
@@ -74,7 +82,6 @@ namespace CubeHags.common
 
                 msec = frameTime - lastTime;
             } while (msec < minMsec);
-
             Commands.Instance.Execute();
 
             lastTime = frameTime;
@@ -101,11 +108,13 @@ namespace CubeHags.common
             EventLoop();
             Commands.Instance.Execute();
 
+            //Common.Instance.Write(clientSent + "->");
+
             //
             // client side
             //
             Client.Instance.Frame(msec);
-
+            
 
             frameNumber++;
         }
@@ -124,6 +133,7 @@ namespace CubeHags.common
 
             while (true)
             {
+                //Net.Instance.Pump();
                 ev = GetEvent();
                 // if no more events are available
                 if (ev.evType == EventType.NONE)
@@ -412,6 +422,7 @@ namespace CubeHags.common
         {
             System.Console.Write(str);
             Client.Instance.ConsolePrint(str);
+            HagsConsole.Instance.AddLine(str);
             logWriter.WriteLine(str);
             logWriter.Flush();
         }
