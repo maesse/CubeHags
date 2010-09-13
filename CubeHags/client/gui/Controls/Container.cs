@@ -77,7 +77,9 @@ namespace CubeHags.client.gui
                 if (control.Bound.Contains(evt.Position.X, evt.Position.Y))
                 {
                     control.MouseDown(evt);
-                    Window.FocusControl = control;
+                    // Only give focus to a panel if another control doesn't already have it
+                    if (!(control is Panel) || Window.FocusControl == null)
+                        Window.FocusControl = control;
                 }
             }
         }
@@ -243,7 +245,8 @@ namespace CubeHags.client.gui
                 Scrollbar.RenderClipRect();
             foreach (Control control in Controls)
             {
-                control.Render();
+                if (control.Visible)
+                    control.Render();
             }
             if (ScrollbarStyle != Misc.ScrollbarStyle.NONE && Scrollbar != null)
                 Scrollbar.Render();

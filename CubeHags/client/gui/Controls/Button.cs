@@ -24,6 +24,8 @@ namespace CubeHags.client.gui
         private ButtonState state;
         private HagsAtlas atlas;
         private Dictionary<ButtonState, Point> stateOffets = new Dictionary<ButtonState, Point>();
+        public bool ToggleButton = false;
+        public bool Toggled = false;
 
         public Button(string Text, Window window)
             : base(window)
@@ -97,6 +99,11 @@ namespace CubeHags.client.gui
             Point texOffset = Point.Empty;
             if(stateOffets.ContainsKey(state))
                 texOffset = stateOffets[state];
+            if (ToggleButton)
+            {
+                if (Toggled)
+                    texOffset = stateOffets[ButtonState.DOWN];
+            }
             
             // Top
             WindowManager.Instance.VertexList.AddRange(MiscRender.GetQuadPoints(new Rectangle(new Point(Position.X, Position.Y), new Size(atlas["topleft"].Width, atlas["topleft"].Height)), MoveRectangle(atlas["topleft"], texOffset), atlas.Texture.Size));

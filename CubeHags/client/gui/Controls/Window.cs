@@ -97,12 +97,12 @@ namespace CubeHags.client.gui
             atlas["top"] = new Rectangle(0, 81, 128, 26);
             atlas["topright"] = new Rectangle(27, 0, 27, 26);
 
-            atlas["left"] = new Rectangle(0, 28, 27, 26);
+            atlas["left"] = new Rectangle(0, 28, 25, 26);
             atlas["middle"] = new Rectangle(55, 28, 25, 25);
             atlas["right"] = new Rectangle(54, 1, 27, 26);
 
             atlas["bottomleft"] = new Rectangle(0, 54, 27, 27);
-            atlas["bottom"] = new Rectangle(27, 54, 27, 27);
+            atlas["bottom"] = new Rectangle(27, 55, 27, 26);
             atlas["bottomright"] = new Rectangle(54, 54, 27, 27);
             atlas["scale"] = new Rectangle(27, 27, 17, 17);
 
@@ -577,13 +577,18 @@ namespace CubeHags.client.gui
             MouseLockControl = null;
         }
 
-        public Result OnLostDevice()
+        public override Result OnLostDevice()
         {
+            panel.OnLostDevice();
             return atlas.OnLostDevice();
         }
 
-        public Result OnResetDevice()
+        public override Result OnResetDevice()
         {
+            foreach (Control control in panel.Controls)
+            {
+                control.OnResetDevice();
+            }
             return atlas.OnResetDevice();
         }
     }

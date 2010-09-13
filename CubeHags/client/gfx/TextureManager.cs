@@ -171,9 +171,10 @@ namespace CubeHags.client
             System.Console.WriteLine("Finished caching PAK file..");
         }
 
+        // Create a systemmem texture, fill with the given color and copy it to a more hardware-friendly memory pool
         public static Texture CreateTexture(int w, int h, Format format, Color4 color)
         {
-            Texture texture = new Texture(Renderer.Instance.device, w, h, 1, Usage.None, format, (Renderer.Instance.Is3D9Ex ? Pool.Default : Pool.Managed));
+            Texture texture = new Texture(Renderer.Instance.device, w, h, 1, Usage.None, format, Pool.SystemMemory);
             DataRectangle drect = texture.LockRectangle(0, LockFlags.None);
             DataStream ds = drect.Data;
 
@@ -188,7 +189,7 @@ namespace CubeHags.client
                     fieldsize = 8;
                     break;
             }
-            
+
             // Fill texture with color
             for (int j = 0; j < (w * h); j++)
             {
@@ -200,17 +201,20 @@ namespace CubeHags.client
                 switch (format)
                 {
                     case Format.A8R8G8B8:
-                        ds.Write<Color4>(color);
+                        ds.Write<int>(color.ToArgb());
                         break;
                     case Format.A16B16G16R16F:
                         Half[] half = Half.ConvertToHalf(new float[] { color.Red, color.Green, color.Blue, color.Alpha });
                         ds.Write<Half4>(new Half4(half[0], half[1], half[2], half[3]));
                         break;
                 }
-                
+
             }
             texture.UnlockRectangle(0);
-            return texture;
+            Texture realtexture = new Texture(Renderer.Instance.device, w, h, 1, Usage.None, format, Pool.Default);
+            Renderer.Instance.device.UpdateTexture(texture, realtexture);
+            texture.Dispose();
+            return realtexture;
         }
 
         public void Dispose()

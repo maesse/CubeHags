@@ -10,8 +10,6 @@ namespace CubeHags.client
 {
     public sealed partial class Client
     {
-        
-
         void InitCGame()
         {
             float t1 = Common.Instance.Milliseconds();
@@ -110,6 +108,7 @@ namespace CubeHags.client
             // make a huge adjustment
             if (cl.newSnapshots)
             {
+
                 AdjustTimeDelta();
             }
         }

@@ -114,8 +114,12 @@
     <Compile Include="client\gui\Misc\ScrollbarStyle.cs" />
     <Compile Include="client\gui\ServerListUI.cs" />
     <Compile Include="client\gui\SettingsGUI.cs" />
+    <Compile Include="client\map\Entities.cs" />
+    <Compile Include="client\map\GoldSrcParser.cs" />
+    <Compile Include="client\map\StudioModel.cs" />
     <Compile Include="client\render\Formats\VertexPositionColor.cs" />
     <Compile Include="client\render\Formats\VertexPositionColorTex.cs" />
+    <Compile Include="client\render\Formats\VertexPositonNormalColorTexture.cs" />
     <Compile Include="client\sound\Sound.cs" />
     <Compile Include="client\sound\SoundManager.cs" />
     <Compile Include="common\Commands.cs" />
@@ -174,7 +178,6 @@
     <Compile Include="client\map\VTXReader.cs" />
     <Compile Include="client\map\VVDReader.cs" />
     <Compile Include="client\player\Frustrum.cs" />
-    <Compile Include="client\player\Vec.cs" />
     <Compile Include="client\render\Bloom.cs" />
     <Compile Include="client\render\DynamicItem.cs" />
     <Compile Include="client\render\Formats\VertexPositionNormalTextured.cs" />
@@ -222,6 +225,9 @@
     <Compile Include="common\Common.cs" />
     <Compile Include="common\SysEvent.cs" />
     <Compile Include="Program.cs" />
+    <None Include="data\gui\Candara.ttf">
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+    </None>
     <None Include="data\gui\dina10px.ttf">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>

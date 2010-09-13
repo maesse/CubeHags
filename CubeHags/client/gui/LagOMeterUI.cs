@@ -112,7 +112,8 @@ namespace CubeHags.client.gui
                 // Draw UI elements
                 device.DrawPrimitives(PrimitiveType.TriangleList, vertStartOffset, nPrimitives);
             });
-            WindowManager.Instance.renderCalls.Add(new KeyValuePair<ulong, RenderDelegate>(key, del));
+            if(nPrimitives > 0)
+                WindowManager.Instance.renderCalls.Add(new KeyValuePair<ulong, RenderDelegate>(key, del));
         }
     }
 }

@@ -1,18 +1,19 @@
 ﻿using System;
 using System.Collections.Generic;
- 
+
 using System.Text;
 using SlimDX.Direct3D9;
 using System.Drawing;
 using System.Windows.Forms;
+using CubeHags.client.gfx;
+using CubeHags.client.render;
 
-namespace CubeHags.client.gui.Controls
+namespace CubeHags.client.gui
 {
     class TextBox : Control
     {
         // Theming
-        private Texture textboxTexture;
-        private Rectangle[] regions;
+        HagsAtlas atlas;
 
         // Text
         private string _Text = "";
@@ -20,6 +21,8 @@ namespace CubeHags.client.gui.Controls
         private Rectangle TextSize;
         public bool Changed = true;
         private Rectangle DrawRect;
+        Rectangle oldrect = Rectangle.Empty;
+        public int maxChars = 255;
 
         // Overflow
         public bool AllowOverflow = true; // Allow more text than can be shown
@@ -31,39 +34,44 @@ namespace CubeHags.client.gui.Controls
         private int _CaretPosition;
         private int CaretPosition { get { return _CaretPosition; } set { _CaretPosition = value; CarretPositionChanged(); } }
         private PointF CaretPositionF = new PointF();
-        
+
         // Selection
         private bool Selection = false;
         private int SelectStart = 0, SelectEnd = 0;
 
         // Single Charater Size
-        private Rectangle ASize = new Rectangle(0,0,1,1);
+        private Rectangle ASize = new Rectangle(0, 0, 1, 1);
 
         public TextBox(Window window)
             : base(window)
         {
-            PreferredSize = new Size(100,22);
+            PreferredSize = new Size(240, 26);
+
+
+            atlas = new HagsAtlas("window-theme/textframe.png");
+
+            //HagsAtlas.SerializeToXML(atlas);
+            atlas["topleft"] = new Rectangle(0, 0, 3, 3);
+            atlas["top"] = new Rectangle(5, 0, 3, 3);
+            atlas["topright"] = new Rectangle(28, 0, 3, 3);
+
+            atlas["left"] = new Rectangle(0, 5, 3, 3);
+            atlas["middle"] = new Rectangle(5, 5, 3, 3);
+            atlas["right"] = new Rectangle(28, 5, 3, 3);
+
+            atlas["bottomleft"] = new Rectangle(0, 28, 3, 3);
+            atlas["bottom"] = new Rectangle(5, 28, 3, 3);
+            atlas["bottomright"] = new Rectangle(28, 28, 3, 3);
 
             // Load theme
-            //textboxTexture = TextureManager.Instance.LoadTexture("window-theme/textframe.png");
+            WhiteTexture = TextureManager.CreateTexture(1, 1, Format.A8R8G8B8, new SlimDX.Color4(Color.White));
             //WhiteTexture = TextureManager.Instance.LoadTexture("window-theme/White.bmp");
-            // Define theme corners
-            regions = new Rectangle[9];
-            regions[0] = new Rectangle(0, 0, 3, 3);
-            regions[1] = new Rectangle(5, 0, 3, 3);
-            regions[2] = new Rectangle(28, 0, 3, 3);
-            regions[3] = new Rectangle(0, 5, 3, 3);
-            regions[5] = new Rectangle(28, 5, 3, 3);
-            regions[6] = new Rectangle(0, 28, 3, 3);
-            regions[7] = new Rectangle(5, 28, 3, 3);
-            regions[8] = new Rectangle(28, 28, 3, 3);
-
             // Fixed sized font measurement
             ASize = new Rectangle();
             Renderer.Instance.Fonts["textbox"].MeasureString(Renderer.Instance.sprite, "A", DrawTextFormat.Left, ref ASize);
 
             // Little prefferedsize tweak
-            int goodHeight = ASize.Height + regions[1].Height + regions[7].Height;
+            int goodHeight = ASize.Height + atlas["top"].Height + atlas["bottom"].Height;
             if (goodHeight > PreferredSize.Height)
             {
                 PreferredSize.Height = goodHeight;
@@ -75,11 +83,11 @@ namespace CubeHags.client.gui.Controls
             int realCaretPosition = CaretPosition * ASize.Width;
 
             // Caret positioned out of view?
-            if (realCaretPosition + OverflowOffset >= Size.Width - regions[3].Width - regions[5].Width)
+            if (realCaretPosition + OverflowOffset >= Size.Width - atlas["left"].Width - atlas["right"].Width)
             {
-                OverflowOffset = -(realCaretPosition -  Size.Width + regions[3].Width + regions[5].Width + 1);
-            } 
-            else if(OverflowOffset < 0 && realCaretPosition + OverflowOffset < regions[3].Width)
+                OverflowOffset = -(realCaretPosition - Size.Width + atlas["left"].Width + atlas["right"].Width + 1);
+            }
+            else if (OverflowOffset < 0 && realCaretPosition + OverflowOffset < atlas["left"].Width)
             {
                 OverflowOffset = -(realCaretPosition);
             }
@@ -127,7 +135,7 @@ namespace CubeHags.client.gui.Controls
         {
             Window.ReleaseMouseLock();
             // Stop selection if nothing is selected
-            if(Math.Abs(SelectStart - SelectEnd) == 0)
+            if (Math.Abs(SelectStart - SelectEnd) == 0)
                 Selection = false;
         }
 
@@ -152,7 +160,7 @@ namespace CubeHags.client.gui.Controls
             WindowManager.Instance.Cursor = WindowManager.CursorType.NORMAL;
         }
 
-        
+
 
         public override void Render()
         {
@@ -161,47 +169,69 @@ namespace CubeHags.client.gui.Controls
             {
                 TextSize = new Rectangle();
                 Renderer.Instance.Fonts["textbox"].MeasureString(Renderer.Instance.sprite, Text, DrawTextFormat.Left, ref TextSize);
-                DrawRect = new Rectangle(Bound.X + regions[3].Width, Bound.Y + regions[1].Height, Bound.Width - regions[3].Width - regions[3].Width, Bound.Height - regions[1].Height - regions[7].Height);
+
                 Changed = false;
             }
+            DrawRect = new Rectangle(Position.X + atlas["left"].Width, Position.Y + atlas["top"].Height, Size.Width - atlas["left"].Width - atlas["left"].Width, Size.Height - atlas["top"].Height - atlas["bottom"].Height);
 
+            // Early out
+            if (DrawRect.Width <= 0)
+                return;
+
+            int vertStartOffset = WindowManager.Instance.VertexList.Count;
             // Draw borders
-            //sprite.Begin(SpriteFlags.AlphaBlend);
-            //sprite.Draw2D(textboxTexture, regions[0], regions[0].Size, new PointF(Position.X, Position.Y), Color.FromArgb((int)(Window.Opacity * 255), Color.White));
-            //sprite.Draw2D(textboxTexture, regions[1], new SizeF(Size.Width - regions[0].Width - regions[2].Width, regions[1].Height), new PointF(Position.X + regions[0].Width, Position.Y), Color.FromArgb((int)(Window.Opacity * 255), Color.White));
-            //sprite.Draw2D(textboxTexture, regions[2], regions[2].Size, new PointF(Position.X + Size.Width - regions[3].Width, Position.Y), Color.FromArgb((int)(Window.Opacity * 255), Color.White));
+            WindowManager.Instance.VertexList.AddRange(MiscRender.GetQuadPoints(new RectangleF(new PointF(Position.X, Position.Y), atlas["topleft"].Size), atlas["topleft"], atlas["topleft"].Size));
+            WindowManager.Instance.VertexList.AddRange(MiscRender.GetQuadPoints(new RectangleF(new PointF(Position.X + atlas["topleft"].Width, Position.Y), new SizeF(Size.Width - atlas["topleft"].Width - atlas["topright"].Width, atlas["top"].Height)), atlas["top"], atlas["top"].Size));
+            WindowManager.Instance.VertexList.AddRange(MiscRender.GetQuadPoints(new RectangleF(new PointF(Position.X + Size.Width - atlas["topright"].Width, Position.Y), atlas["topright"].Size), atlas["topright"], atlas["topright"].Size));
 
-            //sprite.Draw2D(textboxTexture, regions[3], new SizeF(regions[3].Width, Size.Height - regions[1].Height - regions[7].Height), new PointF(Position.X, Position.Y + regions[0].Height), Color.FromArgb((int)(Window.Opacity * 255), Color.White));
-            //sprite.Draw2D(WhiteTexture, new Rectangle(0,0,2,2), new SizeF(Size.Width - regions[3].Width - regions[5].Width, Size.Height - regions[1].Height - regions[7].Height), new PointF(Position.X + regions[3].Width, Position.Y + regions[1].Height), Color.FromArgb((Enabled? 0: 25), Color.White));
-            //sprite.Draw2D(textboxTexture, regions[5], new SizeF(regions[5].Width, Size.Height - regions[1].Height - regions[7].Height), new PointF(Position.X + Size.Width - regions[5].Width, Position.Y + regions[2].Height), Color.FromArgb((int)(Window.Opacity * 255), Color.White));
+            WindowManager.Instance.VertexList.AddRange(MiscRender.GetQuadPoints(new RectangleF(new PointF(Position.X, Position.Y + atlas["topleft"].Height), new SizeF(atlas["left"].Width, Size.Height - atlas["top"].Height - atlas["bottom"].Height)), atlas["left"], atlas["left"].Size));
 
-            //sprite.Draw2D(textboxTexture, regions[6], regions[6].Size, new PointF(Position.X, Position.Y + Size.Height - regions[6].Height), Color.FromArgb((int)(Window.Opacity * 255), Color.White));
-            //sprite.Draw2D(textboxTexture, regions[7], new SizeF(Size.Width - regions[6].Width - regions[8].Width, regions[7].Height), new PointF(Position.X + regions[6].Width, Position.Y + Size.Height - regions[7].Height), Color.FromArgb((int)(Window.Opacity * 255), Color.White));
-            //sprite.Draw2D(textboxTexture, regions[8], regions[8].Size, new PointF(Position.X + Size.Width - regions[8].Width, Position.Y + Size.Height - regions[8].Height), Color.FromArgb((int)(Window.Opacity * 255), Color.White));
-            //sprite.End();
-            // Start clipping
-            //Renderer.Instance.device.SetRenderState(RenderState.ScissorTestEnable, true);
-            //Renderer.Instance.device.ScissorRect = DrawRect;
-            // Draw text
-            Renderer.Instance.sprite.Begin(SpriteFlags.AlphaBlend);
-            //Font.DrawText(textSprite, _Text, new Rectangle(new Point(Position.X + regions[3].Width + OverflowOffset, Position.Y + regions[1].Height), new Size(Size.Width - regions[3].Width - regions[5].Width, Size.Height - regions[1].Height - regions[6].Height)), DrawTextFormat.None, (Enabled? Color: Color.FromArgb(128, Color)));
-            Renderer.Instance.Fonts["textbox"].DrawString(Renderer.Instance.sprite, _Text, new Rectangle(new Point(Position.X + regions[3].Width + OverflowOffset, Position.Y + regions[1].Height), new Size(TextSize.Width, Size.Height - regions[1].Height - regions[6].Height)), DrawTextFormat.Left, (Enabled ? Color : Color.FromArgb(128, Color)));
-            Renderer.Instance.sprite.End();
+            WindowManager.Instance.VertexList.AddRange(MiscRender.GetQuadPoints(new RectangleF(new PointF(Position.X + Size.Width - atlas["right"].Width, Position.Y + atlas["topright"].Height), new SizeF(atlas["right"].Width, Size.Height - atlas["top"].Height - atlas["bottom"].Height)), atlas["right"], atlas["right"].Size));
 
-            // Draw Caret and selection
-            //sprite.Begin(SpriteFlags.AlphaBlend);
-            //if (Selection)
-            //{
-            //    sprite.Draw2D(WhiteTexture, new Rectangle(0, 0, 2, 2), new SizeF(ASize.Width * (Math.Abs(SelectStart - SelectEnd)), ASize.Height), new PointF(Position.X + (Math.Min(SelectStart, SelectEnd) * ASize.Width + regions[3].Width) + OverflowOffset, Position.Y + regions[1].Height), Color.FromArgb(128, Color.LightBlue));
-            //}
-            //if (DrawCaret && HasFocus)
-            //{
-            //    sprite.Draw2D(WhiteTexture, new Rectangle(0, 0, 2, 2), new SizeF(1, Size.Height - 6), new PointF(Position.X + CaretPositionF.X + regions[3].Width, Position.Y + CaretPositionF.Y + regions[1].Height), Color.FromArgb((Enabled? 200: 100), Color.White));
-            //}
-            //sprite.End();
+            WindowManager.Instance.VertexList.AddRange(MiscRender.GetQuadPoints(new RectangleF(new PointF(Position.X, Position.Y + Size.Height - atlas["bottomleft"].Height), new SizeF()), atlas["bottomleft"], atlas["bottomleft"].Size));
+            WindowManager.Instance.VertexList.AddRange(MiscRender.GetQuadPoints(new RectangleF(new PointF(Position.X + atlas["bottomleft"].Width, Position.Y + Size.Height - atlas["bottom"].Height), new SizeF(Size.Width - atlas["bottomleft"].Width - atlas["bottomright"].Width, atlas["bottom"].Height)), atlas["bottom"], atlas["bottom"].Size));
+            WindowManager.Instance.VertexList.AddRange(MiscRender.GetQuadPoints(new RectangleF(new PointF(Position.X + Size.Width - atlas["bottomright"].Width, Position.Y + Size.Height - atlas["bottomright"].Height), new SizeF()), atlas["bottomright"], atlas["bottomright"].Size));
+            int nPrimitives = (WindowManager.Instance.VertexList.Count - vertStartOffset) / 3;
 
-            // End clipping
-            //Renderer.Instance.device.SetRenderState(RenderState.ScissorTestEnable, false);
+            int vertStartOffset2 = WindowManager.Instance.VertexList.Count;
+            WindowManager.Instance.VertexList.AddRange(MiscRender.GetQuadPoints(new RectangleF(new PointF(Position.X + atlas["left"].Width, Position.Y + atlas["top"].Height), new SizeF(Size.Width - atlas["left"].Width - atlas["right"].Width, Size.Height - atlas["top"].Height - atlas["bottom"].Height)), atlas["middle"], atlas["middle"].Size, new SlimDX.Color4((Enabled ? 0.2f : 0.4f), 1f, 1f, 1f)));
+            if (Selection)
+            {
+                WindowManager.Instance.VertexList.AddRange(MiscRender.GetQuadPoints(new RectangleF(new PointF(Position.X + (Math.Min(SelectStart, SelectEnd) * ASize.Width + atlas["left"].Width) + OverflowOffset, Position.Y + atlas["top"].Height), new SizeF(ASize.Width * (Math.Abs(SelectStart - SelectEnd)), ASize.Height)), new SlimDX.Color4(0.5f, (173f / 255f), (216f / 255f), (230f / 255f))));
+            }
+            if (DrawCaret && HasFocus)
+            {
+                WindowManager.Instance.VertexList.AddRange(MiscRender.GetQuadPoints(new RectangleF(new PointF(Position.X + CaretPositionF.X + atlas["left"].Width, Position.Y + CaretPositionF.Y + atlas["top"].Height), new SizeF(1, Size.Height - 6)), new SlimDX.Color4(Enabled ? 0.8f : 0.4f, 1f, 1f, 1f)));
+            }
+
+            int nPrimitives2 = (WindowManager.Instance.VertexList.Count - vertStartOffset2) / 3;
+
+            ulong key = SortItem.GenerateBits(SortItem.FSLayer.HUD, SortItem.Viewport.DYNAMIC, SortItem.VPLayer.HUD, SortItem.Translucency.NORMAL, atlas.Texture.MaterialID, 0, 0, WindowManager.Instance.vb.VertexBufferID);
+            RenderDelegate del = new RenderDelegate((effect, device, setMaterial) =>
+            {
+                //if (Renderer.Instance.CanScissor)
+                {
+                    oldrect = device.ScissorRect;
+                    device.ScissorRect = DrawRect;
+                }
+
+                device.SetTexture(0, atlas.Texture.Texture);
+                device.DrawPrimitives(PrimitiveType.TriangleList, vertStartOffset, nPrimitives);
+
+                Renderer.Instance.sprite.Begin(SpriteFlags.AlphaBlend);
+                Renderer.Instance.Fonts["textbox"].DrawString(Renderer.Instance.sprite, _Text, new Rectangle(new Point(Position.X + atlas["left"].Width + OverflowOffset, Position.Y + atlas["top"].Height + 2), new Size(TextSize.Width, Size.Height - atlas["top"].Height - atlas["bottomleft"].Height)), DrawTextFormat.Left, (Enabled ? Color : Color.FromArgb(128, Color)));
+                Renderer.Instance.sprite.End();
+
+                device.SetTexture(0, WhiteTexture);
+                device.DrawPrimitives(PrimitiveType.TriangleList, vertStartOffset2, nPrimitives2);
+
+                //if (Renderer.Instance.CanScissor)
+                {
+                    device.ScissorRect = oldrect;
+                }
+            });
+
+            WindowManager.Instance.renderCalls.Add(new KeyValuePair<ulong, RenderDelegate>(key, del));
         }
 
         private void RemoveSelection()
@@ -221,17 +251,19 @@ namespace CubeHags.client.gui.Controls
             if (Enabled)
             {
                 // Append char to text
-                if (evt.pressed)
+                if (!evt.IsUpDownEvent)
                 {
-                    char? c = '\0';// Input.KeyToChar(evt.key, evt.Mod);
-                    if (c.HasValue)
+                    char c = evt.Character;// Input.KeyToChar(evt.key, evt.Mod);
+                    if (c >= 32 && c <= 126)
                     {
+
                         // Check for disallowed overflow
-                        if (AllowOverflow || 
-                            (!AllowOverflow && (Text.Length+1) * ASize.Width <= Size.Width - regions[3].Width - regions[5].Width))
+                        if (AllowOverflow ||
+                            (!AllowOverflow && (Text.Length + 1) * ASize.Width <= Size.Width - atlas["left"].Width - atlas["right"].Width))
                         {
                             RemoveSelection();
-
+                            if (Text.Length == maxChars)
+                                return;
                             if (CaretPosition == Text.Length)
                                 Text += c;
                             else if (CaretPosition == 0)
@@ -250,19 +282,20 @@ namespace CubeHags.client.gui.Controls
                     else // Not a char
                     {
                         // handle special keys
-                        switch (evt.key)
+                        int charint = (int)c;
+                        switch ((int)c)
                         {
-                            //case System.Windows.Input.Key.Back:
-                            //    // Remove selection or remove one char
-                            //    if (CaretPosition > 0)
-                            //    {
-                            //        if (Selection)
-                            //            RemoveSelection();
-                            //        else
-                            //            Text = Text.Remove(--CaretPosition, 1);
-                            //    }
+                            case 8:
+                                // Remove selection or remove one char
+                                if (CaretPosition > 0)
+                                {
+                                    if (Selection)
+                                        RemoveSelection();
+                                    else
+                                        Text = Text.Remove(--CaretPosition, 1);
+                                }
 
-                            //    break;
+                                break;
                             //case System.Windows.Input.Key.Left:
                             //    if (CaretPosition > 0)
                             //    {
@@ -282,8 +315,8 @@ namespace CubeHags.client.gui.Controls
                             //case System.Windows.Input.Key.Delete:
                             //    if (Selection)
                             //        RemoveSelection();
-                            //    else if(CaretPosition < Text.Length)
-                            //            Text = Text.Remove(CaretPosition, 1);
+                            //    else if (CaretPosition < Text.Length)
+                            //        Text = Text.Remove(CaretPosition, 1);
 
                             //    break;
                             //case System.Windows.Input.Key.Home:
@@ -295,10 +328,10 @@ namespace CubeHags.client.gui.Controls
                             //    CheckForShift(evt);
                             //    CaretPosition = Text.Length;
 
-                                //break;
+                            //    break;
                         }
                     }
-                    
+
                     if (Selection && (evt.Mod & KeyEvent.Modifiers.SHIFT) > 0)
                     {
                         SelectEnd = CaretPosition;
@@ -328,7 +361,7 @@ namespace CubeHags.client.gui.Controls
         // From mouse point to string position
         public Point CharPositionFromPoint(Point pt)
         {
-            Point RenderPoint = new Point(Position.X + regions[3].Width + OverflowOffset, Position.Y + regions[1].Height);
+            Point RenderPoint = new Point(Position.X + atlas["left"].Width + OverflowOffset, Position.Y + atlas["top"].Height);
 
             // Relative to Render area + a little usability tweak for selecting
             int dx = pt.X - RenderPoint.X + (ASize.Width / 2) - 1;
@@ -338,7 +371,7 @@ namespace CubeHags.client.gui.Controls
             int charx = dx / ASize.Width;
             int chary = dy / ASize.Height;
             System.Console.WriteLine("MouseDown on charx: " + charx);
-            
+
             // Bounds limiting
             if (charx < 0)
                 charx = 0;
@@ -347,5 +380,18 @@ namespace CubeHags.client.gui.Controls
 
             return new Point(charx, chary);
         }
+
+        public override SlimDX.Result OnLostDevice()
+        {
+            WhiteTexture.Dispose();
+            return base.OnLostDevice();
+        }
+
+        public override SlimDX.Result OnResetDevice()
+        {
+            WhiteTexture = TextureManager.CreateTexture(1, 1, Format.A8R8G8B8, new SlimDX.Color4(Color.White));
+            return base.OnResetDevice();
+        }
+
     }
 }

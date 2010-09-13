@@ -6,6 +6,7 @@ using CubeHags.common;
 using SlimDX;
 using CubeHags.server;
 using CubeHags.client.gui;
+using CubeHags.client.map.Source;
 
 namespace CubeHags.client.cgame
 {
@@ -70,7 +71,7 @@ namespace CubeHags.client.cgame
             if (!cg.validPPS)
             {
                 cg.validPPS = true;
-                cg.predictedPlayerState = cg.snap.ps;
+                cg.predictedPlayerState = cg.snap.ps.Clone();
             }
 
             if ((cg.snap.ps.pm_flags & PMFlags.FOLLOW) == PMFlags.FOLLOW)
@@ -87,11 +88,14 @@ namespace CubeHags.client.cgame
             }
 
             // prepare for pmove
-            pmove.ps = cg.predictedPlayerState;
+            //pmove.ps = cg.predictedPlayerState;
             pmove.Trace = new TraceDelegate(CG_Trace);
+            pmove.tracemask = (int)(brushflags.CONTENTS_SOLID | brushflags.CONTENTS_MOVEABLE | brushflags.CONTENTS_SLIME | brushflags.CONTENTS_OPAQUE);
+
 
             // save the state before the pmove so we can detect transitions
-            Common.PlayerState oldPlayerStateref = cg.predictedPlayerState;
+            Common.PlayerState oldPlayerState = cg.predictedPlayerState;
+
             int current = Client.Instance.cl.cmdNumber;
 
             // if we don't have the commands right after the snapshot, we
@@ -100,7 +104,7 @@ namespace CubeHags.client.cgame
             //if (current < 64)
             //    return;
             int cmdNum = current - 63;
-            if (cmdNum < 0)
+            if (cmdNum <= 0)
                 cmdNum = 1;
 
             Input.UserCommand oldestCmd = Client.Instance.GetUserCommand(cmdNum);
@@ -115,8 +119,6 @@ namespace CubeHags.client.cgame
 
             // get the latest command so we can know which commands are from previous map_restarts
             Input.UserCommand latestCmd = Client.Instance.GetUserCommand(current);
-
-            
             
             // get the most recent information we have, even if
             // the server time is beyond our current cg.time,
@@ -124,24 +126,25 @@ namespace CubeHags.client.cgame
             // be ahead of everything else anyway
             if (cg.nextSnap != null && !cg.nextFrameTeleport && !cg.thisFrameTeleport)
             {
-                cg.predictedPlayerState = cg.nextSnap.ps;
+                cg.predictedPlayerState = cg.nextSnap.ps.Clone();
                 cg.physicsTime = cg.nextSnap.serverTime;
             }
             else
             {
-                cg.predictedPlayerState = cg.snap.ps;
+                cg.predictedPlayerState = cg.snap.ps.Clone();
                 cg.physicsTime = cg.snap.serverTime;
             }
-
+            
+            pmove.ps = cg.predictedPlayerState;
             pmove.pmove_fixed = pmove_fixed.Integer;
             pmove.pmove_msec = pmove_msec.Integer;
-            Common.PlayerState oldPlayerState = cg.predictedPlayerState.Clone();
-            pmove.ps = cg.predictedPlayerState;
-            pmove.tracemask = 1;
+
+            //pmove.ps = cg.predictedPlayerState;
+            //pmove.tracemask = 1;
 
             pmove.mins = new Vector3( -16, -16, -36 );
             pmove.maxs = new Vector3(16, 16, 36);
-            
+            int nPredict = 0;
             // run cmds
             bool moved = false;
             for (cmdNum = current - 63; cmdNum <= current; cmdNum++)
@@ -160,13 +163,15 @@ namespace CubeHags.client.cgame
 
                 // don't do anything if the time is before the snapshot player time
                 if (pmove.cmd.serverTime <= cg.predictedPlayerState.commandTime)
+                {
                     continue;
+                }
 
                 // don't do anything if the command was from a previous map_restart
                 if (pmove.cmd.serverTime > latestCmd.serverTime)
                     continue;
 
-                
+
 
                 // check for a prediction error from last frame
                 // on a lan, this will often be the exact value
@@ -208,13 +213,12 @@ namespace CubeHags.client.cgame
                         }
                     }
                 }
-
+                nPredict++;
                 if (pmove.pmove_fixed > 0)
                     pmove.cmd.serverTime = ((pmove.cmd.serverTime + pmove_msec.Integer - 1) / pmove_msec.Integer) * pmove_msec.Integer;
+                cg.predictedPlayerState.speed = 400;
                 Vector3 oldOrigin = cg.predictedPlayerState.origin;
-
                 Common.Instance.Pmove(pmove);
-
                 
                 //// Test for stuck
                 //trace_t trace = pmove.DoTrace(cg.predictedPlayerState.origin, pmove.mins, pmove.maxs, oldOrigin, 0, 1);
@@ -226,21 +230,26 @@ namespace CubeHags.client.cgame
                 moved = true;
             }
 
+            //Common.Instance.WriteLine("[{0} : {1}]", pmove.cmd.serverTime, cg.time);
+
             if (!moved)
                 return;
-
+            //Common.Instance.WriteLine("" + Math.Abs((int)Server.Instance.time - Client.Instance.cl.serverTime));
             // adjust for the movement of the groundentity
             AdjustPositionForMover(cg.predictedPlayerState.origin, cg.predictedPlayerState.groundEntityNum, cg.physicsTime, cg.time, out cg.predictedPlayerState.origin);
             
             
             // fire events and other transition triggered things
             TransitionPlayerState(cg.predictedPlayerState, oldPlayerState);
-            WindowManager.Instance.info.SetPos(cg.predictedPlayerState.origin);
+
+            WindowManager.Instance.info.SetPos(pmove.ps.origin);
+            //Common.Instance.WriteLine("Predicted: " + nPredict);
+            
         }
 
         public trace_t CG_Trace(Vector3 start, Vector3 end, Vector3 mins, Vector3 maxs, int skipNumber, int mask) 
         {
-            trace_t t = ClipMap.Instance.Box_Trace(start, end, mins, maxs, 0, mask, 0);
+            trace_t t = ClipMap.Instance.Box_Trace(start, end, mins, maxs, 0, mask);
             t.entityNum = t.fraction != 1.0f ? 1022 : 1023;
 
             // TODO: Check entities

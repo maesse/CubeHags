@@ -72,10 +72,10 @@ namespace CubeHags.client.gui
             else
                 result.Width -= Margin;
 
-            if (result.Width < parent.PreferredSize.Width)
+            if (result.Width < parent.PreferredSize.Width && parent.PreferredSize.Width != 0)
                 result.Width = parent.PreferredSize.Width;
 
-            if (result.Height < parent.PreferredSize.Height)
+            if (result.Height < parent.PreferredSize.Height && parent.PreferredSize.Height != 0)
                 result.Height = parent.PreferredSize.Height;
 
             return result;

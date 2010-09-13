@@ -188,6 +188,11 @@ namespace CubeHags.client
         //int			watertype;
         //int			waterlevel;
 
+        public float forwardmove, upmove, rightmove;
+
+        //public Vector3 punchangle;
+        //public Vector3 angles;
+        //public int frametime;
         public float xyspeed;
 
         // for fixed msec Pmove

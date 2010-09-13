@@ -26,7 +26,7 @@ namespace CubeHags.client.gfx
 
         public SlimDX.Result OnLostDevice()
         {
-            if (_texture != null && !_texture.Disposed && _texture.IsDefaultPool)
+            if (_texture != null && !_texture.Disposed && _texture.IsDefaultPool && !Renderer.Instance.Is3D9Ex)
             {
                 _texture.Dispose();
             }

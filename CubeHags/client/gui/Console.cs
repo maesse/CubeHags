@@ -25,26 +25,27 @@ namespace CubeHags.client.gui
             this.TexCoord = texcoord;
         }
     }
+
     public sealed class HagsConsole
     {
         private static readonly HagsConsole _Instance = new HagsConsole();
         public static HagsConsole Instance { get { return _Instance; } }
 
-        bool Visible = true;
+        bool Visible = false;
         public bool IsVisible { get { return Visible; } }
 
         Letter[] letters = null;
-
-        // Font size
         HagsTexture font;
         HagsTexture bg;
 
-        List<string> lines = new List<string>();
+        List<string> lines = new List<string>(); // log
 
-        string currentText = "";
-        int currentPos;
+        string currentText = ""; // commandline text
+        int currentPos; // caret position
         List<string> commandHistory = new List<string>();
-        int currentHistory = -1;
+        int currentHistory = -1; // Current history-id we are viewing
+
+        public string LinePrefix = "$ "; // commandline prefix
 
         HagsConsole()
         {
@@ -52,13 +53,15 @@ namespace CubeHags.client.gui
 
         public void Init()
         {
+            // Load textures
             font = new HagsTexture("Terminus.png");
             bg = new HagsTexture("consolebg.png");
+
             // Build vertices for all letters
             int fontw = 9, fonth = 15;
             int hfonts = font.Size.Width / fontw;
             int vfonts = font.Size.Height / fonth;
-            int nLetters = hfonts * vfonts;
+            int nLetters = hfonts * vfonts; // total number of letters in bitmap font
 
             letters = new Letter[nLetters];
             int i = 0;
@@ -87,15 +90,47 @@ namespace CubeHags.client.gui
             if (i != nLetters)
                 Common.Instance.WriteLine("Warning: Couldn't load all letters for console");
 
-            lines.Add(" !\"#$%&'()*+,-./0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[\\]^_`abcdefghijklmnopqrstuvwxyz{|}~æøå\nHello\nThere");
-            lines.Add(" !\"#$%&'()*+,-./0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[\\]^_`abcdefghijklmnopqrstuvwxyz{|}~æøå\nHello\nThere");
+            Input.Instance.Event += new InputHandler(GotKeyEvent);
         }
 
-        public void HandleKeyPress(Keys key)
+        void GotKeyEvent(object sender, InputArgs e) 
         {
-            Common.Instance.WriteLine(key.ToString());
+            for (int i = 0; i < e.args.Count; i++)
+            {
+                if (e.args[i].IsUpDownEvent)
+                    HandleOtherKey(e.args[i]); // Special keys
+                else
+                    AddChar(e.args[i].Character); // Character keys
+            }
         }
 
+        void HandleOtherKey(KeyEvent evt)
+        {
+            // Only react on presses
+            if (!evt.pressed)
+                return;
+
+            switch (evt.key)
+            {
+                case Keys.Right:
+                    HagsConsole.Instance.MoveCaret(true);
+                    break;
+                case Keys.Left:
+                    HagsConsole.Instance.MoveCaret(false);
+                    break;
+                case Keys.Enter:
+                    HagsConsole.Instance.ExecuteLine();
+                    break;
+                case Keys.Up:
+                    HagsConsole.Instance.MoveHistory(true);
+                    break;
+                case Keys.Down:
+                    HagsConsole.Instance.MoveHistory(false);
+                    break;
+            }
+        }
+
+        // backspace handling
         public void RemoveChar() 
         {
             if (currentPos == 0)
@@ -120,6 +155,7 @@ namespace CubeHags.client.gui
             }
         }
 
+        // handles up/down-arrow keypresses
         public void MoveHistory(bool backward)
         {
             if (backward)
@@ -143,6 +179,7 @@ namespace CubeHags.client.gui
                 currentPos = commandHistory[currentHistory].Length;
         }
 
+        // Handles left/right-arrow keypresses
         public void MoveCaret(bool forward)
         {
             if (forward)
@@ -170,9 +207,11 @@ namespace CubeHags.client.gui
             string command = currentText;
             ClearLine();
 
+            Common.Instance.WriteLine(LinePrefix + command);
             Commands.Instance.ExecuteText(Commands.EXECTYPE.EXEC_NOW, command);
         }
 
+        // Clear the current commandline
         public void ClearLine()
         {
             currentText = "";
@@ -180,6 +219,7 @@ namespace CubeHags.client.gui
             currentHistory = -1;
         }
 
+        // Handles keypresses from keyboard
         public void AddChar(char c)
         {
             if (c == 189) // console char
@@ -276,6 +316,10 @@ namespace CubeHags.client.gui
             if (!Visible || letters == null)
                 return;
 
+            // LocalServer gives "root" prefix
+            if (CVars.Instance.FindVar("sv_running").Integer == 1)
+                LinePrefix = "# ";
+
             List<VertexPositionColorTex> verts = new List<VertexPositionColorTex>();
             VertexPositionColorTex[] bgverts = MiscRender.GetQuadPoints(new System.Drawing.RectangleF(0, 0, Renderer.Instance.RenderSize.Width, Renderer.Instance.RenderSize.Height), new Color4(0.75f, 0.0f, 0.0f, 0.0f));
 
@@ -291,12 +335,12 @@ namespace CubeHags.client.gui
             string text = "";
             int textLines = 0;
             // Start from newest line, to oldest, or to we get to text that cant be seen
-            for (int line = lines.Count; line >= 0; line--)
+            for (int line = lines.Count; line >= 0 && currH <= maxLines; line--)
             {
                 int internalH = 0, currW = 0;
                 if (line == lines.Count)
                 {
-                    text = "$ " + (currentHistory == -1 ? currentText : commandHistory[currentHistory]);
+                    text = LinePrefix + (currentHistory == -1 ? currentText : commandHistory[currentHistory]);
                     textLines = 1;
                 }
                 else
@@ -317,6 +361,8 @@ namespace CubeHags.client.gui
                         internalH++;
                         continue;
                     }
+                    else if (text[i] == '\r')
+                        continue;
 
                     if (letter > letters.Length || letter < 0)
                     {
@@ -327,6 +373,7 @@ namespace CubeHags.client.gui
                     VertexPositionColorTex[] qv = MiscRender.GetQuadPoints(new System.Drawing.RectangleF(currW * 9, Renderer.Instance.RenderSize.Height - (currH * 15) + (internalH*15), 9, 15), new RectangleF(new PointF(letters[letter].TexCoord.X, letters[letter].TexCoord.Y), new SizeF(9, 15)), font.Size);
                     verts.AddRange(qv);
                     
+                    // count up the current chars shown
                     currW++;
                     if (currW >= maxWidth)
                     {
@@ -339,11 +386,12 @@ namespace CubeHags.client.gui
                 }
             }
 
+            // Add caret
             int caretletter = (int)'_'-32;
             verts.AddRange(MiscRender.GetQuadPoints(new System.Drawing.RectangleF((currentPos+2) * 9, Renderer.Instance.RenderSize.Height - 15, 9, 15), new RectangleF(new PointF(letters[caretletter].TexCoord.X, letters[caretletter].TexCoord.Y), new SizeF(9, 15)), font.Size));
 
+            // Pack it up and send it off to the renderer
             VertexPositionColorTex[] arr = verts.ToArray();
-
             ulong key = SortItem.GenerateBits(SortItem.FSLayer.HUD, SortItem.Viewport.DYNAMIC, SortItem.VPLayer.HUD, SortItem.Translucency.NORMAL, font.MaterialID, 0, 0, 0);
             int nPrimitives = (verts.Count) / 3;
             RenderDelegate del = new RenderDelegate((effect, device, setMaterial) =>

@@ -52,6 +52,7 @@ namespace CubeHags.client.cgame
 
             ViewParams view = CalcViewValues();
             view.time = cg.time;
+            cg.oldTime = cg.time;
 
             AddPacketEntities();
 
@@ -104,7 +105,7 @@ namespace CubeHags.client.cgame
             return view;
         }
 
-        void AnglesToAxis(Vector3 angles, out Vector3[] axis)
+        public static void AnglesToAxis(Vector3 angles, out Vector3[] axis)
         {
             axis = new Vector3[3];
             Vector3 right = Vector3.Zero;

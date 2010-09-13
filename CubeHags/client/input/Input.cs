@@ -85,7 +85,8 @@ namespace CubeHags.client
         public int MouseY { get { return mouseY; } }
         public int MouseDX { get { return mousedx; } }
         public int MouseDY { get { return mousedy; } }
-        public MouseState MouseState { get { return _mouseState; }  set { ApplyMouseState(value, _mouseState); _mouseState = value; } }
+        public MouseState MouseState { get { return _mouseState; } set { lastMouseState = _mouseState; _mouseState = value; ApplyMouseState(value, lastMouseState); } }
+        private MouseState lastMouseState;
         public bool MouseRawInput = true;
 
         // Current state
@@ -264,8 +265,6 @@ namespace CubeHags.client
             Client.Instance.cl.outPackets[packetNum].p_serverTime = ((oldcmd == -1) ? 0 : Client.Instance.cl.cmds[oldcmd].serverTime);
             Client.Instance.cl.outPackets[packetNum].p_cmdNumber = Client.Instance.cl.cmdNumber;
             Client.Instance.clc.lastPacketSentTime = (int)Client.Instance.realtime;
-
-            Common.Instance.clientSent++;
 
             // Bam, send...
             Client.Instance.NetChan_Transmit(Client.Instance.clc.netchan, buffer);
@@ -615,7 +614,7 @@ namespace CubeHags.client
                 HiddenMousePosition = System.Windows.Forms.Cursor.Position;
                 System.Windows.Forms.Cursor.Hide();
             }
-            else
+            else if (MouseState != client.MouseState.UNFOCUSED)
             {
                 System.Windows.Forms.Cursor.Position = HiddenMousePosition;
             }
@@ -638,7 +637,8 @@ namespace CubeHags.client
             {
                 if (lastValue == client.MouseState.GAME)
                 {
-                    System.Windows.Forms.Cursor.Position = HiddenMousePosition;
+                    if (HiddenMousePosition.X != 0 && HiddenMousePosition.Y != 0)
+                        System.Windows.Forms.Cursor.Position = HiddenMousePosition;
                 }
                 MouseHidden = true;
                 MouseCentered = false;
@@ -653,6 +653,14 @@ namespace CubeHags.client
         // Window recieved focus
         void GotFocus()
         {
+            if (hasFocus && MouseState != client.MouseState.UNFOCUSED)
+            {
+                return;
+            }
+            Renderer.Instance.form.FormBorderStyle = (!Renderer.Instance.r_fs.Bool ? System.Windows.Forms.FormBorderStyle.Sizable : System.Windows.Forms.FormBorderStyle.None);
+            Renderer.Instance.form.TopMost = Renderer.Instance.r_fs.Bool;
+            Renderer.Instance.form.MaximizeBox = !Renderer.Instance.r_fs.Bool;
+            Renderer.Instance.form.Focus();
             // Retrieve focus info
             MouseState = lostFocusMouseState;
             hasFocus = true;
@@ -661,10 +669,28 @@ namespace CubeHags.client
         // Window lost focus
         void LostFocus()
         {
+            if (Renderer.Instance.r_fs.Bool)
+                return;
+            if (MouseState == client.MouseState.UNFOCUSED)
+                return;
+
             // Save focus info
             lostFocusMouseState = MouseState;
             MouseState = client.MouseState.UNFOCUSED;
             hasFocus = false;
+        }
+
+        public void ToggleUI()
+        {
+            if (MouseState == client.MouseState.UNFOCUSED)
+                return;
+
+            // Toggle between gui and game
+            if (MouseState == client.MouseState.GAME)
+                MouseState = client.MouseState.GUI;
+            else if (MouseState == client.MouseState.GUI)
+                MouseState = client.MouseState.GAME;
+            WindowManager.Instance.ToggleUI(null);
         }
 
         // RawInput
@@ -759,18 +785,7 @@ namespace CubeHags.client
                         else if (key == System.Windows.Forms.Keys.Escape)
                         {
                             
-                            {
-                                // Toggle between gui and game
-                                if (MouseState == client.MouseState.GAME)
-                                {
-                                    MouseState = client.MouseState.GUI;
-                                }
-                                else if (MouseState == client.MouseState.GUI)
-                                {
-                                    MouseState = client.MouseState.GAME;
-                                }
-                                Commands.Instance.ExecuteText(Commands.EXECTYPE.EXEC_NOW, "toggleui");
-                            }
+                            ToggleUI();
                             
                         }
                         else if (key == Keys.F4 && evt.Args.Alt)
@@ -793,27 +808,11 @@ namespace CubeHags.client
                         // Handle binds
                         if (HagsConsole.Instance.IsVisible)
                         {
-                            switch (key)
-                            {
-                                case Keys.Right:
-                                    HagsConsole.Instance.MoveCaret(true);
-                                    break;
-                                case Keys.Left:
-                                    HagsConsole.Instance.MoveCaret(false);
-                                    break;
-                                case Keys.Enter:
-                                    HagsConsole.Instance.ExecuteLine();
-                                    break;
-                                case Keys.Up:
-                                    HagsConsole.Instance.MoveHistory(true);
-                                    break;
-                                case Keys.Down:
-                                    HagsConsole.Instance.MoveHistory(false);
-                                    break;
-                            }
-                            //HagsConsole.Instance.HandleKeyPress(key);
+                            
                         }
-                        else if(MouseState == client.MouseState.GAME)
+
+                        // Let game handle key
+                        if (!HagsConsole.Instance.IsVisible && MouseState == client.MouseState.GAME)
                             KeyHags.Instance.ParseBinding(key, evt.Pressed, evt.time);
                     }
                     else
@@ -840,7 +839,8 @@ namespace CubeHags.client
             {
                 for (int i = 0; i < keysPressed.Count; i++)
                 {
-                    HagsConsole.Instance.AddChar(keysPressed[i]);
+                    KeyEvent evt = new KeyEvent(keysPressed[i]);
+                    events.Add(evt);
                 }
             }
             keysPressed.Clear();

@@ -355,6 +355,16 @@ namespace CubeHags.client.gui
                     nextPosition += new Dimension(30, 30);
 
                     break;
+
+            }
+            window.LayoutUpdate(true);
+        }
+
+        public void SetAllWindowPositions()
+        {
+            foreach (Window window in Windows)
+            {
+                SetWindowPosition(window);
             }
         }
 
@@ -362,17 +372,14 @@ namespace CubeHags.client.gui
             get { return _Instance; }
         }
 
-        //public void Dispose()
-        //{
-
-        //}
-
         public Result OnLostDevice()
         {
+            if(cursorTextures != null)
             foreach (HagsTexture tex in cursorTextures)
             {
                 tex.OnLostDevice();
             }
+            if(Windows != null)
             foreach (Window win in Windows)
             {
                 win.OnLostDevice();
@@ -383,10 +390,12 @@ namespace CubeHags.client.gui
 
         public Result OnResetDevice()
         {
+            if (cursorTextures != null)
             foreach (HagsTexture tex in cursorTextures)
             {
                 tex.OnResetDevice();
             }
+            if (Windows != null)
             foreach (Window win in Windows)
             {
                 win.OnResetDevice();

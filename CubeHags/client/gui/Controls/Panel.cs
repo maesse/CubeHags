@@ -22,6 +22,18 @@ namespace CubeHags.client.gui
             return MaxSize;
         }
 
-        
+        public override SlimDX.Result OnLostDevice()
+        {
+            foreach (Control ctrl in Controls)
+                ctrl.OnLostDevice();
+            return base.OnLostDevice();
+        }
+
+        public override SlimDX.Result OnResetDevice()
+        {
+            foreach (Control ctrl in Controls)
+                ctrl.OnResetDevice();
+            return base.OnResetDevice();
+        }
     }
 }
