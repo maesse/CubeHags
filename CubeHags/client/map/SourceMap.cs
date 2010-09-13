@@ -36,6 +36,7 @@ namespace CubeHags.client.map.Source
         private Vector3 lastPosition = Vector3.Zero;
         private Vector3 lastLook = Vector3.Zero;
         private Vector3 lastUp = Vector3.Zero;
+        public FogController fogController;
         
         // Buffers
         Dictionary<int, List<RenderItem>> visibleRenderItems = new Dictionary<int, List<RenderItem>>();
@@ -134,6 +135,11 @@ namespace CubeHags.client.map.Source
                 {
                     skybox3d = new SkyBox3D(this, ent);
                 }
+                else if (ent.ClassName.Equals("env_fog_controller"))
+                {
+                    fogController = new FogController(ent.Values);
+                    fogController.Init();
+                }
             }
 
             if (skybox3d == null)
@@ -151,7 +157,7 @@ namespace CubeHags.client.map.Source
                 }
             }
 
-            
+
 
             // Make leafs point towards nodes also
             SetParent(ref world.nodes[0], ref world.nodes[0]);
@@ -166,7 +172,7 @@ namespace CubeHags.client.map.Source
                     if (skybox3d != null)
                         skybox3d.visibleRenderItems.Add(item.material.MaterialID, new List<RenderItem>());
                 }
-                
+
             }
             
                 
@@ -186,6 +192,82 @@ namespace CubeHags.client.map.Source
             ulong id = SortItem.GenerateBits(SortItem.FSLayer.EFFECT, SortItem.Viewport.STATIC, SortItem.VPLayer.EFFECT, SortItem.Translucency.NORMAL, 0, 0, 0, bspVB.VertexBufferID);
             Renderer.Instance.drawCalls.Add(new KeyValuePair<ulong, RenderDelegate>(id, dlg));
         }
+
+        void VisualizeCollision()
+        {
+            int num = 0, offset = 0;
+            dnode_t node;
+            cplane_t plane;
+            Vector3 p1 = Renderer.Instance.Camera.position;
+            float t1;
+
+            while (num >= 0)
+            {
+                node = world.nodes[num];
+                plane = node.plane;
+
+
+                    t1 = Vector3.Dot(plane.normal, p1) - plane.dist;
+
+                // see which sides we need to consider
+                if (t1 > offset)
+                {
+                    num = node.children[0];
+                    continue;
+                }
+                if (t1 < -offset)
+                {
+                    num = node.children[1];
+                    continue;
+                }
+                break;
+
+            }
+
+            if (num >= 0)
+                return;
+
+            List<VertexPositionColor> verts = new List<VertexPositionColor>();
+
+           dleaf_t visLeaf = world.leafs[-num - 1];
+
+
+           for (int i = 0; i < visLeaf.numleafbrushes; i++)
+           {
+               dbrush_t brush = world.brushes[world.leafbrushes[visLeaf.firstleafbrush + i]];
+
+               if ((int)brush.contents == 0)
+                   continue;
+
+               for (int j = 0; j < brush.numsides; j++)
+               {
+                   dbrushside_t side = world.brushsides[brush.firstside + j];
+                   verts.AddRange(MiscRender.CreatePlane(side.plane.normal, side.plane.dist, new Color4(0.2f, side.plane.normal.X, side.plane.normal.Y, side.plane.normal.Z)));
+               }
+           }
+
+
+            //verts.AddRange(MiscRender.CreatePlane(new Vector3(1,0,0), 512f, new Color4(0.3f, 1.0f, 0.0f, 0.0f)));
+            //verts.AddRange(MiscRender.CreatePlane(new Vector3(-1, 0, 0), 512f, new Color4(0.3f, 1.0f, 0.0f, 0.0f)));
+            //verts.AddRange(MiscRender.CreatePlane(new Vector3(0, 1, 0), 512f, new Color4(0.3f, 1.0f, 0.0f, 0.0f)));
+            //verts.AddRange(MiscRender.CreatePlane(new Vector3(0, -1, 0), 512f, new Color4(0.3f, 1.0f, 0.0f, 0.0f)));
+            //verts.AddRange(MiscRender.CreatePlane(new Vector3(0, 0, 1), 512f, new Color4(0.3f, 1.0f, 0.0f, 0.0f)));
+            //verts.AddRange(MiscRender.CreatePlane(new Vector3(0, 0, -1), 512f, new Color4(0.3f, 1.0f, 0.0f, 0.0f)));
+
+            if (verts.Count == 0)
+                return;
+
+            bspVB.SetVB<VertexPositionColor>(verts.ToArray(), verts.Count * VertexPositionColor.SizeInBytes, VertexPositionColor.Format, Usage.WriteOnly);
+            bspVB.SetVD(new VertexDeclaration(Renderer.Instance.device, VertexPositionColor.Elements));
+            RenderDelegate dlg = new RenderDelegate((effect, device, setMaterial) =>
+            {
+                device.DrawPrimitives(PrimitiveType.TriangleList, 0, verts.Count / 3);
+            });
+            ulong id = SortItem.GenerateBits(SortItem.FSLayer.EFFECT, SortItem.Viewport.STATIC, SortItem.VPLayer.EFFECT, SortItem.Translucency.NORMAL, 0, 0, 0, bspVB.VertexBufferID);
+            Renderer.Instance.drawCalls.Add(new KeyValuePair<ulong, RenderDelegate>(id, dlg));
+        }
+
+        
 
         void VisualizeBSP()
         {
@@ -290,7 +372,7 @@ namespace CubeHags.client.map.Source
                 for (int itemPass = 0; itemPass < 2; itemPass++)
                 {
                     if (itemPass == 1) {
-                        if(skybox3d != null)
+                        if (skybox3d != null)
                             renderItems = skybox3d.visibleRenderItems;
                         else
                             break;
@@ -322,7 +404,7 @@ namespace CubeHags.client.map.Source
                                 if (item.material.Alpha)
                                 {
                                     trans = SortItem.Translucency.NORMAL;
-                                    dist = (ushort)CurrentDistFromPlane(item.face.plane_t);
+                                    dist = item.depth;
                                 }
 
                                 dynItem.material = item.material;
@@ -358,6 +440,10 @@ namespace CubeHags.client.map.Source
                                 dynItem.nVerts = (int)max - (int)min + 1;
                                 dynItem.lowestIndiceValue = (int)min;
                                 // Complete current batch
+                                if (itemPass != 0)
+                                {
+                                    int test = 1;
+                                }
                                 ulong k = SortItem.GenerateBits(SortItem.FSLayer.GAME, SortItem.Viewport.DYNAMIC, itemPass==0?SortItem.VPLayer.WORLD:SortItem.VPLayer.SKYBOX3D, trans, dynItem.material.MaterialID, dist, batchIB.IndexBufferID, vb.VertexBufferID);
                                 RenderDelegate v = new RenderDelegate(dynItem.Render);
                                 calls.Add(new KeyValuePair<ulong, RenderDelegate>(k, v));
@@ -386,22 +472,22 @@ namespace CubeHags.client.map.Source
                 // Create InstanceItems
                 foreach (List<SourceProp> props in propList.Values)
                 {
-                    Dictionary<ushort, KeyValuePair<int, CompressedLightCube>> lightcubes = new Dictionary<ushort, KeyValuePair<int, CompressedLightCube>>();
-                    //if (props.Count == 0 || !props[0].prop_t.PropName.Contains("models/props/cs_office/Vending_machine.mdl") ||!props[0].prop_t.PropName.Contains("Light"))
+                    //Dictionary<ushort, KeyValuePair<int, CompressedLightCube>> lightcubes = new Dictionary<ushort, KeyValuePair<int, CompressedLightCube>>();
+                    ////if (props.Count == 0 || !props[0].prop_t.PropName.Contains("models/props/cs_office/Vending_machine.mdl") ||!props[0].prop_t.PropName.Contains("Light"))
+                    ////    continue;
+                    //if (props[0].srcModel == null)
                     //    continue;
-                    if (props[0].srcModel == null)
-                        continue;
-                    InstanceItem instItem = new InstanceItem();
+                    //InstanceItem instItem = new InstanceItem();
 
-                    // Add mesh
-                    instItem.Parts = props[0].srcModel.BodyParts;
-                    instItem.InstanceBufferOffset = propVertexBufferOffset + (verts.Count * VertexPropInstance.SizeInBytes);
-                    int propInstanceCount = 0;
+                    //// Add mesh
+                    //instItem.Parts = props[0].srcModel.BodyParts;
+                    //instItem.InstanceBufferOffset = propVertexBufferOffset + (verts.Count * VertexPropInstance.SizeInBytes);
+                    //int propInstanceCount = 0;
                     // Generate Instance vert for every prop in this group
                     foreach (SourceProp prop in props)
                     {
                         
-                        ushort propLeaf = prop.prop_t.lastVisibleLeaf;
+                        ///ushort propLeaf = prop.prop_t.lastVisibleLeaf;
                         //int lightid = 0;
                         //// Grap lightcube id if already added
                         //if (lightcubes.ContainsKey(propLeaf) )
@@ -454,33 +540,36 @@ namespace CubeHags.client.map.Source
                                 
                         //    }
                         //}
-                        float pitch, roll, yaw;
-                        pitch = prop.prop_t.Angles.Z * (float)(Math.PI / 180f);
-                        roll = prop.prop_t.Angles.Y * (float)(Math.PI / 180f);
-                        yaw = prop.prop_t.Angles.X * (float)(Math.PI / 180f);
-                        // Order of multiplication very important
+                        //float pitch, roll, yaw;
+                        //pitch = prop.prop_t.Angles.Z * (float)(Math.PI / 180f);
+                        //roll = prop.prop_t.Angles.Y * (float)(Math.PI / 180f);
+                        //yaw = prop.prop_t.Angles.X * (float)(Math.PI / 180f);
+                        //// Order of multiplication very important
                         
-                        Matrix modelMatrix = Matrix.RotationYawPitchRoll(yaw, pitch, roll) * Matrix.Translation(prop.prop_t.Origin);
-                        VertexPropInstance instvert = new VertexPropInstance(modelMatrix, world.leafs[propLeaf].ambientLighting);
-                        verts.Add(instvert);
-                        instItem.nInstances++;
-                        propInstanceCount++;
+                        //Matrix modelMatrix = Matrix.RotationYawPitchRoll(yaw, -pitch, roll) * Matrix.Translation(prop.prop_t.Origin);
+                        //VertexPropInstance instvert = new VertexPropInstance(modelMatrix, world.leafs[propLeaf].ambientLighting);
+                        //verts.Add(instvert);
+                        //instItem.nInstances++;
+                        //propInstanceCount++;
+                        ulong callkey = SortItem.GenerateBits(SortItem.FSLayer.GAME, SortItem.Viewport.FOUR, SortItem.VPLayer.WORLD, SortItem.Translucency.OPAQUE, 0, 0, 0, 0);
+                        RenderDelegate callvalue = new RenderDelegate(prop.Render);
+                        calls.Add(new KeyValuePair<ulong, RenderDelegate>(callkey, callvalue));
                     }
 
                     // Create instance vertexbuffer
-                    instItem.vb = propVertexBuffer;
+                    //instItem.vb = propVertexBuffer;
                     
-                    totalBytes += propInstanceCount * VertexPropInstance.SizeInBytes;
+                    //totalBytes += propInstanceCount * VertexPropInstance.SizeInBytes;
                     // Create rendercall to this instanceitem
-                    ulong callkey = SortItem.GenerateBits(SortItem.FSLayer.GAME, SortItem.Viewport.INSTANCED, SortItem.VPLayer.WORLD, SortItem.Translucency.OPAQUE, 0, 0, 0, 0);
-                    RenderDelegate callvalue = new RenderDelegate(instItem.Render);
-                    calls.Add(new KeyValuePair<ulong, RenderDelegate>(callkey, callvalue));
+                    //ulong callkey = SortItem.GenerateBits(SortItem.FSLayer.GAME, SortItem.Viewport.INSTANCED, SortItem.VPLayer.WORLD, SortItem.Translucency.OPAQUE, 0, 0, 0, 0);
+                    //RenderDelegate callvalue = new RenderDelegate(instItem.Render);
+                    //calls.Add(new KeyValuePair<ulong, RenderDelegate>(callkey, callvalue));
                 }
-                propVertexBuffer.SetVB<VertexPropInstance>(verts.ToArray(), totalBytes, VertexPropInstance.Format, Usage.Dynamic | Usage.WriteOnly, propVertexBufferOffset);
-                if (propVertexBufferOffset > 0)
-                    propVertexBufferOffset = 0;
-                else
-                    propVertexBufferOffset = totalBytes;
+                //propVertexBuffer.SetVB<VertexPropInstance>(verts.ToArray(), totalBytes, VertexPropInstance.Format, Usage.Dynamic | Usage.WriteOnly, propVertexBufferOffset);
+                //if (propVertexBufferOffset > 0)
+                //    propVertexBufferOffset = 0;
+                //else
+                //    propVertexBufferOffset = totalBytes;
 
                 //List<Vector4> lightcubearr = new List<Vector4>();
                 //foreach (KeyValuePair<int, CompressedLightCube> kv in lightcubes.Values)
@@ -549,6 +638,7 @@ namespace CubeHags.client.map.Source
             LastCluster = CurrentCluster;
 
             //VisualizeBSP();
+            VisualizeCollision();
         }
 
         
@@ -676,6 +766,7 @@ namespace CubeHags.client.map.Source
 
         private void RecursiveWorldNode(int nodeid)
         {
+            ushort depth = 50000;
             do
             {
                 if (nodeid >= 0)
@@ -698,10 +789,10 @@ namespace CubeHags.client.map.Source
                     leaf.lastVisibleCount = VisCount;
                     if (leaf.DisplacementIndexes != null)
                     {
-                        int[] indx = leaf.DisplacementIndexes;
+                        KeyValuePair<int,int>[] indx = leaf.DisplacementIndexes;
                         for (int i = 0; i < indx.Length; i++)
                         {
-                            Face face2 = world.faces[indx[i]];
+                            Face face2 = world.faces[indx[i].Key];
                             if (face2.lastVisCount != VisCount)
                             {
                                 face2.lastVisCount = VisCount;
@@ -721,8 +812,11 @@ namespace CubeHags.client.map.Source
                         if (face != null && face.lastVisCount != VisCount)
                         {
                             face.lastVisCount = VisCount;
-                            if(face.item != null)
+                            if (face.item != null)
+                            {
                                 visibleRenderItems[face.item.material.MaterialID].Add(face.item); // possible 10%+ optimization here
+                                face.item.depth = depth--;
+                            }
                         }
                     }
                     // Handle static props
@@ -770,17 +864,17 @@ namespace CubeHags.client.map.Source
         }
 
         // Find leaf containing this camera position
-        private int FindLeaf(Vector3 camPos)
+        public int FindLeaf(Vector3 camPos)
         {
             int index = 0;
             while (index >= 0)
             {
                 dnode_t node = world.nodes[index];
-                cplane_t plane = world.planes[node.planenum];
+                cplane_t plane = node.plane;
 
-                double distance = Vector3.Dot(camPos, plane.normal) - plane.dist;
+                float distance = Vector3.Dot(camPos, plane.normal) - plane.dist;
 
-                if (distance > 0)
+                if (distance > 0f)
                     index = node.children[0];
                 else
                     index = node.children[1];

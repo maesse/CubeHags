@@ -18,9 +18,21 @@ namespace CubeHags.client
             ALT         = 8
         }
 
+        public bool IsUpDownEvent = true;
+
+        // KeyPress event
+        public char Character { get; set; }
+
+        // Key Up/Down events
         public bool pressed { get; set; }
         public Keys key { get; set; }
-        public Modifiers Mod { get; set; }
+        public Modifiers Mod { get; set; }        
+
+        public KeyEvent(char key)
+        {
+            IsUpDownEvent = false;
+            Character = key;
+        }
 
         public KeyEvent(bool pressed, Keys key, Modifiers mod)
         {
@@ -31,7 +43,9 @@ namespace CubeHags.client
 
         override public string ToString()
         {
-            return "KeyEvent: key={" + key + "} pressed=" + pressed;
+            if(IsUpDownEvent)
+                return "KeyEvent: key={" + key + "} pressed=" + pressed;
+            return "KeyEvent: key={" + Character + "} KeyPress";
         }
     }
 }

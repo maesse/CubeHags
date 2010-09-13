@@ -179,7 +179,7 @@ namespace CubeHags.client.map.Source
             // Create texture
             Format format = Format.A8R8G8B8;
             if (!alpha) format = Format.X8R8G8B8;
-            Texture tex = new Texture(device, (int)w, (int)h, 1, Usage.AutoGenerateMipMap, format, (Renderer.Instance.Is3D9Ex ? Pool.Default : Pool.Managed));
+            Texture tex = new Texture(device, (int)w, (int)h, 1, Usage.AutoGenerateMipMap | Usage.Dynamic, format, (Renderer.Instance.Is3D9Ex ? Pool.Default : Pool.Managed));
             DataStream pData = tex.LockRectangle(0, LockFlags.None).Data;
             MemoryStream ms = new MemoryStream(lpImageData);
             // Set pixels

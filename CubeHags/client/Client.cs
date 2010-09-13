@@ -22,7 +22,7 @@ namespace CubeHags.client
         public static Client Instance { get { return _Instance; } }
         public RenderForm form;
 
-        public CVar cl_timeout = CVars.Instance.Get("cl_timeout", "200", CVarFlags.NONE);
+        public CVar cl_timeout = CVars.Instance.Get("cl_timeout", "30", CVarFlags.NONE);
         public CVar cl_maxpackets = CVars.Instance.Get("cl_cmdrate", "116", CVarFlags.ARCHIVE);
         public CVar cl_packetdup = CVars.Instance.Get("cl_cmdbackup", "1", CVarFlags.ARCHIVE);
         public CVar cl_timeNudge = CVars.Instance.Get("cl_timeNudge", "0", CVarFlags.TEMP);
@@ -279,6 +279,7 @@ namespace CubeHags.client
         */
         public void Disconnect(bool showMainMenu)
         {
+            WindowManager.Instance.connectGUI.Visible = false;
             if (Common.Instance.cl_running.Integer == 0)
             {
                 return;
@@ -342,11 +343,8 @@ namespace CubeHags.client
         // Prints text to console
         public void ConsolePrint(string str)
         {
-            // TODO
+            HagsConsole.Instance.AddLine(str);
         }
-
-        
-
 
         /*
         =====================
@@ -411,12 +409,21 @@ namespace CubeHags.client
             clc.connectTime = realtime;
             clc.connectPacketCount++;
 
+            if (clc.connectPacketCount == 5)
+            {
+                Disconnect(true);
+                state = ConnectState.DISCONNECTED;
+                clc.connectPacketCount = 0;
+                Common.Instance.WriteLine("Could not connect: ^1No response from server.");
+                return;
+            }
+
             switch (state)
             {
                 case ConnectState.CONNECTING:
                     string data = "getchallenge " + clc.challenge;
                     Net.Instance.OutOfBandMessage(Net.NetSource.CLIENT,clc.serverAddress, data);
-
+                    Common.Instance.WriteLine("Connecting{0} to {1}...", (clc.connectPacketCount <= 1) ? "" : "(retry " + clc.connectPacketCount +")", clc.serverAddress.ToString());
                     break;
                 case ConnectState.CHALLENGING:
                     // sending back the challenge
@@ -433,6 +440,8 @@ namespace CubeHags.client
                     // the most current userinfo has been sent, so watch for any
                     // newer changes to userinfo variables
                     CVars.Instance.modifiedFlags &= ~CVarFlags.USER_INFO;
+
+                    Common.Instance.WriteLine("^8Connection Ok, got challenge.");
                     break;
 
                 default:
@@ -537,12 +546,13 @@ namespace CubeHags.client
                 }
                 else
                 {
-                    Common.Instance.WriteLine("Bad server address");
+                    Common.Instance.WriteLine("^1Connect failed: Could not lookup {0}", addr);
                     state = ConnectState.DISCONNECTED;
                     return;
                 }
             }
 
+            servername = server;
             clc.serverAddress = new IPEndPoint(ip, port);
             state = ConnectState.CONNECTING;
             clc.connectTime = -99999;

@@ -55,12 +55,9 @@ namespace CubeHags.client.input
                 MouseEvent evt = (MouseEvent)obj;
                 if (evt.Type == this.Type && evt.dX == this.dX && evt.dY == this.dY)
                 {
-                    if(evt.ButtonState[0] == this.ButtonState[0] &&
+                    return (evt.ButtonState[0] == this.ButtonState[0] &&
                         evt.ButtonState[1] == this.ButtonState[1] &&
-                        evt.ButtonState[2] == this.ButtonState[2] && evt.Position.X == this.Position.X && evt.Position.Y == this.Position.Y)
-                    return true;
-
-                    return false;
+                        evt.ButtonState[2] == this.ButtonState[2] && evt.Position.X == this.Position.X && evt.Position.Y == this.Position.Y);
                 }
                 else
                     return false;

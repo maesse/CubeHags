@@ -103,10 +103,10 @@ namespace CubeHags.client.map.Source
                     leaf.lastVisibleCount = VisCount;
                     if (leaf.DisplacementIndexes != null)
                     {
-                        int[] indx = leaf.DisplacementIndexes;
+                        KeyValuePair<int,int>[] indx = leaf.DisplacementIndexes;
                         for (int i = 0; i < indx.Length; i++)
                         {
-                            Face face2 = map.world.faces[indx[i]];
+                            Face face2 = map.world.faces[indx[i].Key];
                             if (face2.lastVisCount != VisCount)
                             {
                                 face2.lastVisCount = VisCount;

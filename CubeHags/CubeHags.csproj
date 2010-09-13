@@ -93,6 +93,7 @@
   </ItemGroup>
   <ItemGroup>
     <Compile Include="client\cgame\CGame.cs" />
+    <Compile Include="client\cgame\CGameConsoleCmds.cs" />
     <Compile Include="client\cgame\CGameEnts.cs" />
     <Compile Include="client\cgame\CGamePlayers.cs" />
     <Compile Include="client\cgame\CGamePlayerState.cs" />

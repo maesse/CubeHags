@@ -1,15 +1,8 @@
 ﻿using System;
-using System.Collections.Generic;
- 
-//using System.Windows.Forms;
-using System.Threading;
-using CubeHags.server;
-using CubeHags.client;
-using SlimDX.Windows;
 using SlimDX;
-using SlimDX.Direct3D9;
-using System.Windows;
+using SlimDX.Windows;
 using CubeHags.common;
+using CubeHags.client;
 using CubeHags.client.common;
 
 namespace CubeHags
@@ -28,7 +21,7 @@ namespace CubeHags
             {
                 Common.Instance.Frame();
             });
-
+            
             // Cleanup
             foreach (var item in ObjectTable.Objects)
                 item.Dispose();

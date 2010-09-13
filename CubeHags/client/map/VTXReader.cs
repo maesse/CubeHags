@@ -7,6 +7,7 @@ using SlimDX;
 using CubeHags.client.render.Formats;
 using SlimDX.Direct3D9;
 using CubeHags.client.render;
+using System.Drawing;
 
 namespace CubeHags.client.map.Source
 {
@@ -20,18 +21,19 @@ namespace CubeHags.client.map.Source
                 VTXHeader header = ReadHeader(br);
 
                 // Process body pars
+                
                 for (int i = 0; i < header.num_body_parts; i++)
                 {
                     // get corresponding bodypart from mdl tree
                     BodyPart currentPart = mdl.BodyParts[i];
 
                     // Process bodypart
-                    ReadBodyPart(br, header.body_part_offset + (i* 8), currentPart); // 8 bytes for VTXBodypart
+                    currentPart.VTXBodyPart = ReadBodyPart(br, header.body_part_offset + (i* 8), currentPart); // 8 bytes for VTXBodypart
                 }
             }
         }
 
-        public static void ReadBodyPart(BinaryReader br, int offset, BodyPart bodypart)
+        public static VTXBodyPart ReadBodyPart(BinaryReader br, int offset, BodyPart bodypart)
         {
             br.BaseStream.Seek(offset, SeekOrigin.Begin);
 
@@ -48,11 +50,14 @@ namespace CubeHags.client.map.Source
             //    partSwitch = new Switch();
 
             // Process models
+            vtxbody.Models = new VTXModel[vtxbody.num_models];
             for (int i = 0; i < vtxbody.num_models; i++)
             {
                 Model currentModel = bodypart.Models[i];
-                ReadModel(br, offset + vtxbody.model_offset + (i * 8), currentModel); // 8 bytes for VTXModel
+                vtxbody.Models[i] = ReadModel(br, offset + vtxbody.model_offset + (i * 8), currentModel); // 8 bytes for VTXModel
             }
+
+            return vtxbody;
         }
 
         public static VTXModel ReadModel(BinaryReader br, int offset, Model currentModel)
@@ -71,9 +76,10 @@ namespace CubeHags.client.map.Source
             float distance = 0f;
             float lastDistance = 0f;
             // Process LODS
+            model.Lods = new VTXModelLOD[model.num_lods];
             for (int i = 0; i < model.num_lods; i++)
             {
-                ReadModelLOD(br, offset + model.lod_offset + (i * 12), currentModel, i); // 12 bytes for VYXModelLOD
+                model.Lods[i] = ReadModelLOD(br, offset + model.lod_offset + (i * 12), currentModel, i); // 12 bytes for VYXModelLOD
             }
 
             return model;
@@ -88,10 +94,11 @@ namespace CubeHags.client.map.Source
             mlod.switch_point = br.ReadSingle();
 
             int vertexOffset = currentModel.VertexBaseNum;
+            mlod.Meshes = new VTXMesh[mlod.num_meshes];
             for (int i = 0; i < mlod.num_meshes; i++)
             {
                 MDLMesh currentMesh = currentModel.Meshes[i];
-                ReadMesh(br, offset + mlod.mesh_offset + (i * VTXMesh.VTX_MESH_SIZE), lodNum, vertexOffset, currentMesh);
+                mlod.Meshes[i] = ReadMesh(br, offset + mlod.mesh_offset + (i * VTXMesh.VTX_MESH_SIZE), lodNum, vertexOffset, currentMesh);
             }
 
             return mlod;
@@ -104,10 +111,10 @@ namespace CubeHags.client.map.Source
             mesh.num_strip_groups = br.ReadInt32();
             mesh.strip_group_offset = br.ReadInt32();
             mesh.mesh_flags = br.ReadByte();
-            
+            mesh.StripGroups = new VTXStripGroup[mesh.num_strip_groups];
             for (int i = 0; i < mesh.num_strip_groups; i++)
             {
-                ReadStripGroup(br, offset + mesh.strip_group_offset + (i * VTXStripGroup.VTX_STRIP_GROUP_SIZE), lodNum, vertexOffset, mdlmesh);
+                mesh.StripGroups[i] = ReadStripGroup(br, offset + mesh.strip_group_offset + (i * VTXStripGroup.VTX_STRIP_GROUP_SIZE), lodNum, vertexOffset, mdlmesh);
             }
 
             return mesh;
@@ -129,7 +136,7 @@ namespace CubeHags.client.map.Source
             List<Vector3> vertexArray = new List<Vector3>();
             List<Vector3> normalArray = new List<Vector3>();
             List<Vector2> texcoordArray = new List<Vector2>();
-            List<VertexPositionNormalTextured> verts = new List<VertexPositionNormalTextured>();
+            List<VertexPositonNormalColorTexture> verts = new List<VertexPositonNormalColorTexture>();
             br.BaseStream.Seek(strGroup.vertex_offset + offset, SeekOrigin.Begin);
             for (int i = 0; i < strGroup.num_vertices; i++)
             {
@@ -141,9 +148,11 @@ namespace CubeHags.client.map.Source
                 vertexArray.Add(vvdVertex.vertex_position);
                 normalArray.Add(vvdVertex.vertex_normal);
                 texcoordArray.Add(vvdVertex.vertex_texcoord);
-                verts.Add(new VertexPositionNormalTextured(vvdVertex.vertex_position, vvdVertex.vertex_normal, vvdVertex.vertex_texcoord));
+                verts.Add(new VertexPositonNormalColorTexture(vvdVertex.vertex_position, vvdVertex.vertex_normal, new Color4(Color.Blue), vvdVertex.vertex_texcoord));
             }
-
+            strGroup.Verts = vertexArray;
+            strGroup.Normals = normalArray;
+            strGroup.Coords = texcoordArray;
             // Fill index array
             br.BaseStream.Seek(offset + strGroup.index_offset, SeekOrigin.Begin);
             List<uint> indexArray = new List<uint>();
@@ -151,20 +160,21 @@ namespace CubeHags.client.map.Source
             {
                 indexArray.Add((uint)br.ReadUInt16());
             }
-
+            strGroup.Indices = indexArray;
             // Create SourceModel
             RenderItem stripitem = new RenderItem(mesh, mesh.material);
+            stripitem.verts = verts;
             stripitem.nVerts = verts.Count;
 
             // Set IB
             stripitem.indices = indexArray;
             // Create VB
-            stripitem.vb = new HagsVertexBuffer();
-            int vertexBytes = verts.Count * VertexPositionNormalTextured.SizeInBytes;
-            stripitem.vb.SetVB<VertexPositionNormalTextured>(verts.ToArray(), vertexBytes, VertexPositionNormalTextured.Format, Usage.WriteOnly);
-            stripitem.DontOptimize = true;
-            stripitem.GenerateIndexBuffer();
-
+            //stripitem.vb = new HagsVertexBuffer();
+            //int vertexBytes = verts.Count * VertexPositonNormalColorTexture.SizeInBytes;
+            //stripitem.vb.SetVB<VertexPositonNormalColorTexture>(verts.ToArray(), vertexBytes, VertexPositonNormalColorTexture.Format, Usage.WriteOnly);
+            //stripitem.DontOptimize = true;
+            //stripitem.GenerateIndexBuffer();
+            strGroup.Strips = new VTXStrip[strGroup.num_strips];
             // Process strips
             for (int i = 0; i < strGroup.num_strips; i++)
             {
@@ -174,6 +184,7 @@ namespace CubeHags.client.map.Source
                 item.nIndices = strip.num_indices;
                 item.IndiceStartIndex = strip.index_offset;
                 item.vertexStartIndex = strip.vertex_offset;
+                item.DontOptimize = true;
                 if (strip.strip_flags == 0x02)
                     item.Type = PrimitiveType.TriangleStrip;
 

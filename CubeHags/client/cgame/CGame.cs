@@ -166,8 +166,8 @@ namespace CubeHags.client.cgame
             // get the gamestate from the client system
             cgs.gameState = Client.Instance.cl.gamestate;
 
-            //string s = cgs.gameState.data[(int)ConfigString.CS_LEVEL_START_TIME];
-            //cgs.levelStartTime = int.Parse(s);
+            string s = cgs.gameState.data[(int)ConfigString.CS_LEVEL_START_TIME];
+            cgs.levelStartTime = int.Parse(s);
 
             ParseServerInfo();
 
@@ -188,7 +188,7 @@ namespace CubeHags.client.cgame
             //InitLocalEntities();
 
             // Make sure we have update values (scores)
-            //SetConfigValues();
+            SetConfigValues();
 
             LoadString("");
         }
@@ -202,11 +202,11 @@ namespace CubeHags.client.cgame
             {
                 if (cg.clientNum == i)
                     continue;
-
-                if (!cgs.gameState.data.ContainsKey(544 + i))
+                
+                string clientInfo = CG_ConfigString((int)ConfigString.CS_PLAYERS + i);
+                if (clientInfo == null)
                     continue;
 
-                string clientInfo = cgs.gameState.data[544+i];
                 //LoadingClient(i);
                 NewClientInfo(i);
             }
@@ -214,7 +214,16 @@ namespace CubeHags.client.cgame
             //BuildSpectatorString();
         }
 
+        public string CG_ConfigString(int index)
+        {
+            if (index < 0 || index >= (int)ConfigString.CS_MAX)
+                Common.Instance.Error("CG_ConfigString: bad index: " + index);
 
+            if (!cgs.gameState.data.ContainsKey(index))
+                return null;
+
+            return cgs.gameState.data[index];
+        }
 
         public static Vector3 SnapVector(Vector3 v)
         {
@@ -230,13 +239,17 @@ namespace CubeHags.client.cgame
 
         void LoadString(string s)
         {
-            WindowManager.Instance.connectGUI.svStats.Text = s;
+            WindowManager.Instance.connectGUI.LoadString(s);
             Client.Instance.EndFrame();
         }
 
         void RegisterCVars()
         {
+            CVars.Instance.Get("r_fov", "90", CVarFlags.ARCHIVE);
 
+            // see if we are also running the server on this machine
+            if (CVars.Instance.FindVar("sv_running").Bool)
+                cgs.localServer = true;
         }
 
         void InitConsoleCommands()

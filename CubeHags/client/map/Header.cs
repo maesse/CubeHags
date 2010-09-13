@@ -23,9 +23,10 @@ namespace CubeHags.client.map.Source
         public int mapRevision;
     }
 
-    public struct SurfFlags
+    [Flags]
+    public enum SurfFlags : int
     {
-        public const int SURF_LIGHT = 0x0001,     // value will hold the light strength
+        SURF_LIGHT = 0x0001,     // value will hold the light strength
         SURF_SLICK = 0x0002,		// effects game physics
         SURF_SKY = 0x0004,		// don't draw, but add to skybox
         SURF_WARP = 0x0008,		// turbulent water warp
@@ -40,7 +41,7 @@ namespace CubeHags.client.map.Source
         SURF_NOSHADOWS = 0x1000,		// Don't receive shadows
         SURF_NODECALS = 0x2000,		// Don't receive decals
         SURF_NOCHOP = 0x4000,		// Don't subdivide patches on this surface 
-        SURF_HITBOX = 0x8000;		// surface is part of a hitbox
+        SURF_HITBOX = 0x8000		// surface is part of a hitbox
     };
 
     public struct Lump_t
@@ -118,8 +119,10 @@ namespace CubeHags.client.map.Source
     public struct texinfo_t
     {
         public Vector4[] textureVecs;      //2][4 [s/t][xyz offset]
-        public Vector4[] lightmapVecs;     //2][4 [s/t][xyz offset] - length is in units of texels/area
-        public int flags;                  // miptex flags + overrides
+        //public Vector4[] lightmapVecs;     //2][4 [s/t][xyz offset] - length is in units of texels/area
+        public Vector3[] lightmapVecs;
+        public float[] lightmapVecs2;
+        public SurfFlags flags;                  // miptex flags + overrides
         public int texdata;                // Pointer to texture name, size, etc.
         public texdata_t texdata_t;
     }
@@ -271,7 +274,7 @@ namespace CubeHags.client.map.Source
         public int lastVisibleCount;
         public dnode_t parent;
         public List<SourceProp> staticProps;
-        public int[] DisplacementIndexes;
+        public KeyValuePair<int, int>[] DisplacementIndexes;
         public DispLeafLink m_pDisplacements;
     }
 
@@ -403,6 +406,38 @@ namespace CubeHags.client.map.Source
         public float ForcedFaceScale;   // only present in version 5 gamelump
         public int lastVisibleCount;
         public ushort lastVisibleLeaf;
+    }
+
+    public enum EmitType : int    // lights that were used to illuminate the world
+    {
+        SURFACE = 0,    // 90 degree spotlight
+        POINT,          // simple point light source
+        SPOTLIGHT,      // spotlight with penumbra
+        SKYLIGHT,       // directional light with no falloff (surface must trace to SKY texture)
+        QUAKELIGHT,     // linear falloff, non-lambertian
+        SKYAMBIENT      // spherical light source with no falloff (surface must trace to SKY texture)
+    }
+
+    public class worldlight_t
+    {
+        public Vector3 Origin;
+        public Vector3 Intensity;
+        public Vector3 Normal;  // for surfaces and spotlights
+        public int Cluster;
+        public EmitType Type;
+        public int Style;
+        public float stopdot;   // start of penumbra for emit_spotlight
+        public float stopdot2;  // end of penumbra for emit_spotlight
+        public float exponent;
+        public float radius;    // cutoff distance
+        // falloff for emit_spotlight + emit_point: 
+        // 1 / (constant_attn + linear_attn * dist + quadratic_attn * dist^2)
+        public float Constant_Attn;
+        public float Linear_Attn;
+        public float Quadratic_Attn;
+        public int Flags;
+        public int Texinfo;
+        public int Owner;   // entity that this light it relative to
     }
 
 }

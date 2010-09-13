@@ -238,6 +238,7 @@ namespace CubeHags.client.map.Source
     {
         public MDLBodyPart MDLBodyPart;
         public List<Model> Models;
+        public VTXBodyPart VTXBodyPart;
 
         public BodyPart(MDLBodyPart mdlBodyPart)
         {
@@ -412,23 +413,26 @@ namespace CubeHags.client.map.Source
         public int     replacement_material_name_offset;
     };
 
-    struct VTXBodyPart
+    public struct VTXBodyPart
     {
         public int   num_models;
         public int   model_offset;
+        public VTXModel[] Models;
     };
 
-    struct VTXModel
+    public struct VTXModel
     {
         public int   num_lods;
         public int   lod_offset;
+        public VTXModelLOD[] Lods;
     };
 
-    struct VTXModelLOD
+    public struct VTXModelLOD
     {
         public int     num_meshes;
         public int     mesh_offset;
         public float switch_point;
+        public VTXMesh[] Meshes;
     };
 
     enum VTXMeshFlags
@@ -437,7 +441,7 @@ namespace CubeHags.client.map.Source
        MESH_IS_EYES   = 0x02
     };
 
-    struct VTXMesh
+    public struct VTXMesh
     {
         // Can't rely on sizeof() because Valve explicitly packs these structures to
         // 1-byte alignment in the file, which isn't portable
@@ -445,6 +449,7 @@ namespace CubeHags.client.map.Source
         public int             num_strip_groups;
         public int             strip_group_offset;
         public byte mesh_flags;
+        public VTXStripGroup[] StripGroups;
     };
 
     enum VTXStripGroupFlags
@@ -454,7 +459,7 @@ namespace CubeHags.client.map.Source
         STRIP_GROUP_IS_DELTA_FLEXED  = 0x04
     };
 
-    struct VTXStripGroup
+    public struct VTXStripGroup
     {
         // Can't rely on sizeof() because Valve explicitly packs these structures to
         // 1-byte alignment in the file, which isn't portable
@@ -466,6 +471,11 @@ namespace CubeHags.client.map.Source
         public int             num_strips;
         public int             strip_offset;
         public byte strip_group_flags;
+        public List<Vector3> Verts;
+        public List<Vector3> Normals;
+        public List<Vector2> Coords;
+        public List<uint> Indices;
+        public VTXStrip[] Strips;
     };
 
     enum VTXStripFlags : byte
@@ -475,7 +485,7 @@ namespace CubeHags.client.map.Source
     };
 
 
-    struct VTXStrip
+    public struct VTXStrip
     {
         // Can't rely on sizeof() because Valve explicitly packs these structures to
         // 1-byte alignment in the .vtx file, which isn't portable

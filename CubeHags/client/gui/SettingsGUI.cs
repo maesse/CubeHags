@@ -13,8 +13,6 @@ namespace CubeHags.client.gui
         Button ResolutionButton;
         Button ShowFPSButton;
 
-        
-
         public SettingsGUI()
         {
             this.Title = "Settings";
@@ -56,8 +54,16 @@ namespace CubeHags.client.gui
             ResolutionButton.Selected += new Button.ButtonSelectedEvent(ResolutionHandler);
             resPanel.AddControl(ResolutionButton);
             this.panel.AddControl(resPanel);
-            
 
+            // Show FPS
+            Panel fpsPanel = new Panel(this);
+            fpsPanel.AddControl(new Label("Show FPS", this) { LabelFont = "biglabel" });
+            ShowFPSButton = new Button(CVars.Instance.Get("r_showfps", "1", CVarFlags.ARCHIVE).Integer == 1 ? "Yes" : "No", this);
+            ShowFPSButton.label.LabelFont = "biglabel";
+            ShowFPSButton.Selected += new Button.ButtonSelectedEvent(ShowFPSHandler);
+            fpsPanel.AddControl(ShowFPSButton);
+            this.panel.AddControl(fpsPanel);
+            
             this.panel.AddControl(BackButton);
         }
 
@@ -99,11 +105,20 @@ namespace CubeHags.client.gui
             ResolutionButton.label.Text = nextRes;
         }
 
+        // Toggle ShowFps
         void ShowFPSHandler()
         {
-
+            if (CVars.Instance.Get("r_showfps", "1", CVarFlags.ARCHIVE).Integer == 0)
+            {
+                CVars.Instance.Set("r_showfps", "1");
+                ShowFPSButton.label.Text = "On";
+            }
+            else
+            {
+                CVars.Instance.Set("r_showfps", "0");
+                ShowFPSButton.label.Text = "Off";
+            }
         }
-
 
         void VSyncHandler()
         {
@@ -118,13 +133,17 @@ namespace CubeHags.client.gui
                 CVars.Instance.Set("r_vsync", "0");
                 VSyncButton.label.Text = "Off";
             }
-
-            
         }
 
         void BackHandler()
         {
-            // Todo: Save settings
+            // Check for new graphics settings
+            if (CVars.Instance.FindVar("r_fs").Modified
+                || CVars.Instance.FindVar("r_vsync").Modified
+                || CVars.Instance.FindVar("r_res").Modified)
+            {
+                Renderer.Instance._sizeChanged = true;
+            }
 
             // Switch back to MenuGUI
             this.Visible = false;

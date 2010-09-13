@@ -34,24 +34,24 @@ namespace CubeHags.client.gui
             //this.panel.AddControl(new Label("TEstttasdddddd", this));
             //this.panel.AddControl(new Label("TEstttsss", this));
             //this.panel.AddControl();
-            Button button = new Button("Load Sourcemap", this);
-            button.Selected += new Button.ButtonSelectedEvent(LoadMapEvent);
-            this.panel.AddControl(button);
-            Button button2 = new Button("Unload Sourcemap", this);
-            button2.Selected += new Button.ButtonSelectedEvent(UnLoadMapEvent);
-            this.panel.AddControl(button2);
-            button3 = new Button("Clicks: 0", this);
-            button3.Selected += new Button.ButtonSelectedEvent(IncrementClickCount);
+            //Button button = new Button("Load Sourcemap", this);
+            //button.Selected += new Button.ButtonSelectedEvent(LoadMapEvent);
+            //this.panel.AddControl(button);
+            //Button button2 = new Button("Unload Sourcemap", this);
+            //button2.Selected += new Button.ButtonSelectedEvent(UnLoadMapEvent);
+            //this.panel.AddControl(button2);
+            //button3 = new Button("Clicks: 0", this);
+            //button3.Selected += new Button.ButtonSelectedEvent(IncrementClickCount);
             
-            this.panel.AddControl(button3);
+            //this.panel.AddControl(button3);
 
 
-            Button button4 = new Button("Take Screenshot", this);
-            this.panel.AddControl(button4);
+            //Button button4 = new Button("Take Screenshot", this);
+            //this.panel.AddControl(button4);
 
-            TextBox textbox = new TextBox(this);
+            //TextBox textbox = new TextBox(this);
             
-            this.panel.AddControl(textbox);
+            //this.panel.AddControl(textbox);
         }
 
         public void IncrementClickCount()
@@ -59,18 +59,6 @@ namespace CubeHags.client.gui
             clickcount++;
             button3.label.Text = "Clicks: " + clickcount;
             Client.Instance.AddReliableCommand("team red", false);
-        }
-
-        public void LoadMapEvent()
-        {
-
-            //string str = Renderer.Instance.gui.OpenFileDialog("BSP Files|*.bsp|All Files|*.*");
-            //if (str != null)
-            //{
-            //    Renderer.Instance.LoadMap(str);
-            //    //Renderer.Instance.LoadMap(@"client/data/map/albjergparken.bsp");
-            //}
-            
         }
 
         public void SetPos(Vector3 pos)

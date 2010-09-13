@@ -31,6 +31,8 @@ namespace CubeHags.client
                     // connecting clients will only show the connection dialog
                     // refresh to update the time
                     WindowManager.Instance.connectGUI.DrawConnect();
+                    WindowManager.Instance.connectGUI.Visible = true;
+                    WindowManager.Instance.MoveToFront(WindowManager.Instance.connectGUI);
                     break;
                 case CubeHags.common.ConnectState.LOADING:
                 case CubeHags.common.ConnectState.PRIMED:
@@ -41,10 +43,12 @@ namespace CubeHags.client
                     // flash away too briefly on local or lan games
                     // refresh to update the time
                     WindowManager.Instance.connectGUI.DrawConnect();
+                    WindowManager.Instance.MoveToFront(WindowManager.Instance.connectGUI);
                     break;
                 case CubeHags.common.ConnectState.ACTIVE:
-                    WindowManager.Instance.connectGUI.DrawConnect();
-
+                    //WindowManager.Instance.connectGUI.DrawConnect();
+                    //WindowManager.Instance.MoveToFront(WindowManager.Instance.connectGUI);
+                    WindowManager.Instance.connectGUI.Visible = false;
                     CGame.Instance.DrawActiveFrame(cl.serverTime);
                     break;
                 case ConnectState.CINEMATIC:

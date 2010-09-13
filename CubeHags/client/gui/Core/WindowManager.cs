@@ -103,7 +103,7 @@ namespace CubeHags.client.gui
             vb = new HagsVertexBuffer();
             base.Init();
             connectGUI = new ConnectGUI();
-            //AddWindow(connectGUI);
+            AddWindow(connectGUI);
 
             info = new InfoUI();
             AddWindow(info);

@@ -46,6 +46,17 @@ namespace CubeHags.client.gui
         int currentHistory = -1; // Current history-id we are viewing
 
         public string LinePrefix = "$ "; // commandline prefix
+        Color4[] ConsoleColors = new Color4[] {
+            Color.Black,
+            Color.Red,
+            Color.Green,
+            Color.Yellow,
+            Color.Blue,
+            Color.Cyan,
+            Color.Pink,
+            Color.White,
+            Color.Gray
+        };
 
         HagsConsole()
         {
@@ -130,6 +141,20 @@ namespace CubeHags.client.gui
             }
         }
 
+        public int GetCurrentLenght()
+        {
+            int colors = 0;
+            for (int i = 0; i < currentText.Length-1; i++)
+            {
+                if (currentText[i] == '^' && currentText[i+1] >= '0' && currentText[i+1] <= '9')
+                {
+                    colors++;
+                    i++;
+                }
+            }
+            return currentText.Length + colors * 2;
+        }
+
         // backspace handling
         public void RemoveChar() 
         {
@@ -142,7 +167,7 @@ namespace CubeHags.client.gui
                 currentText = currentText.Substring(1);
                 currentPos--;
             }
-            else if (currentPos == currentText.Length)
+            else if (currentPos == GetCurrentLenght())
             {
                 currentText = currentText.Substring(0, currentText.Length - 1);
                 currentPos--;
@@ -174,7 +199,7 @@ namespace CubeHags.client.gui
 
             // Set caret at the end of the new command
             if (currentHistory == -1)
-                currentPos = currentText.Length;
+                currentPos = GetCurrentLenght();
             else
                 currentPos = commandHistory[currentHistory].Length;
         }
@@ -200,7 +225,7 @@ namespace CubeHags.client.gui
         {
             if (currentHistory != -1)
                 currentText = commandHistory[currentHistory]; // execute history command
-            else if (currentText.Length == 0)
+            else if (GetCurrentLenght() == 0)
                 return;
 
             commandHistory.Add(currentText);
@@ -252,7 +277,7 @@ namespace CubeHags.client.gui
                 return;
             }
 
-            if (currentPos == currentText.Length)
+            if (currentPos == GetCurrentLenght())
             {
                 currentText += c;
                 currentPos++;
@@ -267,6 +292,29 @@ namespace CubeHags.client.gui
                 currentText = temp + c + currentText.Substring(currentPos);
                 currentPos++;
             }
+        }
+
+        public static string StripColors(string str)
+        {
+            if(!str.Contains("^"))
+                return str;
+
+            int colorpos = 0;
+            StringBuilder strBuilder = new StringBuilder(str.Length);
+            int lastpos = 0;
+            while((colorpos = str.IndexOf('^', colorpos)) != -1)
+            {
+                if (str[colorpos + 1] >= '0' && str[colorpos + 1] <= '9')
+                {
+                    strBuilder.Append(str.Substring(lastpos, colorpos - lastpos));
+                    lastpos = colorpos+2;
+                    colorpos++;
+                }
+                else
+                    continue;
+            }
+            strBuilder.Append(str.Substring(lastpos, str.Length - lastpos));
+            return strBuilder.ToString();
         }
 
         public void AddLine(string text)
@@ -334,6 +382,7 @@ namespace CubeHags.client.gui
             int currH = 0;
             string text = "";
             int textLines = 0;
+            Color4 currentColor = Color.White;
             // Start from newest line, to oldest, or to we get to text that cant be seen
             for (int line = lines.Count; line >= 0 && currH <= maxLines; line--)
             {
@@ -345,6 +394,7 @@ namespace CubeHags.client.gui
                 }
                 else
                 {
+                    currentColor = Color.White;
                     text = lines[line];
                     textLines = NumLinesForString(text) + 1;
                 }
@@ -354,7 +404,6 @@ namespace CubeHags.client.gui
                 for (int i = 0; i < text.Length; i++)
                 {
                     int letter = (int)text[i]-32; // Dont have the first 32 ascii chars
-
                     if (text[i] == '\n')
                     {
                         currW = 0;
@@ -363,6 +412,22 @@ namespace CubeHags.client.gui
                     }
                     else if (text[i] == '\r')
                         continue;
+                    else if (text.Length > i+1 && text[i] == '^' && text[i + 1] >= '0' && text[i + 1] <= '9') // ^<0-9>
+                    {
+                        // Change color
+                        int colorNumber = int.Parse(text[i + 1].ToString());
+                        if (colorNumber < ConsoleColors.Length)
+                            currentColor = ConsoleColors[colorNumber];
+                        else
+                            currentColor = ConsoleColors[7]; // white
+                        
+                        // Don't draw "^1" in console output
+                        if (line != lines.Count)
+                        {
+                            i++;
+                            continue;
+                        }
+                    }
 
                     if (letter > letters.Length || letter < 0)
                     {
@@ -370,7 +435,7 @@ namespace CubeHags.client.gui
                         letter = (int)'~' -31;
                     }
 
-                    VertexPositionColorTex[] qv = MiscRender.GetQuadPoints(new System.Drawing.RectangleF(currW * 9, Renderer.Instance.RenderSize.Height - (currH * 15) + (internalH*15), 9, 15), new RectangleF(new PointF(letters[letter].TexCoord.X, letters[letter].TexCoord.Y), new SizeF(9, 15)), font.Size);
+                    VertexPositionColorTex[] qv = MiscRender.GetQuadPoints(new System.Drawing.RectangleF(currW * 9, Renderer.Instance.RenderSize.Height - (currH * 15) + (internalH*15), 9, 15), new RectangleF(new PointF(letters[letter].TexCoord.X, letters[letter].TexCoord.Y), new SizeF(9, 15)), font.Size, currentColor);
                     verts.AddRange(qv);
                     
                     // count up the current chars shown

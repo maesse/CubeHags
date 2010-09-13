@@ -42,7 +42,7 @@ namespace CubeHags.client
     // this is regenerated each time a client's configstring changes,
     // usually as a result of a userinfo (name, model, etc) change
     // #define	MAX_CUSTOM_SOUNDS	32
-    public struct clientInfo_t {
+    public class clientInfo_t {
     	public bool		infoValid;
 
         public string name;
@@ -238,7 +238,7 @@ namespace CubeHags.client
         public int serverCommandSequence;	// reliable command stream counter
         public int processedSnapshotNum;// the number of snapshots cgame has requested
 
-        //bool localServer;		// detected on startup by checking sv_running
+        public bool localServer;		// detected on startup by checking sv_running
 
         // parsed from serverinfo
         public int				maxclients;
@@ -264,6 +264,8 @@ namespace CubeHags.client
         //int cursorY;
         //qboolean mouseCaptured;
     } 
+
+    
 
     public class cg_t {
     	public int			clientFrame;		// incremented each frame
@@ -374,6 +376,7 @@ namespace CubeHags.client
     {
         public clientActive()
         {
+            gamestate = new gameState_t();
             gamestate.data = new Dictionary<int, string>();
             for (int i = 0; i < parseEntities.Length; i++)
             {
@@ -483,7 +486,7 @@ namespace CubeHags.client
         public int punkbuster;
     }
 
-    public struct gameState_t
+    public class gameState_t
     {
         public Dictionary<int, string> data;
     }

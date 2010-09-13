@@ -10,6 +10,8 @@ using CubeHags.client.gfx;
 using CubeHags.client.common;
 using CubeHags.common;
 using CubeHags.client.render.Formats;
+using CubeHags.client.map;
+using CubeHags.client.render;
 
 namespace CubeHags.client.map.Source
 {
@@ -42,6 +44,7 @@ namespace CubeHags.client.map.Source
         public ZipFile Pakfile;
         public List<Entity> Entities;
         public cmodel_t[] cmodels;
+        public worldlight_t[] worldlights;
 
         public StaticPropLeafLump_t propleafs;
         public StaticPropLump_t[] props;
@@ -50,10 +53,11 @@ namespace CubeHags.client.map.Source
         public List<int> leafFaces = new List<int>();
         public List<dbrushside_t> brushsides = new List<dbrushside_t>();
         public List<dbrush_t> brushes = new List<dbrush_t>();
-
+        public edge_t[] edges;
         public int[] DispIndexToFaceIndex;
 
         public DispCollTree[] dispCollTrees;
+        public int[] surfEdges;
 
         public int numClusters;
         public int clusterBytes;
@@ -64,14 +68,48 @@ namespace CubeHags.client.map.Source
         public string EntityString;
         public int EntityParsePoint;        
     }
-    public class SourceParser
+    public sealed class SourceParser
     {
+        private static readonly SourceParser _Instance = new SourceParser();
+        public static SourceParser Instance { get { return _Instance; } }
         static Size LightmapSize = new Size(1024, 1024);
         static float[]	power2_n = new float[256];
         static double[] g_aPowsOfTwo = new double[257];
         static int nVertIndex = 0;
         public static int ALLOWEDVERTS = 289;
-        static World world;
+        public static World world;
+        public float[] lineartovertex = new float[4096];
+
+        SourceParser()
+        {
+            float overbrightFactor = 1f;
+            float gamma = 2.2f;
+            for (int i = 0; i < 4096; i++)
+            {
+                // convert from linear 0..4 (x1024) to screen corrected vertex space (0..1?)
+                float f = (float)Math.Pow(i / 1024.0, 1.0 / gamma);
+
+                lineartovertex[i] = f * overbrightFactor;
+                if (lineartovertex[i] > 1)
+                    lineartovertex[i] = 1;
+
+                //lineartolightmap[i] = f * 255 * overbrightFactor;
+                //if (lineartolightmap[i] > 255)
+                //    lineartolightmap[i] = 255;
+            }
+        }
+
+        // linear (0..4) to screen corrected vertex space (0..1?)
+        public float LinearToVertexLight(float f)
+        {
+            int i = (int)(f * 1024f);
+            if (i > 4095)
+                i = 4095;
+            else if (i < 0)
+                i = 0;
+
+            return lineartovertex[i];
+        }
 
         public static void LoadWorldMap(string filename)
         {
@@ -104,9 +142,17 @@ namespace CubeHags.client.map.Source
                 return;
             }
 
-            Header sHeader;
+            Header sHeader = new Header();
             sHeader.ident = id;
             sHeader.version = br.ReadInt32();
+
+            // GoldSrc map
+            if (sHeader.version == 30)
+            {
+                GoldSrcParser.LoadWorldMap(sHeader, br);
+                return;
+            }
+
             sHeader.lumps = new Lump_t[Header.HEADER_LUMPS];
             for (int i = 0; i < Header.HEADER_LUMPS; i++)
             {
@@ -118,8 +164,9 @@ namespace CubeHags.client.map.Source
 
                 sHeader.lumps[i] = lump;
             }
-            sHeader.mapRevision = br.ReadInt32();
 
+            sHeader.mapRevision = br.ReadInt32();
+            LoadWorldLights(br, sHeader);
             LoadLightGrids(br, sHeader);
             LoadLightmaps(br, sHeader);
             LoadPak(br, sHeader);
@@ -135,23 +182,20 @@ namespace CubeHags.client.map.Source
             LoadModels(br, sHeader);
             LoadEntities(br, sHeader);
             LoadVisibility(br, sHeader);
+            
 
             DispTreeLeafnum(world);
-
             SourceMap map = new SourceMap(world);
             map.Init();
             Renderer.Instance.SourceMap = map;
+            long now = HighResolutionTimer.Ticks;
+            for (int i = 0; i < world.sourceProps.Count; i++)
+            {
+                world.sourceProps[i].UpdateMesh();
+            }
+            float propLightingTime = (float)(HighResolutionTimer.Ticks - now)  / HighResolutionTimer.Frequency;
 
-            //System.Console.WriteLine("#- Loaded Source BSP Map (" + (float)br.BaseStream.Length / 1024f / 1024f + "mb)");
-            //System.Console.WriteLine("#-------------------------------");
-            //System.Console.WriteLine("#\t Structure Load time:\t" + (float)(structureTime - materialTime - zipcacheTime) / HighResolutionTimer.Frequency);
-            //System.Console.WriteLine("#\t Zip Load time:\t\t\t" + (float)zipcacheTime / HighResolutionTimer.Frequency);
-            //System.Console.WriteLine("#\t Material Load time:\t" + (float)materialTime / HighResolutionTimer.Frequency);
-            //System.Console.WriteLine("#\t Lightmap Packing time:\t" + (float)texspan / HighResolutionTimer.Frequency);
-            //System.Console.WriteLine("#\t Displacement time:\t\t" + (float)diplaceTime / HighResolutionTimer.Frequency);
-            //System.Console.WriteLine("# Init time:\t\t\t" + (float)(initStart) / HighResolutionTimer.Frequency);
-            //System.Console.WriteLine("# Total File Load time:\t" + (float)(HighResolutionTimer.Ticks - startTime) / HighResolutionTimer.Frequency);
-            //System.Console.WriteLine("#-------------------------------");
+            Common.Instance.WriteLine("Finished prop lighting: {0:0.000}s", propLightingTime);
         }
 
         // Hook displacements into the bsp tree
@@ -160,14 +204,89 @@ namespace CubeHags.client.map.Source
             //
             // get the number of displacements per leaf
             //
+            List<dDispTri> tris = new List<dDispTri>();
+            world.dispCollTrees = new DispCollTree[world.DispIndexToFaceIndex.Length];
+            List<dDispVert> verts = new List<dDispVert>();
+            int currTri = 0, currVert = 0;
             for (int i = 0; i < world.DispIndexToFaceIndex.Length; i++)
             {
+                int j;
                 int faceIndex = world.DispIndexToFaceIndex[i];
-                DispTreeLeafnum_r(world, faceIndex, 0);
+                int dispId = world.faces_t[faceIndex].dispinfo;
+                ddispinfo_t info = world.ddispinfos[dispId];
+
+                int power = info.power;
+                int nVerts = (((1 << (power)) + 1) * ((1 << (power)) + 1));
+                verts.Clear();
+                // fail code
+                for (j = 0; j < nVerts; j++)
+                {
+                    verts.Add(world.dispVerts[j + currVert]);
+                }
+                currVert += nVerts;
+
+                int nTris = ((1 << (power)) * (1 << (power)) * 2);
+                tris.Clear();
+                for (j = 0; j < nTris; j++)
+                {
+                    tris.Add(world.dispTris[j + currTri]);
+                }
+                currTri += nTris;
+
+
+                Displacement displace = new Displacement();
+                displace.Surface = new DispSurface();
+                DispSurface dispSurf = displace.Surface;
+                dispSurf.m_PointStart = info.startPosition;
+                dispSurf.m_Contents = info.contents;
+
+                displace.InitDispInfo(info.power, info.minTess, info.smoothingAngle, verts, tris);
+
+                dispSurf.m_Index = faceIndex;
+                face_t face = world.faces_t[faceIndex];
+
+                if (face.numedges > 4)
+                    continue;
+
+                Vector3[] surfPoints = new Vector3[4];
+                dispSurf.m_PointCount = face.numedges;
+                
+                for (j = 0; j < face.numedges; j++)
+                {
+                    int eIndex = world.surfEdges[face.firstedge + j];
+                    if (eIndex < 0)
+                        surfPoints[j] = world.verts[world.edges[-eIndex].v[1]].position;
+                    else
+                        surfPoints[j] = world.verts[world.edges[eIndex].v[0]].position;
+                }
+
+                dispSurf.m_Points = surfPoints;
+                dispSurf.FindSurfPointStartIndex();
+                dispSurf.AdjustSurfPointData();
+
+                //
+                // generate the collision displacement surfaces
+                //
+                world.dispCollTrees[i] = new DispCollTree();
+                DispCollTree dispTree = world.dispCollTrees[i];
+
+                //
+                // check for null faces, should have been taken care of in vbsp!!!
+                //
+                if (dispSurf.m_PointCount != 4)
+                    continue;
+
+                displace.Create();
+
+                // new collision
+                dispTree.Create(displace);
+
+                
+                DispTreeLeafnum_r(world, faceIndex, i, 0);
             }
         }
 
-        static void DispTreeLeafnum_r(World world, int faceid, int nodeIndex)
+        static void DispTreeLeafnum_r(World world, int faceid, int collId, int nodeIndex)
         {                
             while (true)
             {
@@ -182,18 +301,17 @@ namespace CubeHags.client.map.Source
                     int leadIndex = -1 - nodeIndex;
                     dleaf_t pLeaf = world.leafs[leadIndex];
 
-
                     if (pLeaf.DisplacementIndexes != null)
                     {
-                        int[] indexes = pLeaf.DisplacementIndexes;
-                        int[] newid = new int[indexes.Length+1];
+                        KeyValuePair<int, int>[] indexes = pLeaf.DisplacementIndexes;
+                        KeyValuePair<int, int>[] newid = new KeyValuePair<int, int>[indexes.Length + 1];
                         indexes.CopyTo(newid, 0);
-                        newid[newid.Length - 1] = faceid;
+                        newid[newid.Length - 1] = new KeyValuePair<int,int>(faceid, collId);
                         pLeaf.DisplacementIndexes = newid;
                     }
                     else
                     {
-                        pLeaf.DisplacementIndexes = new int[] { faceid };
+                        pLeaf.DisplacementIndexes = new KeyValuePair<int,int>[] { new KeyValuePair<int,int>(faceid, collId) };
                     }
 
                     return;
@@ -223,12 +341,66 @@ namespace CubeHags.client.map.Source
                 // split
                 else
                 {
-                    DispTreeLeafnum_r(world, faceid, pNode.children[0]);
+                    DispTreeLeafnum_r(world, faceid, collId, pNode.children[0]);
                     nodeIndex = pNode.children[1];
                 }
 
             }
         }
+
+        static void LoadWorldLights(BinaryReader br, Header header)
+        {
+            br.BaseStream.Seek(header.lumps[15].fileofs, SeekOrigin.Begin);
+            int numWorldlights = header.lumps[15].filelen / 88;
+            if (header.lumps[15].filelen % 88 != 0)
+                Common.Instance.WriteLine("LoadWorldLights: WARNING: Funny lump size");
+            worldlight_t[] lights = new worldlight_t[numWorldlights];
+            for (int i = 0; i < numWorldlights; i++)
+            {
+                worldlight_t light = new worldlight_t();
+                light.Origin = new Vector3(br.ReadSingle(),br.ReadSingle(),br.ReadSingle());
+                light.Intensity = new Vector3(br.ReadSingle(),br.ReadSingle(),br.ReadSingle());
+                light.Normal = new Vector3(br.ReadSingle(),br.ReadSingle(),br.ReadSingle());  // for surfaces and spotlights
+                light.Cluster = br.ReadInt32();
+                light.Type = (EmitType)br.ReadInt32();
+                light.Style = br.ReadInt32();
+                light.stopdot = br.ReadSingle();   // start of penumbra for emit_spotlight
+                light.stopdot2 = br.ReadSingle();  // end of penumbra for emit_spotlight
+                light.exponent = br.ReadSingle();
+                light.radius = br.ReadSingle();    // cutoff distance
+                // falloff for emit_spotlight + emit_point: 
+                // 1 / (constant_attn + linear_attn * dist + quadratic_attn * dist^2)
+                light.Constant_Attn = br.ReadSingle();
+                light.Linear_Attn = br.ReadSingle();
+                light.Quadratic_Attn = br.ReadSingle();
+                light.Flags = br.ReadInt32();
+                light.Texinfo = br.ReadInt32();
+                light.Owner = br.ReadInt32();   // entity that this light it relative to
+
+                // Fixup for backward compatability
+                if (light.Type == EmitType.SPOTLIGHT)
+                {
+                    if (light.Quadratic_Attn == 0.0f && light.Linear_Attn == 0.0f && light.Constant_Attn == 0.0f)
+                        light.Quadratic_Attn = 1.0f;
+                    if (light.exponent == 0.0f)
+                        light.exponent = 1.0f;
+                }
+                else if (light.Type == EmitType.POINT)
+                {
+                    // To match earlier lighting, use quadratic...
+                    if (light.Quadratic_Attn == 0.0f && light.Linear_Attn == 0.0f && light.Constant_Attn == 0.0f)
+                        light.Quadratic_Attn = 1.0f;
+                }
+
+                if (light.radius < 1)
+                    light.radius = 0;
+
+                lights[i] = light;
+            }
+            world.worldlights = lights;
+        }
+
+        
 
         static void LoadBrushes(BinaryReader br, Header header)
         {
@@ -397,14 +569,17 @@ namespace CubeHags.client.map.Source
                 // Init structure
                 texinfo_t texinfo;
                 texinfo.textureVecs = new Vector4[2];
-                texinfo.lightmapVecs = new Vector4[2];
+                texinfo.lightmapVecs = new Vector3[2];
+                texinfo.lightmapVecs2 = new float[2];
 
                 // Read structure
-                texinfo.textureVecs[0] = SwapZY(new Vector4(br.ReadSingle(), br.ReadSingle(), br.ReadSingle(), br.ReadSingle()));
-                texinfo.textureVecs[1] = SwapZY(new Vector4(br.ReadSingle(), br.ReadSingle(), br.ReadSingle(), br.ReadSingle()));
-                texinfo.lightmapVecs[0] = SwapZY(new Vector4(br.ReadSingle(), br.ReadSingle(), br.ReadSingle(), br.ReadSingle()));
-                texinfo.lightmapVecs[1] = SwapZY(new Vector4(br.ReadSingle(), br.ReadSingle(), br.ReadSingle(), br.ReadSingle()));
-                texinfo.flags = br.ReadInt32();
+                texinfo.textureVecs[0] = new Vector4(br.ReadSingle(), br.ReadSingle(), br.ReadSingle(), br.ReadSingle());
+                texinfo.textureVecs[1] = new Vector4(br.ReadSingle(), br.ReadSingle(), br.ReadSingle(), br.ReadSingle());
+                texinfo.lightmapVecs[0] = new Vector3(br.ReadSingle(), br.ReadSingle(), br.ReadSingle());
+                texinfo.lightmapVecs2[0] = br.ReadSingle();
+                texinfo.lightmapVecs[1] = new Vector3(br.ReadSingle(), br.ReadSingle(), br.ReadSingle());
+                texinfo.lightmapVecs2[1] = br.ReadSingle();
+                texinfo.flags = (SurfFlags)br.ReadInt32();
                 texinfo.texdata = br.ReadInt32();
                 texinfo.texdata_t = texdatas[texinfo.texdata];
 
@@ -560,7 +735,7 @@ namespace CubeHags.client.map.Source
                 edge.v = new ushort[] { br.ReadUInt16(), br.ReadUInt16() };
                 edges[i] = edge;
             }
-
+            world.edges = edges;
             // Read surfedges
             br.BaseStream.Seek(header.lumps[13].fileofs, SeekOrigin.Begin);
             int nSurfEdges = header.lumps[13].filelen / sizeof(int);
@@ -569,6 +744,7 @@ namespace CubeHags.client.map.Source
             {
                 surfEdges[i] = br.ReadInt32();
             }
+            world.surfEdges = surfEdges;
 
             // Read faces
             br.BaseStream.Seek(header.lumps[7].fileofs, SeekOrigin.Begin);
@@ -626,7 +802,7 @@ namespace CubeHags.client.map.Source
             }
 
             // Prepare lightmap texture
-            Texture lightmapTexture = new Texture(Renderer.Instance.device, LightmapSize.Width, LightmapSize.Height, 1, Usage.None, Format.A16B16G16R16F, (Renderer.Instance.Is3D9Ex ? Pool.Default : Pool.Managed));
+            Texture lightmapTexture = new Texture(Renderer.Instance.device, LightmapSize.Width, LightmapSize.Height, 1, Usage.Dynamic, Format.A16B16G16R16F, (Renderer.Instance.Is3D9Ex ? Pool.Default : Pool.Managed));
             DataRectangle textureData = lightmapTexture.LockRectangle(0, LockFlags.None);
             DataStream ds = textureData.Data;
             TextureNode texturePacker = new TextureNode(new System.Drawing.Rectangle(0, 0, LightmapSize.Width, LightmapSize.Height), null);
@@ -701,15 +877,15 @@ namespace CubeHags.client.map.Source
                     float l_s = 0.5f, l_t = 0.5f;
                     if (face.face_t.LightmapTextureSizeInLuxels[0] != 0 && face.face_t.LightmapTextureSizeInLuxels[1] != 0)
                     {
-                        Vector3 vecs = new Vector3(face.texinfo.lightmapVecs[0].X, face.texinfo.lightmapVecs[0].Y, face.texinfo.lightmapVecs[0].Z);
-                        Vector3 vect = new Vector3(face.texinfo.lightmapVecs[1].X, face.texinfo.lightmapVecs[1].Y, face.texinfo.lightmapVecs[1].Z);
+                        //Vector3 vecs = new Vector3(face.texinfo.lightmapVecs[0].X, face.texinfo.lightmapVecs[0].Y, face.texinfo.lightmapVecs[0].Z);
+                        //Vector3 vect = new Vector3(face.texinfo.lightmapVecs[1].X, face.texinfo.lightmapVecs[1].Y, face.texinfo.lightmapVecs[1].Z);
 
-                        l_s = Vector3.Dot(vert, vecs) +
-                            face.texinfo.lightmapVecs[0].W - face.face_t.LightmapTextureMinsInLuxels[0];
+                        l_s = Vector3.Dot(vert, face.texinfo.lightmapVecs[0]) +
+                            face.texinfo.lightmapVecs2[0] - face.face_t.LightmapTextureMinsInLuxels[0];
                         l_s /= face.face_t.LightmapTextureSizeInLuxels[0];
 
-                        l_t = Vector3.Dot(vert, vect) +
-                            face.texinfo.lightmapVecs[1].W - face.face_t.LightmapTextureMinsInLuxels[1];
+                        l_t = Vector3.Dot(vert, face.texinfo.lightmapVecs[1]) +
+                            face.texinfo.lightmapVecs2[1] - face.face_t.LightmapTextureMinsInLuxels[1];
                         l_t /= face.face_t.LightmapTextureSizeInLuxels[1];
 
                         float divx = (float)(face.face_t.LightmapTextureSizeInLuxels[0]) / (LightmapSize.Width);
@@ -1424,6 +1600,7 @@ namespace CubeHags.client.map.Source
                         if (srcmodels.ContainsKey(prop.PropName))
                         {
                             sprop.srcModel = srcmodels[prop.PropName];
+                            
                             world.sourceProps.Add(sprop);
                         }
 
@@ -1448,7 +1625,549 @@ namespace CubeHags.client.map.Source
             }
         }
 
-       
+        void UpdateStaticPropLighting(SourceProp prop)
+        {
+            List<Color3> colors = new List<Color3>();
+            List<Vector4> lightmem = new List<Vector4>();
+            Matrix matrix = Matrix.AffineTransformation(1.0f, Vector3.Zero, Quaternion.RotationYawPitchRoll(prop.prop_t.Angles.X, -prop.prop_t.Angles.Z, prop.prop_t.Angles.Y), prop.prop_t.Origin);
+            for (int bodyID = 0; bodyID < prop.srcModel.BodyParts.Count; bodyID++)
+            {
+                BodyPart bpart = prop.srcModel.BodyParts[bodyID];
+
+                for (int modelid = 0; modelid < bpart.VTXBodyPart.Models.Length; modelid++)
+                {
+                    VTXModel mdl = bpart.VTXBodyPart.Models[modelid];
+
+                    ComputeModelVertexLighting(prop, mdl, matrix, lightmem, colors);
+
+                    //for (int meshid = 0; meshid < mdl.Meshes.Count; meshid++)
+                    //{
+                    //    MDLMesh mesh = mdl.Meshes[meshid];
+
+                    //    // Add specular?
+                    //}
+                }
+            }
+        }
+
+        void ComputeModelVertexLighting(SourceProp prop, VTXModel mdl, Matrix matrix, List<Vector4> lightmem, List<Color3> colors)
+        {
+            // for each vertex
+            //for (int i = 0; i < mdl.Lods[0].Meshes[0].StripGroups; ++i)
+            {
+                //ComputeVertexLightFromSpericalSamples
+                //Vector3 pos = mdl.Meshes[0].
+            }
+        }
+
+        //-----------------------------------------------------------------------------
+        // Computes the static vertex lighting term from a large number of spherical samples
+        //-----------------------------------------------------------------------------
+        public bool ComputeVertexLightFromSpericalSamples(Vector3 pos, Vector3 normal, SourceProp prop, out Vector3 tempmem)
+        {
+            tempmem = Vector3.Zero;
+            // Check to see if this vertex is in solid
+            trace_t trace = ClipMap.Instance.Box_Trace(pos, pos, Vector3.Zero, Vector3.Zero, 0, 1);
+            if (trace.allsolid || trace.startsolid)
+                return false;
+            int i;
+            float t = 0.0f;
+            // find any ambient lights
+            worldlight_t skyLight = FindAmbientLight();
+
+            // sample world by casting N rays distributed across a sphere
+            //float t = 0.0f;
+            Vector3 upend = Vector3.Zero, color = Vector3.Zero;
+            //int i;
+            //for (i = 0; i < 2; i++) // 162
+            //{
+            //    float flDot = Vector3.Dot(normal, s_randdir[i]);
+            //    if (flDot < 0.0f)
+            //        continue;
+
+            //    // FIXME: a good optimization would be to scale this per leaf
+            //    upend = ViewParams.VectorMA(pos, 56891, s_randdir[i]);
+
+            //    // Now that we've got a ray, see what surface we've hit
+            //    int surfid = R_LightVec(pos, upend, false, ref color);
+            //    if (surfid == -1)
+            //        continue;
+
+            //    // FIXME: Maybe make sure we aren't obstructed by static props?
+            //    // To do this, R_LightVec would need to return distance of hit...
+            //    // Or, we need another arg to R_LightVec to return black when hitting a static prop
+            //    ComputeAmbientFromSurface(surfid, skyLight, ref color);
+
+            //    t += flDot;
+            //    tempmem = ViewParams.VectorMA(tempmem, flDot, color);
+            //}
+
+            //if (t != 0.0f)
+            //    tempmem /= t;
+
+            // Now deal with direct lighting
+            bool hasSkylight = false;
+
+            // Figure out the PVS info for this location
+            int leaf = ClipMap.Instance.PointLeafnum(pos);
+            bool[] pvs = ClipMap.Instance.ClusterPVS(ClipMap.Instance.LeafCluster(leaf));
+            Vector3 vecdirection = Vector3.Zero;
+            // Now add in the direct lighting
+            for (i = 0; i < world.worldlights.Length; i++)
+            {
+                worldlight_t wl = world.worldlights[i];
+
+                // FIXME: This is sort of a hack; only one skylight is allowed in the
+                // lighting...
+                if (wl.Type == EmitType.SKYLIGHT && hasSkylight)
+                    continue;
+
+                if (wl.Cluster < 0 || pvs == null || !pvs[wl.Cluster])
+                    continue;
+
+                float flRatio = LightIntensityAndDirectionAtpoint(wl, pos, 4, ref vecdirection);
+
+                // No light contribution? Get outta here!
+                if (flRatio <= 0.0f)
+                    continue;
+
+                // Check if we've got a skylight
+                if (wl.Type == EmitType.SKYLIGHT)
+                    hasSkylight = true;
+
+                // Figure out spotlight attenuation
+                float flAngularRatio = WorldLightAngle(wl, wl.Normal, normal, vecdirection);
+
+                // Add in the direct lighting
+                tempmem = ViewParams.VectorMA(tempmem, flAngularRatio * flRatio, wl.Intensity);
+            }
+
+            return true;
+        }
+
+        float WorldLightAngle(worldlight_t wl, Vector3 lnormal, Vector3 snormal, Vector3 delta)
+        {
+            float dot = 0, dot2 = 0, ratio = 0;
+            switch (wl.Type)
+            {
+                case EmitType.SURFACE:
+                    dot = Vector3.Dot(snormal, delta);
+                    if (dot < 0)
+                        return 0;
+
+                    dot2 = -Vector3.Dot(delta, lnormal);
+                    if (dot2 <= 0.1f / 10)
+                        return 0;   // behind light surface
+
+                    return dot * dot2;
+                case EmitType.POINT:
+                    dot = Vector3.Dot(snormal, delta);
+                    if (dot < 0)
+                        return 0;
+                    return dot;
+                case EmitType.SPOTLIGHT:
+                    dot = Vector3.Dot(snormal, delta);
+                    if (dot < 0)
+                        return 0;
+
+                    dot2 = -Vector3.Dot(delta, lnormal);
+                    if (dot2 <= wl.stopdot2)
+                        return 0;   // outside light cone
+
+                    ratio = dot;
+                    if (dot2 >= wl.stopdot)
+                        return ratio;   // inside inner cone
+
+                    if ((wl.exponent == 1 || wl.exponent == 0))
+                    {
+                        ratio *= (dot2 - wl.stopdot2) / (wl.stopdot - wl.stopdot2);
+                    }
+                    else
+                    {
+                        ratio *= (float)Math.Pow((dot2 - wl.stopdot2) / (wl.stopdot - wl.stopdot2), wl.exponent);
+                    }
+                    return ratio;
+                case EmitType.SKYLIGHT:
+                    dot2 = -Vector3.Dot(snormal, lnormal);
+                    if (dot2 < 0)
+                        return 0;
+                    return dot2;
+                case EmitType.QUAKELIGHT:
+                    // linear falloff
+                    dot = Vector3.Dot(snormal, delta);
+                    if (dot < 0)
+                        return 0;
+                    return dot;
+                case EmitType.SKYAMBIENT:
+                    // not supported
+                    return 1;
+            }
+            return 0;
+        }
+
+        //-----------------------------------------------------------------------------
+        // This method returns the effective intensity of a light as seen from
+        // a particular point. PVS is used to speed up the task.
+        //-----------------------------------------------------------------------------
+        float LightIntensityAndDirectionAtpoint(worldlight_t light, Vector3 mid, int flags, ref Vector3 direction)
+        {
+            // Special case lights
+            switch (light.Type)
+            {
+                case EmitType.SKYLIGHT:
+                    // There can be more than one skylight, but we should only
+                    // ever be affected by one of them (multiple ones are created from
+                    // a single light in vrad)
+
+                    // check to see if you can hit the sky texture
+                    Vector3 end = ViewParams.VectorMA(mid, -65500, light.Normal);
+                    trace_t trace = ClipMap.Instance.Box_Trace(mid, end, Vector3.Zero, Vector3.Zero, 0, (int)(brushflags.CONTENTS_SOLID | brushflags.CONTENTS_MOVEABLE | brushflags.CONTENTS_SLIME | brushflags.CONTENTS_OPAQUE));
+
+                    // Here, we didn't hit the sky, so we must be in shadow
+                    if (((SurfFlags)trace.surfaceFlags & SurfFlags.SURF_SKY) != SurfFlags.SURF_SKY)
+                        return 0.0f;
+
+                    // fudge delta and dist for skylights
+                    direction.X = direction.Y = direction.Z = 0;
+                    return 1.0f;
+                case EmitType.SKYAMBIENT:
+                    // always ignore these
+                    return 0.0f;
+            }
+            // all other lights
+            
+            // check distance
+            direction = light.Origin - mid;
+            float ratio = WorldLightDistanceFalloff(light, direction, (flags & 2) != 0);
+
+            // Add in light style component
+            //ratio *= light.Style;
+
+            // Early out for really low-intensity lights
+            // That way we don't need to ray-cast or normalize
+            float intensity = Math.Max(light.Intensity[0], light.Intensity[1]);
+            intensity = Math.Max(intensity, light.Intensity[2]);
+
+            // This is about 1/256
+            if (intensity * ratio < 1f / 256f)
+                return 0.0f;
+
+
+            float dist = direction.Length();
+            direction.Normalize();
+
+            if ((flags & 1) == 1) // LIGHT_NO_OCCLUSION_CHECK
+                return ratio;
+
+            trace_t pm = ClipMap.Instance.Box_Trace(mid, light.Origin, Vector3.Zero, Vector3.Zero, 0, 0x1 | 0x40);
+
+            // hack
+            if ((1f - pm.fraction) * dist > 8)
+                return 0;
+
+            return ratio;
+        }
+
+        float WorldLightDistanceFalloff(worldlight_t light, Vector3 delta, bool noRadiusCheck)
+        {
+            float falloff = 0.0f;
+            switch (light.Type)
+            {
+                case EmitType.SURFACE:
+                    // Cull out stuff that's too far
+                    if (light.radius != 0)
+                    {
+                        if (Vector3.Dot(delta, delta) > (light.radius * light.radius))
+                            return 0.0f;
+                    }
+
+                    return InvRSquared(delta);
+                case EmitType.SKYLIGHT:
+                    return 1.0f;
+                case EmitType.QUAKELIGHT:
+                    // X - r;
+                    falloff = light.Linear_Attn - (float)Math.Sqrt(Vector3.Dot(delta, delta));
+                    if (falloff < 0f)
+                        return 0f;
+
+                    return falloff;
+                case EmitType.SKYAMBIENT:
+                    return 1.0f;
+                case EmitType.SPOTLIGHT:
+                case EmitType.POINT:    // directional & positional
+                    float dist2 = Vector3.Dot(delta, delta);
+                    float dist = (float)Math.Sqrt(dist2);
+
+                    // Cull out stuff that's too far
+                    if (!noRadiusCheck && (light.radius != 0) && (dist > light.radius))
+                        return 0f;
+
+                    return 1f / (light.Constant_Attn + light.Linear_Attn * dist + light.Quadratic_Attn * dist2);
+            }
+            return 1f;
+        }
+
+        float InvRSquared(Vector3 v)
+        {
+            float r2 = Vector3.Dot(v, v);
+            return r2 < 1.0f ? 1.0f : 1f / r2;
+        }
+
+        public class LightVecState
+        {
+            public Vector3 start;
+            public Vector3 end;
+            public float hitFrac;
+            public int skySurf;
+            public bool useLightstyles;
+        }
+
+        void ComputeAmbientFromSurface(int surfid, worldlight_t skyLight,ref Vector3 color)
+        {
+            if (surfid != -1)
+            {
+                // If we hit the sky, use the sky ambient
+                if ((world.faces_t[surfid].face.texinfo.flags & SurfFlags.SURF_SKY) == SurfFlags.SURF_SKY)
+                {
+                    if (skyLight != null)   // add in sky ambient
+                        color = skyLight.Intensity;
+                }
+                else
+                {
+                    Vector3 reflectivity = world.faces_t[surfid].face.texinfo.texdata_t.reflectivity;
+                    color.X *= reflectivity.X;
+                    color.Y *= reflectivity.Y;
+                    color.Z *= reflectivity.Z;
+                }
+            }
+        }
+
+        int R_LightVec(Vector3 start, Vector3 end, bool useLightStyles, ref Vector3 c)
+        {
+            c.X = c.Y = c.Z = 0;
+            int skysurf = -1;
+            LightVecState state = new LightVecState();
+            state.skySurf = -1;
+            state.start = start;
+            state.end = end;
+            state.hitFrac = 1.0f;
+            int retSurfId = RecursiveLightPoint(0, 0f, 1f, ref c, state);
+
+            if (retSurfId == -1 && skysurf != -1)
+                return skysurf;
+
+            return retSurfId;
+        }
+
+        int FindIntersectionSurfaceAtLeaf(dleaf_t leaf, float start, float end, ref Vector3 c, LightVecState state)
+        {
+            int clostestSurf = -1;
+            for (int i = 0; i < leaf.numleaffaces; i++)
+            {
+                int surfid = world.leafFaces[leaf.firstleafface + i];
+                face_t face = world.faces_t[surfid];
+
+                // Don't add surfaces that have displacement; they are handled above
+                // In fact, don't even set the vis frame; we need it unset for translucent
+                // displacement code
+                if (face.dispinfo != -1)
+                    continue;
+
+                if ((face.face.texinfo.flags & SurfFlags.SURF_NODRAW) == SurfFlags.SURF_NODRAW)
+                    continue;
+
+                cplane_t plane = face.face.plane_t;
+
+                // Backface cull...
+                if (Vector3.Dot(plane.normal, (state.end - state.start)) > 0.0f)
+                    continue;
+
+                float startdotn = Vector3.Dot(state.start, plane.normal);
+                float deltadotn = Vector3.Dot((state.end - state.start), plane.normal);
+
+                float front = startdotn + start * deltadotn - plane.dist;
+                float back = startdotn + end * deltadotn - plane.dist;
+
+                bool side = front < 0.0f;
+
+                // Blow it off if it doesn't split the plane...
+                if ((back < 0.0f) == side)
+                    continue;
+
+                // Don't test a surface that is farther away from the closest found intersection
+                float frac = front / (front - back);
+                if (frac >= state.hitFrac)
+                    continue;
+
+                float mid = start * (1.0f - frac) + end * frac;
+
+                // Check this surface to see if there's an intersection
+                if (FindIntersectionAtSurface(surfid, mid, ref c, state))
+                {
+                    clostestSurf = surfid;
+                }
+            }
+
+            // Return the closest surface hit
+            return clostestSurf;
+        }
+
+        int RecursiveLightPoint(int n, float start, float end, ref Vector3 c, LightVecState state)
+        {
+            while (n >= 0)
+            {
+                dnode_t node = world.nodes[n];
+                cplane_t plane = node.plane;
+
+                float startDotn = Vector3.Dot(state.start, plane.normal);
+                float deltaDotn = Vector3.Dot(state.end - state.start, plane.normal);
+
+                float front = startDotn + start * deltaDotn - plane.dist;
+                float back = deltaDotn + end * deltaDotn - plane.dist;
+                bool side = front < 0;
+
+                // If they're both on the same side of the plane, don't bother to split
+                // just check the appropriate child
+                int surfid = 0;
+                if ((back < 0) == side)
+                {
+                    n = node.children[side ? 1 : 0];
+                    continue;
+                    //surfid = RecursiveLightPoint(node.children[side ? 1 : 0], start, end, ref c, state);
+                    //return surfid;
+                }
+
+                // calculate mid point
+                float frac = front / (front - back);
+                float mid = start * (1.0f - frac) + end * frac;
+
+                // go down front side	
+                surfid = RecursiveLightPoint(node.children[side ? 1 : 0], start, mid, ref c, state);
+                if (surfid != -1)
+                    return surfid;  // hit something
+
+                // check for impact on this node
+                surfid = FindIntersectionSurfaceAtNode(n, mid, ref c, state);
+                if (surfid != -1)
+                    return surfid;
+
+                // go down back side
+                surfid = RecursiveLightPoint(node.children[!side ? 1 : 0], mid, end, ref c, state);
+                return surfid;
+
+                break;
+            }
+
+            // didn't hit anything
+            if (n < 0)
+            {
+                // FIXME: Should we always do this? It could get expensive...
+                // Check all the faces at the leaves
+                return FindIntersectionSurfaceAtLeaf(world.leafs[-1 - n], start, end, ref c, state);
+            }
+
+            return -1;
+        }
+
+        int FindIntersectionSurfaceAtNode(int n, float t, ref Vector3 c, LightVecState state)
+        {
+            dnode_t node = world.nodes[n];
+            int surfid = node.firstface;
+            for (int i = 0; i < node.numfaces; i++, surfid++)
+            {
+                // Don't immediately return when we hit sky; 
+                // we may actually hit another surface
+                SurfFlags flags = world.faces[world.leafFaces[surfid]].texinfo.flags;
+                if ((flags & SurfFlags.SURF_SKY) == SurfFlags.SURF_SKY)
+                {
+                    state.skySurf = surfid;
+                    continue;
+                }
+
+                // Don't let water surfaces affect us
+                if ((flags & SurfFlags.SURF_WARP) == SurfFlags.SURF_WARP)
+                    continue;
+
+                if(FindIntersectionAtSurface(surfid, t, ref c, state))
+                    return surfid;
+            }
+            return -1;
+        }
+
+        //-----------------------------------------------------------------------------
+        // Tests a particular surface
+        //-----------------------------------------------------------------------------
+        bool FindIntersectionAtSurface(int surfid, float f, ref Vector3 c, LightVecState state)
+        {
+            // no lightmaps on this surface? punt...
+            // FIXME: should be water surface?
+            SurfFlags flags = world.faces[world.leafFaces[surfid]].texinfo.flags;
+            if ((flags & SurfFlags.SURF_NOLIGHT) == SurfFlags.SURF_NOLIGHT) // SURFDRAW_NOLIGHT
+                return false;
+
+            // Compute the actual point
+            Vector3 pt = ViewParams.VectorMA(state.start, f, state.end - state.start);
+            texinfo_t tex = world.faces[world.leafFaces[surfid]].texinfo;
+
+            // See where in lightmap space our intersection point is 
+
+            float s = Vector3.Dot(pt, tex.lightmapVecs[0]) +
+                tex.lightmapVecs2[0];
+            float t = Vector3.Dot(pt, tex.lightmapVecs[1]) +
+                tex.lightmapVecs2[1];
+
+            // Not in the bounds of our lightmap? punt...
+            int[] luxMins = world.faces[world.leafFaces[surfid]].face_t.LightmapTextureMinsInLuxels;
+            if (s < luxMins[0] ||
+                t < luxMins[1])
+                return false;
+
+            // assuming a square lightmap (FIXME: which ain't always the case),
+            // lets see if it lies in that rectangle. If not, punt...
+            float ds = s - luxMins[0];
+            float dt = t - luxMins[1];
+            int[] luxExtends = world.faces[world.leafFaces[surfid]].face_t.LightmapTextureSizeInLuxels;
+            if (ds > luxExtends[0] ||
+                dt > luxExtends[1])
+                return false;
+
+            // Store off the hit distance...
+            state.hitFrac = f;
+
+            // You heard the man!
+            // TODO
+
+            ComputeLightmapColorFromAverage(world.faces[world.leafFaces[surfid]].face_t, state.useLightstyles, ref c);
+
+            return true;
+        }
+
+
+        //-----------------------------------------------------------------------------
+        // Computes the lightmap color at a particular point
+        //-----------------------------------------------------------------------------
+        void ComputeLightmapColorFromAverage(face_t face, bool useLightStyle, ref Vector3 c)
+        {
+            int nMaxMaps = useLightStyle ? 4 : 1;
+            for (int maps = 0; maps < nMaxMaps && face.styles[maps] != 255; maps++)
+            {
+                float scale = 16f * ((float)face.styles[maps] / 264.0f);
+                Color3 color = world.LightData[face.lightlumpofs - (maps + 1)];
+                c.X += color.Red * scale;
+                c.Y += color.Green * scale;
+                c.Z += color.Blue * scale;
+            }
+        }
+        
+        worldlight_t FindAmbientLight()
+        {
+            for (int i = 0; i < world.worldlights.Length; i++)
+            {
+                if (world.worldlights[i].Type == EmitType.SKYAMBIENT)
+                    return world.worldlights[i];
+            }
+            return null;
+        }
 
         public static float TexLightToLinear( int c, int exponent )
         { 
@@ -1707,5 +2426,171 @@ namespace CubeHags.client.map.Source
         public static float TriArea2DTimesTwo(Vector2 A,Vector2 B,Vector2 C ) {
             return ((B.X - A.X) * (C.Y - A.Y) - (B.Y - A.Y) * (C.X - A.X));
         }
+
+        public Vector3[] s_randdir = new Vector3[] 
+        {
+            new Vector3(-0.525731f, 0.000000f, 0.850651f), 
+            new Vector3(-0.442863f, 0.238856f, 0.864188f), 
+            new Vector3(-0.295242f, 0.000000f, 0.955423f), 
+            new Vector3(-0.309017f, 0.500000f, 0.809017f), 
+            new Vector3(-0.162460f, 0.262866f, 0.951056f), 
+            new Vector3(0.000000f, 0.000000f, 1.000000f), 
+            new Vector3(0.000000f, 0.850651f, 0.525731f), 
+            new Vector3(-0.147621f, 0.716567f, 0.681718f), 
+            new Vector3(0.147621f, 0.716567f, 0.681718f), 
+            new Vector3(0.000000f, 0.525731f, 0.850651f), 
+            new Vector3(0.309017f, 0.500000f, 0.809017f), 
+            new Vector3(0.525731f, 0.000000f, 0.850651f), 
+            new Vector3(0.295242f, 0.000000f, 0.955423f), 
+            new Vector3(0.442863f, 0.238856f, 0.864188f), 
+            new Vector3(0.162460f, 0.262866f, 0.951056f), 
+            new Vector3(-0.681718f, 0.147621f, 0.716567f), 
+            new Vector3(-0.809017f, 0.309017f, 0.500000f), 
+            new Vector3(-0.587785f, 0.425325f, 0.688191f), 
+            new Vector3(-0.850651f, 0.525731f, 0.000000f), 
+            new Vector3(-0.864188f, 0.442863f, 0.238856f), 
+            new Vector3(-0.716567f, 0.681718f, 0.147621f), 
+            new Vector3(-0.688191f, 0.587785f, 0.425325f), 
+            new Vector3(-0.500000f, 0.809017f, 0.309017f), 
+            new Vector3(-0.238856f, 0.864188f, 0.442863f), 
+            new Vector3(-0.425325f, 0.688191f, 0.587785f), 
+            new Vector3(-0.716567f, 0.681718f, -0.147621f), 
+            new Vector3(-0.500000f, 0.809017f, -0.309017f), 
+            new Vector3(-0.525731f, 0.850651f, 0.000000f), 
+            new Vector3(0.000000f, 0.850651f, -0.525731f), 
+            new Vector3(-0.238856f, 0.864188f, -0.442863f), 
+            new Vector3(0.000000f, 0.955423f, -0.295242f), 
+            new Vector3(-0.262866f, 0.951056f, -0.162460f), 
+            new Vector3(0.000000f, 1.000000f, 0.000000f), 
+            new Vector3(0.000000f, 0.955423f, 0.295242f), 
+            new Vector3(-0.262866f, 0.951056f, 0.162460f), 
+            new Vector3(0.238856f, 0.864188f, 0.442863f), 
+            new Vector3(0.262866f, 0.951056f, 0.162460f), 
+            new Vector3(0.500000f, 0.809017f, 0.309017f), 
+            new Vector3(0.238856f, 0.864188f, -0.442863f), 
+            new Vector3(0.262866f, 0.951056f, -0.162460f), 
+            new Vector3(0.500000f, 0.809017f, -0.309017f), 
+            new Vector3(0.850651f, 0.525731f, 0.000000f), 
+            new Vector3(0.716567f, 0.681718f, 0.147621f), 
+            new Vector3(0.716567f, 0.681718f, -0.147621f), 
+            new Vector3(0.525731f, 0.850651f, 0.000000f), 
+            new Vector3(0.425325f, 0.688191f, 0.587785f), 
+            new Vector3(0.864188f, 0.442863f, 0.238856f), 
+            new Vector3(0.688191f, 0.587785f, 0.425325f), 
+            new Vector3(0.809017f, 0.309017f, 0.500000f), 
+            new Vector3(0.681718f, 0.147621f, 0.716567f), 
+            new Vector3(0.587785f, 0.425325f, 0.688191f), 
+            new Vector3(0.955423f, 0.295242f, 0.000000f), 
+            new Vector3(1.000000f, 0.000000f, 0.000000f), 
+            new Vector3(0.951056f, 0.162460f, 0.262866f), 
+            new Vector3(0.850651f, -0.525731f, 0.000000f), 
+            new Vector3(0.955423f, -0.295242f, 0.000000f), 
+            new Vector3(0.864188f, -0.442863f, 0.238856f), 
+            new Vector3(0.951056f, -0.162460f, 0.262866f), 
+            new Vector3(0.809017f, -0.309017f, 0.500000f), 
+            new Vector3(0.681718f, -0.147621f, 0.716567f), 
+            new Vector3(0.850651f, 0.000000f, 0.525731f), 
+            new Vector3(0.864188f, 0.442863f, -0.238856f), 
+            new Vector3(0.809017f, 0.309017f, -0.500000f), 
+            new Vector3(0.951056f, 0.162460f, -0.262866f), 
+            new Vector3(0.525731f, 0.000000f, -0.850651f), 
+            new Vector3(0.681718f, 0.147621f, -0.716567f), 
+            new Vector3(0.681718f, -0.147621f, -0.716567f), 
+            new Vector3(0.850651f, 0.000000f, -0.525731f), 
+            new Vector3(0.809017f, -0.309017f, -0.500000f), 
+            new Vector3(0.864188f, -0.442863f, -0.238856f), 
+            new Vector3(0.951056f, -0.162460f, -0.262866f), 
+            new Vector3(0.147621f, 0.716567f, -0.681718f), 
+            new Vector3(0.309017f, 0.500000f, -0.809017f), 
+            new Vector3(0.425325f, 0.688191f, -0.587785f), 
+            new Vector3(0.442863f, 0.238856f, -0.864188f), 
+            new Vector3(0.587785f, 0.425325f, -0.688191f), 
+            new Vector3(0.688191f, 0.587785f, -0.425325f), 
+            new Vector3(-0.147621f, 0.716567f, -0.681718f), 
+            new Vector3(-0.309017f, 0.500000f, -0.809017f), 
+            new Vector3(0.000000f, 0.525731f, -0.850651f), 
+            new Vector3(-0.525731f, 0.000000f, -0.850651f), 
+            new Vector3(-0.442863f, 0.238856f, -0.864188f), 
+            new Vector3(-0.295242f, 0.000000f, -0.955423f), 
+            new Vector3(-0.162460f, 0.262866f, -0.951056f), 
+            new Vector3(0.000000f, 0.000000f, -1.000000f), 
+            new Vector3(0.295242f, 0.000000f, -0.955423f), 
+            new Vector3(0.162460f, 0.262866f, -0.951056f), 
+            new Vector3(-0.442863f, -0.238856f, -0.864188f), 
+            new Vector3(-0.309017f, -0.500000f, -0.809017f), 
+            new Vector3(-0.162460f, -0.262866f, -0.951056f), 
+            new Vector3(0.000000f, -0.850651f, -0.525731f), 
+            new Vector3(-0.147621f, -0.716567f, -0.681718f), 
+            new Vector3(0.147621f, -0.716567f, -0.681718f), 
+            new Vector3(0.000000f, -0.525731f, -0.850651f), 
+            new Vector3(0.309017f, -0.500000f, -0.809017f), 
+            new Vector3(0.442863f, -0.238856f, -0.864188f), 
+            new Vector3(0.162460f, -0.262866f, -0.951056f), 
+            new Vector3(0.238856f, -0.864188f, -0.442863f), 
+            new Vector3(0.500000f, -0.809017f, -0.309017f), 
+            new Vector3(0.425325f, -0.688191f, -0.587785f), 
+            new Vector3(0.716567f, -0.681718f, -0.147621f), 
+            new Vector3(0.688191f, -0.587785f, -0.425325f), 
+            new Vector3(0.587785f, -0.425325f, -0.688191f), 
+            new Vector3(0.000000f, -0.955423f, -0.295242f), 
+            new Vector3(0.000000f, -1.000000f, 0.000000f), 
+            new Vector3(0.262866f, -0.951056f, -0.162460f), 
+            new Vector3(0.000000f, -0.850651f, 0.525731f), 
+            new Vector3(0.000000f, -0.955423f, 0.295242f), 
+            new Vector3(0.238856f, -0.864188f, 0.442863f), 
+            new Vector3(0.262866f, -0.951056f, 0.162460f), 
+            new Vector3(0.500000f, -0.809017f, 0.309017f), 
+            new Vector3(0.716567f, -0.681718f, 0.147621f), 
+            new Vector3(0.525731f, -0.850651f, 0.000000f), 
+            new Vector3(-0.238856f, -0.864188f, -0.442863f), 
+            new Vector3(-0.500000f, -0.809017f, -0.309017f), 
+            new Vector3(-0.262866f, -0.951056f, -0.162460f), 
+            new Vector3(-0.850651f, -0.525731f, 0.000000f), 
+            new Vector3(-0.716567f, -0.681718f, -0.147621f), 
+            new Vector3(-0.716567f, -0.681718f, 0.147621f), 
+            new Vector3(-0.525731f, -0.850651f, 0.000000f), 
+            new Vector3(-0.500000f, -0.809017f, 0.309017f), 
+            new Vector3(-0.238856f, -0.864188f, 0.442863f), 
+            new Vector3(-0.262866f, -0.951056f, 0.162460f), 
+            new Vector3(-0.864188f, -0.442863f, 0.238856f), 
+            new Vector3(-0.809017f, -0.309017f, 0.500000f), 
+            new Vector3(-0.688191f, -0.587785f, 0.425325f), 
+            new Vector3(-0.681718f, -0.147621f, 0.716567f), 
+            new Vector3(-0.442863f, -0.238856f, 0.864188f), 
+            new Vector3(-0.587785f, -0.425325f, 0.688191f), 
+            new Vector3(-0.309017f, -0.500000f, 0.809017f), 
+            new Vector3(-0.147621f, -0.716567f, 0.681718f), 
+            new Vector3(-0.425325f, -0.688191f, 0.587785f), 
+            new Vector3(-0.162460f, -0.262866f, 0.951056f), 
+            new Vector3(0.442863f, -0.238856f, 0.864188f), 
+            new Vector3(0.162460f, -0.262866f, 0.951056f), 
+            new Vector3(0.309017f, -0.500000f, 0.809017f), 
+            new Vector3(0.147621f, -0.716567f, 0.681718f), 
+            new Vector3(0.000000f, -0.525731f, 0.850651f), 
+            new Vector3(0.425325f, -0.688191f, 0.587785f), 
+            new Vector3(0.587785f, -0.425325f, 0.688191f), 
+            new Vector3(0.688191f, -0.587785f, 0.425325f), 
+            new Vector3(-0.955423f, 0.295242f, 0.000000f), 
+            new Vector3(-0.951056f, 0.162460f, 0.262866f), 
+            new Vector3(-1.000000f, 0.000000f, 0.000000f), 
+            new Vector3(-0.850651f, 0.000000f, 0.525731f), 
+            new Vector3(-0.955423f, -0.295242f, 0.000000f), 
+            new Vector3(-0.951056f, -0.162460f, 0.262866f), 
+            new Vector3(-0.864188f, 0.442863f, -0.238856f), 
+            new Vector3(-0.951056f, 0.162460f, -0.262866f), 
+            new Vector3(-0.809017f, 0.309017f, -0.500000f), 
+            new Vector3(-0.864188f, -0.442863f, -0.238856f), 
+            new Vector3(-0.951056f, -0.162460f, -0.262866f), 
+            new Vector3(-0.809017f, -0.309017f, -0.500000f), 
+            new Vector3(-0.681718f, 0.147621f, -0.716567f), 
+            new Vector3(-0.681718f, -0.147621f, -0.716567f), 
+            new Vector3(-0.850651f, 0.000000f, -0.525731f), 
+            new Vector3(-0.688191f, 0.587785f, -0.425325f), 
+            new Vector3(-0.587785f, 0.425325f, -0.688191f), 
+            new Vector3(-0.425325f, 0.688191f, -0.587785f), 
+            new Vector3(-0.425325f, -0.688191f, -0.587785f), 
+            new Vector3(-0.587785f, -0.425325f, -0.688191f), 
+            new Vector3(-0.688191f, -0.587785f, -0.425325f)
+        };
     }
 }

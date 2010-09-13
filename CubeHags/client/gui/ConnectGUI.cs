@@ -12,24 +12,35 @@ namespace CubeHags.client.gui
         private Label ConnectStatus;
         private Label infoLabel;
         private Button cancelButton;
-        private Label clStats;
-        public Label svStats;
+        private string loadString = "";
 
         public ConnectGUI()
         {
             this.panel.Layout = new FlowLayout(false);
-            this.Title = "Connect...";
+            this.Title = "Connecting...";
             this.WindowSpawnPosition = Corner.MIDDLE;
+
             ConnectStatus = new Label("Connecting... ", this);
             this.panel.AddControl(ConnectStatus);
+
             infoLabel = new Label(".", this);
             panel.AddControl(infoLabel);
+
             cancelButton = new Button("Cancel", this);
+            cancelButton.Selected += new Button.ButtonSelectedEvent(Cancel);
             this.panel.AddControl(cancelButton);
-            clStats = new Label("...", this);
-            this.panel.AddControl(clStats);
-            svStats = new Label("...", this);
-            this.panel.AddControl(svStats);
+            Visible = false;
+        }
+
+        void Cancel()
+        {
+            Client.Instance.Disconnect(true);
+            Visible = false;
+        }
+
+        public void LoadString(string str)
+        {
+            loadString = str;
         }
 
         public void DrawConnect()
@@ -38,29 +49,34 @@ namespace CubeHags.client.gui
             int retry = Client.Instance.clc.connectPacketCount;
             string servername = Client.Instance.servername;
             string messageString = Client.Instance.clc.serverMessage;
-            //int cliNum = Client.Instance.cl.snap.ps.clientNum;
 
             ConnectStatus.Text = "Connecting to: " + servername;
             string s;
             switch (state)
             {
                 case ConnectState.CONNECTING:
-                    s = "Awaiting challenge..." + retry;
+                    s = "Awaiting challenge..." + (retry > 1 ? ""+retry : "");
+                    Title = "Connecting..";
+                    loadString = "";
                     break;
                 case ConnectState.CHALLENGING:
-                    s = "Awaiting connection..." + retry;
+                    s = "Awaiting connection...";
                     break;
                 case ConnectState.CONNECTED:
                     s = "Awaiting gamestate...";
+                    Title = "Connected...";
                     break;
                 case ConnectState.LOADING:
-                    s = "Loading map...";
+                    s = "Loading " + loadString;
+                    Title = "Loading...";
                     break;
                 case ConnectState.PRIMED:
                     s = "Waiting for server...";
+                    Title = "Waiting..";
                     break;
                 case ConnectState.ACTIVE:
                     s = "Connection complete :)";
+                    Visible = false;
                     break;
                 default:
                     s = "N/A";
@@ -68,12 +84,6 @@ namespace CubeHags.client.gui
             }
 
             infoLabel.Text = s;
-            
-            NetBaseStatistics stats = Net.Instance.ClientStatistic;
-            if(stats != null) {
-                clStats.Text = string.Format("Client: in: {0:0.00}kb/s {1:0}packet/s\n       out: {2:0.00}b/s {3:0}packet/s", stats.GetBytesReceivedPerSecond(NetTime.Now) / 1024f, stats.GetPacketsReceivedPerSecond(NetTime.Now), stats.GetBytesSentPerSecond(NetTime.Now) / 1024f, stats.GetPacketsSentPerSecond(NetTime.Now));
-
-            }
         }
     }
 }
