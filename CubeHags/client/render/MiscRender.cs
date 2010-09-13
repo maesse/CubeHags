@@ -7,6 +7,9 @@ using System.Drawing;
 using CubeHags.client.map.Source;
 using SlimDX;
 using CubeHags.client.render.Formats;
+using CubeHags.client.cgame;
+using CubeHags.common;
+using CubeHags.client.common;
 
 namespace CubeHags.client.render
 {
@@ -135,6 +138,52 @@ namespace CubeHags.client.render
             return result;
         }
 
+        public static VertexPositionColor[] CreatePlane(Vector3 dir, float lenght, Color4 color)
+        {
+            VertexPositionColor[] verts = new VertexPositionColor[6];
+            dir = new Vector3(-dir.X, dir.Z, dir.Y);
+            
+            // Front face
+            if (dir.Y == -1f)
+                lenght = -lenght;
+
+            Vector3 mins = new Vector3(-10000, -10000, lenght);
+            Vector3 maxs = new Vector3(10000, 10000, lenght);
+
+            if (dir.Y == -1f)
+                lenght = -lenght;
+
+            verts[0] = new VertexPositionColor(new Vector3(mins.X, maxs.Y, maxs.Z), color);
+            verts[1] = new VertexPositionColor(new Vector3(mins.X, mins.Y, maxs.Z), color);
+            verts[2] = new VertexPositionColor(new Vector3(maxs.X, maxs.Y, maxs.Z), color);
+            verts[3] = new VertexPositionColor(new Vector3(mins.X, mins.Y, maxs.Z), color);
+            verts[4] = new VertexPositionColor(new Vector3(maxs.X, mins.Y, maxs.Z), color);
+            verts[5] = new VertexPositionColor(new Vector3(maxs.X, maxs.Y, maxs.Z), color);
+
+            Vector3[] vecs;
+            CGame.AnglesToAxis(dir*90f, out vecs);
+
+            Vector3[] axis = vecs;
+            Matrix View = Matrix.Identity;
+            View.M11 = axis[0].X; View.M12 = axis[1].X; View.M13 = axis[2].X; View.M14 = 0f;
+            View.M21 = axis[0].Y; View.M22 = axis[1].Y; View.M23 = axis[2].Y; View.M24 = 0f;
+            View.M31 = axis[0].Z; View.M32 = axis[1].Z; View.M33 = axis[2].Z; View.M34 = 0f;
+            Vector3 origin = Vector3.Zero;
+            View.M41 = -Vector3.Dot(origin, axis[0]);
+            View.M42 = -Vector3.Dot(origin, axis[1]);
+            View.M43 = -Vector3.Dot(origin, axis[2]);
+            View.M44 = 1f;
+
+            for (int i = 0; i < 6; i++)
+            {
+                verts[i].Position = Vector3.TransformCoordinate(verts[i].Position, View);
+            }
+
+            
+
+            return verts;
+        }
+
         public static VertexPositionColor[] CreateBox(Vector3 mins, Vector3 maxs, Color4 color)
         {
 
@@ -235,14 +284,14 @@ namespace CubeHags.client.render
         // Draws useful information
         public static void DrawRenderStats(Renderer renderer)
         {
+            if (!CVars.Instance.FindVar("r_showfps").Bool)
+                return;
+
             // Draw FPS
             string str = "FPS: " + HighResolutionTimer.Instance.FramesPerSecond;
-            System.Drawing.Rectangle rect = new Rectangle();
+            System.Drawing.Rectangle rect = Rectangle.Empty;
             renderer.Fonts["diag"].MeasureString(renderer.sprite, str, DrawTextFormat.Left, ref rect);
             WriteText(renderer, str, renderer.device.Viewport.Width - rect.Width, 0, System.Drawing.Color.White, true);
-
-            // Draws camera position
-            //renderer.Camera.DrawPosition();
         }
 
         public static void WriteText(Renderer renderer, string text, int x, int y, Color c, bool shadow)

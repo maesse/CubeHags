@@ -16,7 +16,6 @@ namespace CubeHags.server
         {
             int serverId = buf.ReadInt32();
             cl.messageAcknowledge = buf.ReadInt32();
-            Common.Instance.clientSent--;
             if (cl.messageAcknowledge < 0)
             {
                 // usually only hackers create messages like this

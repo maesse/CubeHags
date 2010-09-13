@@ -733,7 +733,7 @@ namespace CubeHags.server
 
         private void ChangeMaxClients()
         {
-            throw new NotImplementedException();
+            //throw new NotImplementedException();
         }
         // Player movement occurs as a result of packet events, which
         // happen before SV_Frame is called

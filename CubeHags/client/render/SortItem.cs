@@ -3,6 +3,7 @@ using System.Collections.Generic;
  
 using System.Text;
 using System.Collections;
+using CubeHags.common;
 
 namespace CubeHags.client.render
 {
@@ -18,7 +19,7 @@ namespace CubeHags.client.render
         // 16 bit material ID
         // 16 bit depth
 
-        [Flags]
+       // [Flags]
         public enum FSLayer
         {
             GAME = 0x3,
@@ -27,7 +28,7 @@ namespace CubeHags.client.render
             EXTRA = 0x0
         } // 2 bit
 
-        [Flags]
+        //[Flags]
         public enum Viewport
         {
             STATIC = 0x7,
@@ -40,7 +41,7 @@ namespace CubeHags.client.render
             EIGHT = 0x0
         } // 3 bit
 
-        [Flags]
+        //[Flags]
         public enum VPLayer
         {
             WORLD = 0x2,
@@ -50,7 +51,7 @@ namespace CubeHags.client.render
             HUD = 0x0
         } // 3 bit
 
-        [Flags]
+       // [Flags]
         public enum Translucency
         {
             OPAQUE = 0x3,
@@ -162,11 +163,18 @@ namespace CubeHags.client.render
         // Pack input data to ulong
         public static ulong GenerateBits(FSLayer layer, Viewport vp, VPLayer vpLayer, Translucency trans, ushort Material, ushort depth, ushort ibID, ushort vbID)
         {
+            
+
             ulong result = (ulong)layer << 62;
             result += (ulong)vp << 59;
             result += (ulong)vpLayer << 56;
             result += (ulong)trans << 54;
-
+            int maxvb = 1 << 10;
+            if (vbID > maxvb || ibID > maxvb)
+            {
+                // Overflow
+                Common.Instance.WriteLine("VB/IB OVERFLOW!!!");
+            }
             result += (ulong)vbID << 43;
             result += (ulong)ibID << 32;
 
@@ -181,6 +189,11 @@ namespace CubeHags.client.render
                 // Depth first
                 result += (ulong)depth << 16;
                 result += (ulong)Material;
+            }
+
+            if (vpLayer != GetVPLayer(result))
+            {
+                int test = 2;
             }
 
             return result;

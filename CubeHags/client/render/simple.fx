@@ -8,8 +8,7 @@ static float3 zero = float3(0,0,0);
 float2 g_avSampleOffsets[16];
 float4 g_avSampleWeights[16];
 static const float3 LUMINANCE_VECTOR  = float3(0.2125f, 0.7154f, 0.0721f);
-uniform const float  MIDDLE_GRAY = 0.5f;
-uniform const float  LUM_WHITE = 0.82f;
+
 uniform const float  BRIGHT_THRESHOLD = 0.9f;
 uniform const float  bloomMulti = 0.6f;
 const float fTau = 0.4f;
@@ -34,8 +33,14 @@ const float4 g_SelfIllumTint	: register( c7 );
 
 uniform const float invLogLumRange = 0.0f;
 uniform const float logLumOffset = 0.0f;
+
 uniform const float avgLogLum = 64.0f;
+uniform const float  MIDDLE_GRAY = 0.5f;
+uniform const float  LUM_WHITE = 0.82f;
+
 uniform const float detailMultiplier = 2.0f;
+uniform const float saturationAmount = 1.0f;
+uniform const float3 FogColor = float3(0.5f, 0.6f, 0.7f);
 
 uniform float4x4 WorldViewProj;
 uniform float4x4 World;
@@ -87,6 +92,14 @@ struct POSNORTEX
 {
 	float4 pos : POSITION;
 	float3 normal : NORMAL0;
+	float2 texcoord : TEXCOORD0;
+};
+
+struct POSNORCOLTEX 
+{
+	float4 pos : POSITION;
+	float3 normal : NORMAL0;
+	float4 color : COLOR;
 	float2 texcoord : TEXCOORD0;
 };
 
@@ -290,6 +303,19 @@ VS_OUT VertexPosTex2( POSTEX input)
 	return Out;
 }
 
+VS_OUT VertexPosNormalColorTex( POSNORCOLTEX input) 
+{
+	VS_OUT Out;
+	Out.pos = mul(input.pos, WorldViewProj);
+	Out.realpos = Out.pos;
+	Out.texcoord = input.texcoord;
+	Out.lightmap = float2(0.5f, 0.5f);
+	Out.normal = input.normal;
+	Out.color = input.color;
+	return Out;
+}
+
+
 VS_POSCOLOR VertexPosColor( POSCOLOR input) 
 {
 	VS_POSCOLOR Out;
@@ -388,19 +414,56 @@ float3 GetSpecularLighting(in VS_OUT i)
 	return specularLighting;
 }
 
+uniform const float A = 0.15;
+uniform const float B = 0.50;
+uniform const float C = 0.10;
+uniform const float D = 0.20;
+uniform const float E = 0.02;
+uniform const float F = 0.30;
+uniform const float W = 5.2;
+uniform const float ExposureBias = 1.0f;
+ 
+float3 Uncharted2Tonemap(float3 x)
+{
+   return ((x*(A*x+C*B)+D*E)/(x*(A*x+B)+D*F))-E/F;
+}
+ 
+float4 FilmicTonemap(in float3 text)
+{
+   float3 texColor = text;
+   //texColor *= 16;  // Hardcoded Exposure Adjustment
+ 
+   
+   float3 curr = Uncharted2Tonemap(ExposureBias*texColor);
+ 
+   float3 whiteScale = 1.0f/Uncharted2Tonemap(W);
+   float3 color = curr*whiteScale;
+ 
+   float3 retColor = pow(color,1/2.2);
+   return float4(retColor,1);
+}
+
 // Pixel Shaders
 float4 PixelTexLightLogLum(VS_OUT i) : COLOR0
 {
 	float4 tex = tex2D(BaseTextureSampler, i.texcoord);
+	tex = pow((tex+ 0.055f)/1.055, 2.2f);
 	tex.rgb *= tex2D(LightmapSampler, i.lightmap).rgb;
 	
 	//tex.a = get_log_luminance(tex.rgb) * invLogLumRange + logLumOffset; 
 	//tex.rgb = LinearToSRGB(tex.rgb);
-	float b = 0.001f;
-	float fogAmount = exp(-i.realpos.z*b);
-	float3 fogColor = float3(0.5f, 0.6f, 0.7f);
+	//float b = 0.001f;
+	//float fogAmount = exp(-i.realpos.z*b);
+	//float3 fogColor = FogColor;
 	
-	tex.rgb = TonemapPixel(tex.rgb);
+	// Saturatex
+	float Lum = dot(tex.rgb, LUMINANCE_VECTOR);
+	tex.rgb = lerp(Lum.xxx, tex.rgb, saturationAmount);
+	
+	//tex.rgb = TonemapPixel(tex.rgb);
+	tex = FilmicTonemap(tex.rgb);
+	//tex = pow(tex * 1.055f, 1.0f/2.4f) - 0.055f;
+	
 	//tex.rgb = lerp(fogColor, tex.rgb, fogAmount);
 	//
 	return tex;
@@ -433,6 +496,21 @@ float4 PixelTexLogLum(VS_OUT i) : COLOR0
 	tex *= avgLogLum;
 	//tex.a = get_log_luminance(tex.rgb) * invLogLumRange + logLumOffset; 
 	tex.rgb = TonemapPixel(tex.rgb);
+	return tex;
+}
+
+float4 PixelTexColor(VS_OUT i) : COLOR0
+{
+	float4 tex = tex2D(BaseTextureSampler, i.texcoord);
+	tex = pow((tex+ 0.055f)/1.055, 2.2f);
+	clip(tex.a-0.01f);
+	//tex = float4(0.5f,0.5f,0.5f,1.0f);
+	//tex.rgb = i.color.aaa;
+	tex.rgb *= DecodeRGBE8(i.color);
+	
+	//tex.rgb *= avgLogLum;
+	//tex.rgb = TonemapPixel(tex.rgb);
+	tex = FilmicTonemap(tex.rgb);
 	return tex;
 }
 
@@ -619,6 +697,8 @@ technique TexturedLightmap
 		PixelShader = compile ps_2_0 PixelTexLightLogLum();
 	}
 }
+
+
 technique Sky3d
 {
 	pass P0
@@ -689,6 +769,18 @@ technique PositionColorAlpha
 		DestBlend = InvSrcAlpha;
 		VertexShader = compile vs_1_1 VertexPosColor();
         PixelShader = compile ps_2_0 PixelColorAlpha();
+	}
+}
+
+technique PositionTexturedColor
+{
+	pass p0
+	{
+		CullMode = None;
+		SrcBlend = SrcAlpha;
+		DestBlend = InvSrcAlpha;
+		VertexShader = compile vs_1_1 VertexPosNormalColorTex();
+        PixelShader = compile ps_2_0 PixelTexColor();
 	}
 }
 technique WorldAlpha

@@ -20,7 +20,7 @@ namespace CubeHags.common
     {
         private static readonly Common _Instance = new Common();
         public static Common Instance { get { return _Instance; } }
-        private static string CONFIG_NAME = "cubehags.cfg";
+        private const string CONFIG_NAME = "cubehags.cfg";
 
         private StreamWriter logWriter;
         public CVar maxfps;
@@ -32,22 +32,15 @@ namespace CubeHags.common
         public int frameTime;
         static int lastTime = 0;
 
-        public int frameNumber;
-        private long startTime;
+        private long startTime; // When we started the program
         public float frameMsec;
 
-        Queue<Event> pushedEventQueue = new Queue<Event>(256);
-        Queue<Event> eventQueue = new Queue<Event>(256);
-
         List<string> commandLines = new List<string>();
-
         public static Random Rand = new Random();
 
-        public int clientSent = 0;
-        //public int serverSent = 0;
-        private readonly object padlock = new object();
         public Common()
         {
+
         }
 
         public void Frame()
@@ -55,36 +48,18 @@ namespace CubeHags.common
             // Write config file if anything has changed
             WriteConfiguration();
 
-            //
-            // main event loop
-            //
-
             // we may want to spin here if things are going too fast
             int minMsec = (int)(1000f / maxfps.Integer);
-            
             int msec = minMsec;
             do
             {
-                //int timeRemaining = minMsec - msec;
-                //if (timeRemaining >= 11)
-                //{
-                //    //lock (padlock)
-                //    //{
-                //    //    Monitor.Wait(padlock, timeRemaining-8);
-                //    //}
-                //    //Thread.Sleep(0);
-                //    Thread.Sleep(timeRemaining-8);
-                //}
-
                 frameTime = (int)EventLoop();
+
                 if (lastTime > frameTime)
                     lastTime = frameTime; // possible on first frame
-
                 msec = frameTime - lastTime;
             } while (msec < minMsec);
             Commands.Instance.Execute();
-
-            lastTime = frameTime;
 
             // mess with msec if needed
             frameMsec = msec;
@@ -93,30 +68,15 @@ namespace CubeHags.common
                 msec = 200;
             }
 
-            //
             // server side
-            //
             Server.Instance.Frame(msec);
 
-            //
             // client system
-            //
-            //
-            // run event loop a second time to get server to client packets
-            // without a frame of latency
-            //
             EventLoop();
             Commands.Instance.Execute();
-
-            //Common.Instance.Write(clientSent + "->");
-
-            //
-            // client side
-            //
             Client.Instance.Frame(msec);
-            
 
-            frameNumber++;
+            lastTime = frameTime;
         }
 
 
@@ -133,9 +93,12 @@ namespace CubeHags.common
 
             while (true)
             {
-                //Net.Instance.Pump();
+                Net.Instance.Pump(); // Pump our network
+
+                // See what we can get
                 ev = GetEvent();
-                // if no more events are available
+
+                // No more events left, lets get out of here
                 if (ev.evType == EventType.NONE)
                 {
                     return ev.evTime;
@@ -146,6 +109,7 @@ namespace CubeHags.common
                     case EventType.NONE:
                         break;
                     case EventType.PACKET:
+                        // Figure out if the packet is for the client or server
                         Net.Packet packet = (Net.Packet)ev.data;
                         if (sv_running.Integer == 1 && packet.Address.Port != Net.Instance.net_port.Integer)
                             Server.Instance.PacketEvent(packet);
@@ -156,32 +120,14 @@ namespace CubeHags.common
             }
         }
 
-
-
         Event GetEvent()
         {
-            //if (pushedEventQueue.Count > 0)
-            //    return pushedEventQueue.Dequeue();
-
-            return GetRealEvent();
-        }
-
-        Event GetRealEvent()
-        {
-            // return if we have data
-            if (eventQueue.Count > 0)
-                return eventQueue.Dequeue();
-
             // check for network packets
             Net.Packet packet = Net.Instance.GetPacket();
             if (packet != null)
             {
-                QueueEvent(0f, EventType.PACKET, 0, 0, packet.Buffer.LengthBytes, packet);
+                return CreateEvent(0f, EventType.PACKET, 0, 0, packet.Buffer.LengthBytes, packet);
             }
-
-            // return if we have data
-            if (eventQueue.Count > 0)
-                return eventQueue.Dequeue();
 
             // create an empty event to return
             Event evt = new Event();
@@ -189,17 +135,7 @@ namespace CubeHags.common
             return evt;
         }
 
-
-        /*
-        ================
-        Com_QueueEvent
-
-        A time of 0 will get the current time
-        Ptr should either be null, or point to a block of data that can
-        be freed by the game later.
-        ================
-        */
-        void QueueEvent(float time, EventType type, int value, int value2, int dataSize, object data)
+        Event CreateEvent(float time, EventType type, int value, int value2, int dataSize, object data)
         {
             Event evt = new Event();
             if (time == 0f)
@@ -212,7 +148,7 @@ namespace CubeHags.common
             evt.dataSize = dataSize;
             evt.data = data;
 
-            eventQueue.Enqueue(evt);
+            return evt;
         }
 
         public void WriteConfiguration()
@@ -262,45 +198,18 @@ namespace CubeHags.common
                 commandLines.Add(strBuilder.ToString());
         }
 
-        /*
-        ===============
-        Com_StartupVariable
-
-        Searches for command line parameters that are set commands.
-        If match is not NULL, only that cvar will be looked for.
-        That is necessary because cddir and basedir need to be set
-        before the filesystem is started, but all other sets should
-        be after execing the config and default.
-        ===============
-        */
-        void StartupVariable(string match)
-        {
-            foreach (string str in commandLines)
-            {
-                string[] tokens = Commands.TokenizeString(str);
-                if (!tokens[0].Equals("set"))
-                    continue;
-
-                if (match == null || match.Equals(tokens[1]))
-                {
-                    CVars.Instance.Set(tokens[1], tokens[2]);
-                    CVar cv = CVars.Instance.Get(tokens[1], "", CVarFlags.NONE);
-                    cv.Flags |= CVarFlags.USER_CREATED;
-                }
-            }
-        }
-
         public void Init(string commandline)
         {
             System.Console.WriteLine("Cubehags os:{0} cpus:{1}", Environment.OSVersion, Environment.ProcessorCount);
             FileStream stream;
             try
             {
-                stream = File.OpenWrite("cubehagslog.txt");
+                Directory.CreateDirectory("log");
+                stream = File.Create("log/cubehagslog.txt");
             }
             catch (Exception ex)
             {
-                stream = File.OpenWrite("cubelog" + new Random().Next(99999) + ".txt");
+                stream = File.Create("log/cubelog" + new Random().Next(99999) + ".txt");
             }
             logWriter = new StreamWriter(stream);
             CVars.Instance.Init();
@@ -308,17 +217,14 @@ namespace CubeHags.common
             // prepare enough of the subsystems to handle
             // cvar and command buffer management
             ParseCommandLine(commandline);
-            StartupVariable(null);
 
             // done early so bind command exists
             KeyHags.Instance.Init();
-
             FileCache.Instance.Init();
-
             Commands.Instance.AddCommand("quit", new CommandDelegate(Quit_f));
+            Commands.Instance.AddCommand("exit", new CommandDelegate(Quit_f));
 
             ExecuteCfg();
-            StartupVariable(null);
 
             // if any archived cvars are modified after this, we will trigger a writing
             // of the config file
@@ -333,8 +239,6 @@ namespace CubeHags.common
             sv_running = CVars.Instance.Get("sv_running", "0", CVarFlags.ROM);
             timescale = CVars.Instance.Get("timescale", "1", CVarFlags.TEMP);
 
-
-
             Server.Instance.Init();
             Client.Instance.Init();
 
@@ -348,11 +252,7 @@ namespace CubeHags.common
             Commands.Instance.Execute();
             if (!AddStartupCommands())
             {
-                // if the user didn't give any commands, run default action
-                Client.Instance.cin.AlterGameState = true;
-                Commands.Instance.AddText("cinematic cube.avi\n");
-                //CVars.Instance.Set("nextmap", "map cs_office");
-                Commands.Instance.Execute();
+                // if the user didn't give any commands, run default action -- nothing
             }
         }
 
@@ -395,13 +295,7 @@ namespace CubeHags.common
         // Loads default cfgs
         void ExecuteCfg()
         {
-            Commands.Instance.ExecuteText(Commands.EXECTYPE.EXEC_NOW, "exec default.cfg\n");
-            Commands.Instance.Execute();
-
             Commands.Instance.ExecuteText(Commands.EXECTYPE.EXEC_NOW, string.Format("exec {0}\n", CONFIG_NAME));
-            Commands.Instance.Execute();
-
-            Commands.Instance.ExecuteText(Commands.EXECTYPE.EXEC_NOW, "exec autoexec.cfg\n");
             Commands.Instance.Execute();
         }
 
@@ -420,9 +314,9 @@ namespace CubeHags.common
 
         public void Write(string str)
         {
-            System.Console.Write(str);
-            Client.Instance.ConsolePrint(str);
+            System.Console.Write(HagsConsole.StripColors(str));
             HagsConsole.Instance.AddLine(str);
+            
             logWriter.WriteLine(str);
             logWriter.Flush();
         }

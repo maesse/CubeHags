@@ -7,6 +7,7 @@ using SlimDX;
 using CubeHags.client;
 using CubeHags.client.cgame;
 using CubeHags.client.common;
+using CubeHags.client.map.Source;
 
 namespace CubeHags.server
 {
@@ -30,7 +31,7 @@ namespace CubeHags.server
         {
             spawns  = new spawn_t[] { new spawn_t{Name = "info_player_start", Spawn = new SpawnDelegate(SP_info_player_start)} };
             sv_gravity = CVars.Instance.Get("sv_gravity", "800", CVarFlags.SERVER_INFO);
-            sv_speed = CVars.Instance.Get("sv_speed", "320", CVarFlags.SERVER_INFO);
+            sv_speed = CVars.Instance.Get("sv_speed", "400", CVarFlags.SERVER_INFO);
             g_synchrounousClients = CVars.Instance.Get("g_synchrounousClients", "0", CVarFlags.SERVER_INFO);
             g_smoothClients = CVars.Instance.Get("g_smoothClients", "0", CVarFlags.SERVER_INFO);
         }
@@ -615,6 +616,7 @@ namespace CubeHags.server
             {
                 if (client.sess.spectatorState == spectatorState_t.SPECTATOR_SCOREBOARD)
                     return;
+                client.ps.speed = sv_speed.Integer;
                 SpectatorThink(ent, ucmd);
                 return;
             }
@@ -646,7 +648,7 @@ namespace CubeHags.server
             if (pm.ps.pm_type == Common.PMType.DEAD)
                 pm.tracemask = (1 | 0x10000);
             else
-                pm.tracemask = (1 );
+                pm.tracemask = (int)(brushflags.CONTENTS_SOLID | brushflags.CONTENTS_MOVEABLE | brushflags.CONTENTS_SLIME | brushflags.CONTENTS_OPAQUE);
             pm.pmove_fixed = ((CVars.Instance.FindVar("pmove_fixed").Integer==1?true:false) | client.pers.pmoveFixed)?1:0;
             pm.pmove_msec = pmove_msec.Integer;
             client.oldOrigin = client.ps.origin;
@@ -729,19 +731,20 @@ namespace CubeHags.server
             if (client.sess.spectatorState != spectatorState_t.SPECTATOR_FOLLOW)
             {
                 client.ps.pm_type = Common.PMType.SPECTATOR;
-                client.ps.speed = 400;  // faster than normal
+                client.ps.speed = sv_speed.Integer;  // faster than normal
                 
                 // set up for pmove
                 pmove_t pm = new pmove_t();
                 pm.Trace = new TraceDelegate(ClipMap.Instance.SV_Trace);
                 pm.ps = client.ps;
                 pm.cmd = ucmd;
-                pm.tracemask = 1;
+                pm.tracemask = (int)(brushflags.CONTENTS_SOLID | brushflags.CONTENTS_MOVEABLE | brushflags.CONTENTS_SLIME | brushflags.CONTENTS_OPAQUE);
                 pm.pmove_fixed = CVars.Instance.VariableIntegerValue("pmove_fixed");
                 pm.pmove_msec = CVars.Instance.VariableIntegerValue("pmove_msec");
                 //pm.Trace += new TraceDelegate(Server.Instance.Trace);
                 //pm.PointContents += new TraceContentsDelegate(Server.Instance.PointContents);
-
+                pm.mins = new Vector3(-16, -16, -36);
+                pm.maxs = new Vector3(16, 16, 36);
                 // perform a pmove
                 Common.Instance.Pmove(pm);
                 //if(!pm.ps.velocity.Equals(Vector3.Zero))

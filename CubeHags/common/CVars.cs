@@ -38,6 +38,7 @@ namespace CubeHags.client.common
         public bool Validate;
         public bool Integral;
         public float min, max;
+        public bool Bool { get { if (!Integral) return false; return (Integer == 1); } }
     }
 
     sealed class CVars
@@ -286,10 +287,13 @@ namespace CubeHags.client.common
             cvar.ModificationCount = 1;
             float val;
             int val2;
-            if(float.TryParse(value, out val))
+            if(float.TryParse(value, System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out val))
                 cvar.Value = val;
-            if(int.TryParse(value, out val2))
+            if (int.TryParse(value, out val2))
+            {
                 cvar.Integer = val2;
+                cvar.Integral = true;
+            }
             cvar.ResetString = value;
             cvar.Validate = false;
             cvar.Flags = flags;
@@ -397,10 +401,15 @@ namespace CubeHags.client.common
             var.String = value;
             float val;
             int val2;
-            if (float.TryParse(value, out val))
+            if (float.TryParse(value, System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out val))
                 var.Value = val;
             if (int.TryParse(value, out val2))
+            {
                 var.Integer = val2;
+                var.Integral = true;
+            }
+            else
+                var.Integral = false;
 
             return var;
         }
@@ -476,18 +485,18 @@ namespace CubeHags.client.common
         */
         public void Print(CVar var)
         {
-            Common.Instance.Write("\"{0}\" is \"{1}\"", var.Name, var.String);
+            Common.Instance.Write("\"{0}\" is \"{1}\"^7", var.Name, var.String);
             if ((var.Flags & CVarFlags.ROM) != CVarFlags.ROM)
             {
                 if (var.String.Equals(var.ResetString))
                     Common.Instance.Write(", the default");
                 else
-                    Common.Instance.Write(" default: \"{0}\"", var.ResetString);
+                    Common.Instance.Write(" default: \"{0}\"^7", var.ResetString);
             }
 
             Common.Instance.Write("\n");
             if (var.LatchedString != null)
-                Common.Instance.WriteLine("latched: \"{0}\"", var.LatchedString);
+                Common.Instance.WriteLine("latched: \"{0}\"^7", var.LatchedString);
         }
 
         /*

@@ -162,6 +162,8 @@ namespace CubeHags.client.common
             // Check cvars
             if (CVars.Instance.HandleFromCommand(tokens))
                 return;
+
+            Common.Instance.WriteLine("command '{0}^7' not found.", tokens[0]);
         }
 
         public void AddCommand(string name, CommandDelegate function)

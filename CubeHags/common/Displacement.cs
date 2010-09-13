@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Text;
 using SlimDX;
 using CubeHags.client.map.Source;
+using CubeHags.client;
 
 namespace CubeHags.common
 {
@@ -661,6 +662,8 @@ namespace CubeHags.common
 
     public class DispCollTree
     {
+        public const int DISPCOLL_TRILIST_SIZE = 256;
+        public const int NEVER_UPDATED = -999999;
         public int Power;
         public Vector3[] m_SurfPoints = new Vector3[4];		// Base surface points.
         public int m_Contents;				// the displacement surface "contents" (solid, etc...)
@@ -685,11 +688,11 @@ namespace CubeHags.common
 
 	    public DispLeafLink		m_pLeafLinkHead;		// List that links it into the leaves.
 
-        struct AABB_t
+        class AABB_t
 	    {
-		    List<Vector3>	m_Normals;
-		    float[]	m_Dists;//[DISPCOLL_AABB_SIDE_COUNT];
-	    };
+		    public List<Vector3>	Normals = new List<Vector3>();
+            public float[] Dists = new float[6];//[DISPCOLL_AABB_SIDE_COUNT];
+	    }
 
         // Displacement collision triangle data.
 	    public class Tri_t
@@ -701,11 +704,11 @@ namespace CubeHags.common
             public ushort m_iSurfProp;				// 0 or 1
 	    };
 
-        public struct TriList_t
+        public class TriList_t
 	    {
-		    short	m_Count;
-		    List<Tri_t>	m_ppTriList;//[DISPCOLL_TRILIST_SIZE];
-	    };
+		    public short	Count = 0;
+            public Tri_t[] ppTriList = new Tri_t[DISPCOLL_TRILIST_SIZE];//[DISPCOLL_TRILIST_SIZE];
+	    }
 
 	    public class Node_t
 	    {
@@ -713,6 +716,594 @@ namespace CubeHags.common
             public short[] m_iTris = new short[2];//[2];
             public int m_fFlags;
 	    }
+
+        public bool AABBSweep(Vector3 start, Vector3 end, Vector3 extends,
+                              float startf, float endf, ref trace_t trace)
+        {
+            //
+            // create and initialize the triangle list
+            //
+            TriList_t trilist = new TriList_t();
+
+            //
+            // create and initialize the primary AABB
+            //
+            AABB_t AABBox = new AABB_t();
+
+            //
+            // sweep box against the axial-aligned bboxed quad-tree and generate an initial
+            // list of collision tris
+            //
+            SweptAABB_BuildTriList(start, end, extends, 0, AABBox, trilist);
+
+            // save the starting fraction
+            float preIntersectionFrac = trace.fraction;
+
+            //
+            // sweep axis-aligned bounding box against the triangles in the list
+            //
+            if (trilist.Count > 0)
+            {
+                SweptAABB_IntersectTriList(start, end, extends, startf, endf, ref trace, trilist);
+            }
+
+            // collision
+            if (preIntersectionFrac > trace.fraction)
+                return true;
+
+            // no collision
+            return false;
+        }
+
+        void SweptAABB_IntersectTriList(Vector3 start, Vector3 end, Vector3 extends, float startf, float endf, ref trace_t trace, TriList_t trilist)
+        {
+            Vector3 impactNormal = new Vector3();
+            float impactDist = 0f;
+            Tri_t tri;
+
+            //
+            // intersect against all the flagged triangles in trilist
+            //
+            for (int iTri = 0; iTri < trilist.Count; iTri++)
+            {
+                // get the current displacement
+                tri = trilist.ppTriList[iTri];
+
+                // intersection test
+                IntersectAABoxSweptTriangle(start, end, extends,
+                                     m_pVerts[tri.m_uiVerts[0]],
+                                     m_pVerts[tri.m_uiVerts[2]],
+                                     m_pVerts[tri.m_uiVerts[1]],
+                                     tri.m_vecNormal, tri.m_flDist,
+                                     tri.m_nFlags, tri.m_iSurfProp,
+                    /*fraction,*/ref trace, true);
+
+            }
+
+        }
+
+        void IntersectAABoxSweptTriangle(Vector3 start, Vector3 end, Vector3 extends,
+                                         Vector3 v1, Vector3 v2, Vector3 v3, Vector3 triNormal,
+                                         float triDist, ushort triFlags, ushort triSurfProp, ref trace_t trace, bool startsOutside)
+        {
+            //
+	        // make sure the box and triangle are not initially intersecting!!
+	        // NOTE: if bStartOutside is set -- this is assumed
+	        //
+	        if( !startsOutside )
+	        {
+		        // check for interection -- if not intersecting continue, otherwise
+		        // return and let the "in solid" functions handle it
+	        }
+
+	        //
+	        // initialize the axial-aligned box sweep triangle test
+	        //
+	        bool  bStartOutSolid = false;
+	        bool  bEndOutSolid = false;
+	        float fracStart = NEVER_UPDATED;
+	        float fracEnd = 1.0f;
+
+	        // calculate the box direction - the sweep direction
+	        Vector3 boxDir = end - start;
+
+	        //
+	        // OPTIMIZATION: make sure objects are traveling toward one another
+	        //
+            float angle = Vector3.Dot(triNormal, boxDir);// triNormal.Dot(boxDir);
+	        if( angle/*triNormal.Dot( boxDir )*/ > ClipMap.EPSILON )
+	        {
+		        return;
+	        }
+            // test against the triangle face plane
+            if (!FacePlane(triNormal, triDist, start, end, extends, ref fracStart, ref fracEnd, v1, v2, v3,
+                            bStartOutSolid, bEndOutSolid)) { return; }
+
+            // test against axial planes (of the aabb)
+            if (!AxialPlanesXYZ(v1, v2, v3, start, end, extends, boxDir, triNormal, ref fracStart, ref fracEnd,
+                                 bStartOutSolid, bEndOutSolid)) { return; }
+
+            //
+            // There are 9 edge tests - edges 1, 2, 3 cross with the box edges (symmetry) 1, 2, 3.  However, the box
+            // is axial-aligned resulting in axially directional edges -- thus each test is edges 1, 2, and 3 vs. 
+            // axial planes x, y, and z
+            //
+            // There are potentially 9 more tests with edges, the edge's edges and the direction of motion!
+            // NOTE: I don't think these tests are necessary for a manifold surface -- but they still remain if
+            // it ever becomes a problem in the future!
+            //
+            Vector3 edge;
+
+            // edge 1 - axial tests are 2d tests, swept direction is a 3d test
+            edge = v2 - v1;
+            if (!EdgeCrossAxialX(edge, v1, v3, extends, start, end, triNormal, triDist, ref fracStart, ref fracEnd, bStartOutSolid, bEndOutSolid, 4)) { return; }
+            if (!EdgeCrossAxialY(edge, v1, v3, extends, start, end, triNormal, triDist, ref fracStart, ref fracEnd, bStartOutSolid, bEndOutSolid, 5)) { return; }
+            if (!EdgeCrossAxialZ(edge, v1, v3, extends, start, end, triNormal, triDist, ref fracStart, ref fracEnd, bStartOutSolid, bEndOutSolid, 6)) { return; }
+            //	if( !EdgeCrossSweptDir( edge, v1, v3, boxDir, boxExtents, boxStart, boxEnd, fracStart, fracEnd ) ) { fraction = fracStart; return; }
+
+            // edge 2 - axial tests are 2d tests, swept direction is a 3d test
+            edge = v3 - v2;
+            if (!EdgeCrossAxialX(edge, v2, v1, extends, start, end, triNormal, triDist, ref  fracStart, ref fracEnd, bStartOutSolid, bEndOutSolid, 7)) { return; }
+            if (!EdgeCrossAxialY(edge, v2, v1, extends, start, end, triNormal, triDist, ref fracStart, ref fracEnd, bStartOutSolid, bEndOutSolid, 8)) { return; }
+            if (!EdgeCrossAxialZ(edge, v2, v1, extends, start, end, triNormal, triDist, ref fracStart, ref fracEnd, bStartOutSolid, bEndOutSolid, 9)) { return; }
+            //	if( !EdgeCrossSweptDir( edge, v2, v1, boxDir, boxExtents, boxStart, boxEnd, fracStart, fracEnd ) ) { fraction = fracStart; return; }
+
+            // edge 3 - axial tests are 2d tests, swept direction is a 3d test
+            edge = v1 - v3;
+            if (!EdgeCrossAxialX(edge, v3, v2, extends, start, end, triNormal, triDist, ref fracStart, ref fracEnd, bStartOutSolid, bEndOutSolid, 10)) { return; }
+            if (!EdgeCrossAxialY(edge, v3, v2, extends, start, end, triNormal, triDist, ref fracStart, ref fracEnd, bStartOutSolid, bEndOutSolid, 11)) { return; }
+            if (!EdgeCrossAxialZ(edge, v3, v2, extends, start, end, triNormal, triDist, ref fracStart, ref fracEnd, bStartOutSolid, bEndOutSolid, 12)) { return; }
+            //	if( !EdgeCrossSweptDir( edge, v2, v1, boxDir, boxExtents, boxStart, boxEnd, fracStart, fracEnd ) ) { fraction = fracStart; return; }
+
+            //
+            // the direction of motion crossed with the axial planes is equivolent
+            // to cross the box (axial planes) and the 
+            //
+            //	if( !DirectionOfMotionCrossAxialPlanes( boxStart, boxEnd, boxDir, boxExtents, fracStart, fracEnd, v1, v2, v3 ) ) { fraction = fracStart; return; }
+
+            //
+            // didn't have a separating axis -- update trace data -- should I handle a fraction left solid here!????
+            //
+            if (fracStart < fracEnd)
+            {
+                if ((fracStart > NEVER_UPDATED) && (fracStart < trace.fraction))
+                {
+                    // clamp -- shouldn't really ever be here!???
+                    if (fracStart < 0.0f)
+                    {
+                        fracStart = 0.0f;
+                    }
+
+                    trace.fraction = fracStart;
+                    trace.plane.normal = triNormal;
+                    trace.plane.dist = triDist;
+                    //trace.dispFlags = triFlags;
+                    m_iLatestSurfProp = triSurfProp;
+                }
+            }
+        }
+
+        bool EdgeCrossAxialX(Vector3 edge, Vector3 ptOnEdge, Vector3 ptOffEdge, Vector3 extents,
+                            Vector3 boxStart, Vector3 boxEnd, Vector3 triNormal, float triDist,
+                            ref float fracStart, ref float fracEnd, bool startOutSolid, bool endOutSolid, int index)
+        {
+            // calculate the normal - edge x axialX = ( 0.0, edgeZ, -edgeY )
+            Vector3 normal = new Vector3(0f, edge.Z, -edge.Y);
+            normal.Normalize();
+
+            // check for zero length normals
+            if (normal.Equals(Vector3.Zero))
+                return true;
+
+            // finish the plane definition - get distance
+            float dist = (normal.Y * ptOnEdge.Y) + (normal.Z * ptOnEdge.Z);
+
+            // special case the point off edge in plane
+            float ptOffDist = (normal.Y * ptOffEdge.Y) + (normal.Z * ptOffEdge.Z);
+            if (Math.Abs(ptOffDist - dist) < ClipMap.EPSILON)
+            {
+                normal = triNormal;
+                dist = triDist;
+            }
+            // adjust plane facing if necessay - triangle should be behind the plane
+            else if (ptOffDist > dist)
+            {
+                normal.Y = -normal.Y;
+                normal.Z = -normal.Z;
+                dist = -dist;
+            }
+
+            // calculate the closest point on box to plane (get extents in that direction)
+            Vector3 ptExtents = Vector3.Zero;
+            CalcClosestExtents(normal, extents, ref ptExtents);
+
+            //
+            // expand the plane by the extents of the box to reduce the swept box/triangle
+            // test to a ray/extruded triangle test (one of the triangles extruded planes
+            // was just calculated above
+            //
+            float expandDist = dist - ((normal.Y * ptExtents.Y) + (normal.Z * ptExtents.Z));
+            float distStart = (normal.Y * boxStart.Y) + (normal.Z * boxStart.Z) - expandDist;
+            float distEnd = (normal.Y * boxEnd.Y) + (normal.Z * boxEnd.Z) - expandDist;
+
+            Vector3 boxDir = boxEnd - boxStart;
+            boxDir.Normalize();
+
+            // resolve the ray/plane collision
+            if (!ResolveRayPlaneIntersect(distStart, distEnd, ref fracStart, ref fracEnd, boxDir, normal, expandDist, startOutSolid, endOutSolid, index))
+                return false;
+
+            return true;
+
+        }
+
+        bool EdgeCrossAxialY(Vector3 edge, Vector3 ptOnEdge, Vector3 ptOffEdge, Vector3 extents,
+                            Vector3 boxStart, Vector3 boxEnd, Vector3 triNormal, float triDist,
+                            ref float fracStart, ref float fracEnd, bool startOutSolid, bool endOutSolid, int index)
+        {
+            // calculate the normal - edge x axialX = ( 0.0, edgeZ, -edgeY )
+            Vector3 normal = new Vector3(-edge.Z, 0.0f, edge.X);
+            normal.Normalize();
+
+            // check for zero length normals
+            if (normal.Equals(Vector3.Zero))
+                return true;
+
+            // finish the plane definition - get distance
+            float dist = (normal.X * ptOnEdge.X) + (normal.Z * ptOnEdge.Z);
+            float ptOffDist = (normal.X * ptOffEdge.X) + (normal.Z * ptOffEdge.Z);
+
+            // special case the point off edge in plane
+            if (Math.Abs(ptOffDist - dist) < ClipMap.EPSILON)
+            {
+                normal = triNormal;
+                dist = triDist;
+            }
+            // adjust plane facing if necessay - triangle should be behind the plane
+            else if (ptOffDist > dist)
+            {
+                normal.X = -normal.X;
+                normal.Z = -normal.Z;
+                dist = -dist;
+            }
+
+            // calculate the closest point on box to plane (get extents in that direction)
+            Vector3 ptExtents = Vector3.Zero;
+            CalcClosestExtents(normal, extents, ref ptExtents);
+
+            //
+            // expand the plane by the extents of the box to reduce the swept box/triangle
+            // test to a ray/extruded triangle test (one of the triangles extruded planes
+            // was just calculated above
+            //
+            float expandDist = dist - ((normal.X * ptExtents.X) + (normal.Z * ptExtents.Z));
+            float distStart = (normal.X * boxStart.X) + (normal.Z * boxStart.Z) - expandDist;
+            float distEnd = (normal.X * boxEnd.X) + (normal.Z * boxEnd.Z) - expandDist;
+
+            Vector3 boxDir = boxEnd - boxStart;
+            boxDir.Normalize();
+
+            // resolve the ray/plane collision
+            if (!ResolveRayPlaneIntersect(distStart, distEnd, ref fracStart, ref fracEnd, boxDir, normal, expandDist, startOutSolid, endOutSolid, index))
+                return false;
+
+            return true;
+        }
+
+        bool EdgeCrossAxialZ(Vector3 edge, Vector3 ptOnEdge, Vector3 ptOffEdge, Vector3 extents,
+                            Vector3 boxStart, Vector3 boxEnd, Vector3 triNormal, float triDist,
+                            ref float fracStart, ref float fracEnd, bool startOutSolid, bool endOutSolid, int index)
+        {
+            // calculate the normal - edge x axialX = ( 0.0, edgeZ, -edgeY )
+            Vector3 normal = new Vector3(edge.Y, -edge.X, 0f);
+            normal.Normalize();
+
+            // check for zero length normals
+            if (normal.Equals(Vector3.Zero))
+                return true;
+
+            // finish the plane definition - get distance
+            float dist = (normal.X * ptOnEdge.X) + (normal.Y * ptOnEdge.Y);
+
+            // special case the point off edge in plane
+            float ptOffDist = (normal.X * ptOffEdge.X) + (normal.Y * ptOffEdge.Y);
+            if (Math.Abs(ptOffDist - dist) < ClipMap.EPSILON)
+            {
+                normal = triNormal;
+                dist = triDist;
+            }
+            // adjust plane facing if necessay - triangle should be behind the plane
+            else if (ptOffDist > dist)
+            {
+                normal.Y = -normal.Y;
+                normal.X = -normal.X;
+                dist = -dist;
+            }
+
+            // calculate the closest point on box to plane (get extents in that direction)
+            Vector3 ptExtents = Vector3.Zero;
+            CalcClosestExtents(normal, extents, ref ptExtents);
+
+            //
+            // expand the plane by the extents of the box to reduce the swept box/triangle
+            // test to a ray/extruded triangle test (one of the triangles extruded planes
+            // was just calculated above
+            //
+            float expandDist = dist - ((normal.X * ptExtents.X) + (normal.Y * ptExtents.Y));
+            float distStart = (normal.X * boxStart.X) + (normal.Y * boxStart.Y) - expandDist;
+            float distEnd = (normal.X * boxEnd.X) + (normal.Y * boxEnd.Y) - expandDist;
+
+            Vector3 boxDir = boxEnd - boxStart;
+            boxDir.Normalize();
+
+            // resolve the ray/plane collision
+            if (!ResolveRayPlaneIntersect(distStart, distEnd, ref fracStart, ref fracEnd, boxDir, normal, expandDist, startOutSolid, endOutSolid, index))
+                return false;
+
+            return true;
+        }
+
+        bool AxialPlanesXYZ(Vector3 v1, Vector3 v2, Vector3 v3, Vector3 boxStart, Vector3 boxEnd,
+                            Vector3 extents, Vector3 sweptdir, Vector3 triNormal, ref float fracstart, ref float fracend, bool startOutSolid, bool endOutSolid)
+        {
+            // verify
+            Vector3 boxDir = sweptdir;
+            boxDir.Normalize();
+
+            //
+            // test axial planes (x, y, z)
+            //
+            Vector3 boxPt = new Vector3();
+            CalcClosestBoxPoint(triNormal, boxStart, extents, ref boxPt);
+
+            float dist, distStart, distEnd, closeValue = 0f;
+
+            for (int axis = 0; axis < 3; axis++)
+            {
+                if (triNormal[axis] > 0.0f)
+                {
+                    Vector3 normal = Vector3.Zero;
+                    normal[axis] = 1.0f;
+
+                    FindMax(v1[axis], v2[axis], v3[axis], ref closeValue);
+                    dist = closeValue + extents[axis];
+
+                    distStart = boxPt[axis] - closeValue;
+                    distEnd = (boxPt[axis] + sweptdir[axis]) - closeValue;
+
+                    if (!ResolveRayPlaneIntersect(distStart, distEnd, ref fracstart, ref fracend, boxDir, normal, dist, startOutSolid, endOutSolid, axis + 1))
+                        return false;
+                }
+                else
+                {
+                    Vector3 normal = Vector3.Zero;
+                    normal[axis] = -1.0f;
+
+                    FindMin(v1[axis], v2[axis], v3[axis], ref closeValue);
+                    dist = closeValue - extents[axis];
+
+                    distStart = closeValue - boxPt[axis];
+                    distEnd = closeValue - (boxPt[axis] + sweptdir[axis]);
+
+                    if (!ResolveRayPlaneIntersect(distStart, distEnd, ref fracstart, ref fracend, boxDir, normal, dist, startOutSolid, endOutSolid, axis + 1))
+                        return false;
+                }
+            }
+
+            return true;
+        }
+
+        static void FindMin(float v1, float v2, float v3, ref float min)
+        {
+            min = v1;
+            if (v2 < min) min = v2;
+            if (v3 < min) min = v3;
+        }
+
+        static void FindMax(float v1, float v2, float v3, ref float max)
+        {
+            max = v1;
+            if (v2 > max) max = v2;
+            if (v3 > max) max = v3;
+        }
+
+        bool FacePlane(Vector3 triNormal, float triDist, Vector3 start, Vector3 end, Vector3 extends, ref float startf, ref float endf, Vector3 v1, Vector3 v2, Vector3 v3, bool startoutSolid, bool endOutsolid)
+        {
+            // calculate the closest point on box to plane (get extents in that direction)
+            Vector3 ptExtent = Vector3.Zero;
+            CalcClosestExtents(triNormal, extends, ref ptExtent);
+
+            //
+            // expand the plane by the extents of the box to reduce the swept box/triangle
+            // test to a ray/extruded triangle test (one of the triangles extruded planes
+            // was just calculated above
+            //
+            float expandDist = triDist - Vector3.Dot(triNormal, ptExtent);
+            float distStart = Vector3.Dot(triNormal, start) - expandDist;
+            float distEnd = Vector3.Dot(triNormal, end) - expandDist;
+
+            Vector3 boxDir = end - start;
+            boxDir.Normalize();
+
+            // resolve the ray/plane collision
+            if (!ResolveRayPlaneIntersect(distStart, distEnd, ref  startf, ref endf, boxDir, triNormal, expandDist, startoutSolid, endOutsolid, 0))
+                return false;
+
+            return true;
+
+        }
+
+        bool ResolveRayPlaneIntersect(float distStart, float distEnd,ref  float fracStart, ref float fracEnd, Vector3 boxDir, Vector3 normal, float planeDist, bool bStartOutSolid, bool bEndOutSolid, int index)
+        {
+            if ((distStart > 0.0f) && (distEnd > 0.0f))
+                return false;
+
+            //	if( ( distStart <= 0.0f ) && ( distEnd <= 0.0f ) ) { return true; }
+            if ((distStart < 0.0f) && (distEnd < 0.0f))
+                return true;
+
+            if ((distStart >= 0.0f) && (distEnd <= 0.0f))
+            {
+                // find t - the parametric distance along the trace line
+                float t = (distStart - ClipMap.EPSILON) / (distStart - distEnd);
+                if (t > fracStart)
+                {
+                    fracStart = t;
+                }
+            }
+            else
+            //	else if( ( distStart <= 0.0f ) && ( distEnd > 0.0f ) )
+            {
+                // find t - the parametric distance along the trace line
+                float t = (distStart + ClipMap.EPSILON) / (distStart - distEnd);
+                if (t < fracEnd)
+                {
+                    fracEnd = t;
+                }
+            }
+
+            return true;
+        }
+
+        void CalcClosestExtents(Vector3 planeNormal, Vector3 boxExtents, ref Vector3 boxPt)
+        {
+            boxPt[0] = (planeNormal[0] < 0.0f) ? boxExtents[0] : -boxExtents[0];
+            boxPt[1] = (planeNormal[1] < 0.0f) ?  boxExtents[1] : -boxExtents[1];
+            boxPt[2] = (planeNormal[2] < 0.0f) ? boxExtents[2] : -boxExtents[2];
+        }
+
+        void CalcClosestBoxPoint(Vector3 planeNormal, Vector3 boxStart, Vector3 boxExtents, ref Vector3 boxPt)
+        {
+            boxPt = boxStart;
+            boxPt[0] += (planeNormal[0] < 0.0f) ? boxExtents[0] : -boxExtents[0];
+            boxPt[1] += (planeNormal[1] < 0.0f) ? boxExtents[1] : -boxExtents[1];
+            boxPt[2] += (planeNormal[2] < 0.0f) ? boxExtents[2] : -boxExtents[2];
+        }
+
+        void SweptAABB_BuildTriList(Vector3 start, Vector3 end, Vector3 extends, int nodeid, AABB_t AABBox, TriList_t triList)
+        {
+            // get the current node
+            Node_t node = m_pNodes[nodeid];
+
+            //
+            // fill in AABBox plane distances
+            //
+            AABBox.Dists[0] = -(node.m_BBox[0].X - ClipMap.EPSILON);
+            AABBox.Dists[1] = (node.m_BBox[1].X + ClipMap.EPSILON);
+            AABBox.Dists[2] = -(node.m_BBox[0].Y - ClipMap.EPSILON);
+            AABBox.Dists[3] = (node.m_BBox[1].Y + ClipMap.EPSILON);
+            AABBox.Dists[4] = -(node.m_BBox[0].Z - ClipMap.EPSILON);
+            AABBox.Dists[5] = (node.m_BBox[1].Z + ClipMap.EPSILON);
+
+            // test the swept box against the given node
+            if (SweptAABB_NodeTest(start, end, extends, AABBox))
+            {
+                //
+                // if leaf add tris to list
+                //
+                if ((node.m_fFlags & 0x01) > 0)
+                {
+                    if (triList.Count < DISPCOLL_TRILIST_SIZE)
+                    {
+                        triList.ppTriList[triList.Count] = m_pTris[node.m_iTris[0]];
+                        triList.ppTriList[triList.Count + 1] = m_pTris[node.m_iTris[1]];
+                        triList.Count += 2;
+                    }
+
+                    return;
+                }
+                // continue testing with children nodes
+                else
+                {
+                    SweptAABB_BuildTriList(start, end, extends, Nodes_GetChild(nodeid, 0), AABBox, triList);
+                    SweptAABB_BuildTriList(start, end, extends, Nodes_GetChild(nodeid, 1), AABBox, triList);
+                    SweptAABB_BuildTriList(start, end, extends, Nodes_GetChild(nodeid, 2), AABBox, triList);
+                    SweptAABB_BuildTriList(start, end, extends, Nodes_GetChild(nodeid, 3), AABBox, triList);
+                }
+            }
+        }
+
+        bool SweptAABB_NodeTest(Vector3 start, Vector3 end, Vector3 extends, AABB_t AABBox)
+        {
+            //
+            // create and initialize the enter and exit fractions
+            //
+            float enterFraction = 0.0f;
+            float exitFraction = 1.0f;
+
+            //
+            // test the ray against the AABB (reduced to 1d tests)
+            //
+            float distStart, distEnd, fraction;
+
+            for (int ndxAxis = 0; ndxAxis < 3; ndxAxis++)
+            {
+                //
+                // test negative axial direction
+                //
+                distStart = -start[ndxAxis] - (AABBox.Dists[(ndxAxis << 1)] + extends[ndxAxis] /*+ DIST_EPSILON*/ );
+                distEnd = -end[ndxAxis] - (AABBox.Dists[(ndxAxis << 1)] + extends[ndxAxis] /*+ DIST_EPSILON*/ );
+
+                if ((distStart > 0.0f) && (distEnd < 0.0f))
+                {
+                    fraction = (distStart - ClipMap.EPSILON) / (distStart - distEnd);
+                    //			fraction = distStart * scalar[ndxAxis];
+                    if (fraction > enterFraction)
+                    {
+                        enterFraction = fraction;
+                    }
+                }
+                else if ((distStart < 0.0f) && (distEnd > 0.0f))
+                {
+                    fraction = (distStart + ClipMap.EPSILON) / (distStart - distEnd);
+                    //			fraction = distStart * scalar[ndxAxis];
+                    if (fraction < exitFraction)
+                    {
+                        exitFraction = fraction;
+                    }
+                }
+                else if ((distStart > 0.0f) && (distEnd > 0.0f))
+                {
+                    return false;
+                }
+
+                //
+                // test positive axial direction
+                //
+                distStart = start[ndxAxis] - (AABBox.Dists[(ndxAxis << 1) + 1] + extends[ndxAxis] /*+ DIST_EPSILON*/ );
+                distEnd = end[ndxAxis] - (AABBox.Dists[(ndxAxis << 1) + 1] + extends[ndxAxis] /*+ DIST_EPSILON*/ );
+
+                if ((distStart > 0.0f) && (distEnd < 0.0f))
+                {
+                    fraction = (distStart - ClipMap.EPSILON) / (distStart - distEnd);
+                    //			fraction = distStart * scalar[ndxAxis];
+                    if (fraction > enterFraction)
+                    {
+                        enterFraction = fraction;
+                    }
+                }
+                else if ((distStart < 0.0f) && (distEnd > 0.0f))
+                {
+                    fraction = (distStart + ClipMap.EPSILON) / (distStart - distEnd);
+                    //			fraction = distStart * scalar[ndxAxis];
+                    if (fraction < exitFraction)
+                    {
+                        exitFraction = fraction;
+                    }
+                }
+                else if ((distStart > 0.0f) && (distEnd > 0.0f))
+                {
+                    return false;
+                }
+            }
+
+            // test results
+            if (exitFraction < enterFraction)
+                return false;
+
+            return true;
+        
+        }
 
         //-----------------------------------------------------------------------------
         // Purpose: allocate and initialize the displacement collision tree data

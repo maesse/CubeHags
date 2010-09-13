@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Text;
 using CubeHags.common;
 using CubeHags.client.common;
+using CubeHags.client.gui;
 
 namespace CubeHags.server
 {
@@ -77,33 +78,40 @@ namespace CubeHags.server
             }
 
             Common.Instance.WriteLine("map: {0}", sv_mapname.String);
-            Common.Instance.WriteLine("num score ping name                lastmsg address            qport rate");
-            Common.Instance.WriteLine("--- ----- ---- ------------------- ------- ------------------ ----- -----");
+            Common.Instance.WriteLine("num score ping name                          lastmsg address                qport rate");
+            Common.Instance.WriteLine("--- ----- ---- ----------------------------- ------- ---------------------- ----- -----");
             for (int i = 0; i < clients.Count; i++)
             {
                 client_t cl = clients[i];
                 if ((int)cl.state <= 0)
                     continue;
-                Common.Instance.Write("{0,-3} ", i);
+                string line = "";
+                line += string.Format("{0,-3} ", i);
                 Common.PlayerState ps = GameClientNum(i);
-                Common.Instance.Write("{0,-5} ", ps.persistant[0]);
+                line += string.Format("{0,-5} ", ps.persistant[0]);
 
                 if (cl.state == clientState_t.CS_CONNECTED)
-                    Common.Instance.Write("CNCT ");
+                    line += string.Format("CNCT ");
                 else if (cl.state == clientState_t.CS_ZOMBIE)
-                    Common.Instance.Write("ZMBI ");
+                    line += string.Format("ZMBI ");
                 else
                 {
                     int ping = cl.ping < 9999 ? cl.ping : 9999;
-                    Common.Instance.Write("{0,-4} ", ping);
+                    line += string.Format("{0,-4} ", ping);
                 }
 
-                Common.Instance.Write("{0,-32} ", cl.name);
+                line += string.Format("{0,-29} ", cl.name);
+                int nameDiff = cl.name.Length - HagsConsole.StripColors(cl.name).Length;
+                for (int j = 0; j < nameDiff; j++)
+                {
+                    line += " ";
+                }
 
-                Common.Instance.Write("{0,-7} ", time - cl.lastPacketTime);
-                Common.Instance.Write("{0,-22} ", cl.netchan.remoteAddress.ToString());
-                Common.Instance.Write("{0,-5} ", cl.netchan.qport);
-                Common.Instance.Write("{0,-5}\n", cl.rate);
+                line += string.Format("^7{0,-7} ", time - cl.lastPacketTime);
+                line += string.Format("{0,-22} ", cl.netchan.remoteAddress.ToString());
+                line += string.Format("{0,-5} ", cl.netchan.qport);
+                line += string.Format("{0,-5}", cl.rate);
+                Common.Instance.WriteLine(line);
             }
             Common.Instance.WriteLine("");
         }

@@ -9,18 +9,9 @@ using CubeHags.client.map.Source;
 
 namespace CubeHags.common
 {
-
-    //#define	MASK_ALL				(-1)
-    //#define	MASK_SOLID				(1)
-    //#define	MASK_PLAYERSOLID		(1|0x10000|0x2000000)
-    //#define	MASK_DEADSOLID			(1|0x10000)
-    //#define	MASK_WATER				(32)
-    //#define	MASK_OPAQUE				(1)
-    //#define	MASK_SHOT				(1|0x2000000|0x4000000)
-
     public class MoveClip
     {
-        public Vector3		boxmins, boxmaxs;// enclose the test object along entire move
+        public Vector3 boxmins, boxmaxs;// enclose the test object along entire move
         public Vector3 mins;
         public Vector3 maxs;	// size of the moving object
         public Vector3 start;
@@ -33,15 +24,55 @@ namespace CubeHags.common
 
     public sealed partial class ClipMap
     {
+
+        public class leafList_t
+        {
+            public int count;
+            public int maxcount;
+            public bool overflowed;
+            public int[] list;
+            public Vector3[] bounds = new Vector3[2];
+            public int lastLeaf;		// for overflows where each leaf can't be stored individually
+            public event StoreLeafDelegate StoreLeaf;
+            public void RunStoreLeaf(leafList_t ll, int nodenum) { StoreLeaf(ll, nodenum); }
+        }
+
+        public delegate void StoreLeafDelegate(leafList_t ll, int nodenum);
+
+        public class traceWork_t
+        {
+            public Vector3 start;
+            public Vector3 end;
+            public Vector3[] size = new Vector3[2];	// size of the box being swept through the model
+            public Vector3[] offsets = new Vector3[8];	// [signbits][x] = either size[0][x] or size[1][x]
+            public float maxOffset;	// longest corner length from origin
+            public Vector3 extents;	// greatest of abs(size[0]) and abs(size[1])
+            public Vector3[] bounds = new Vector3[2];	// enclosing box of start and end surrounding by size
+            public Vector3 modelOrigin;// origin of the model tracing through
+            public int contents;	// ored contents of the model tracing through
+            public bool isPoint;	// optimized case
+            public trace_t trace = new trace_t();		// returned from trace call
+            public sphere_t sphere = new sphere_t();		// sphere for oriendted capsule collision
+        }
+
+        // Used for oriented capsule collision detection
+        public class sphere_t
+        {
+            public bool use;
+            public float radius;
+            public float halfheight;
+            public Vector3 offset;
+        }
+
         public const float EPSILON = 0.03125f;
 
         leafList_t ll = new leafList_t();
         traceWork_t tw = new traceWork_t();
         int[] lleafs = new int[1024];
 
-        public trace_t Box_Trace( Vector3 start, Vector3 end, Vector3 mins, Vector3 maxs, int model, int brushmask, int capsule)
+        public trace_t Box_Trace( Vector3 start, Vector3 end, Vector3 mins, Vector3 maxs, int model, int brushmask)
         {
-            return Trace(start, end, mins, maxs, model, Vector3.Zero, brushmask, capsule, null);
+            return Trace(start, end, mins, maxs, model, Vector3.Zero, brushmask, null);
         }
 
         public trace_t SV_Trace(Vector3 start, Vector3 end, Vector3 mins, Vector3 maxs, int passEntityNum, int contentMask)
@@ -54,7 +85,7 @@ namespace CubeHags.common
 
             // clip to world
             MoveClip clip = new MoveClip();
-            clip.trace = Box_Trace(start, end, mins, maxs, 0, contentMask, 0);
+            clip.trace = Box_Trace(start, end, mins, maxs, 0, contentMask);
             clip.trace.entityNum = (clip.trace.fraction != 1.0f) ? 1022 : 1023;
             if (clip.trace.fraction == 0f)
             {
@@ -94,30 +125,23 @@ namespace CubeHags.common
             return results;
         }
 
-        trace_t Trace(Vector3 start, Vector3 end, Vector3 mins, Vector3 maxs, int model, Vector3 origin, int brushmask, int capsule, sphere_t sphere)
+        trace_t Trace(Vector3 start, Vector3 end, Vector3 mins, Vector3 maxs, int model, Vector3 origin, int brushmask, sphere_t sphere)
         {
             //cmodel_t cmod = ClipHandleToModel(model);
             // for multi-check avoidance
             checkcount++;
             // for statistics, may be zeroed
             c_traces++;
-
             this.tw = new traceWork_t();
             traceWork_t tw = this.tw;
             tw.trace = new trace_t();
-            tw.trace.fraction = 1; // assume it goes the entire distance until shown otherwise
+            tw.trace.fraction = 1f; // assume it goes the entire distance until shown otherwise
             tw.modelOrigin = origin;
 
             if (nodes == null || nodes.Length == 0)
             {
                 return tw.trace; // map not loaded, shouldn't happen
             }
-
-            // allow NULL to be passed in for 0,0,0
-            if (mins == null)
-                mins = Vector3.Zero;
-            if (maxs == null)
-                maxs = Vector3.Zero;
 
             // set basic parms
             tw.contents = brushmask;
@@ -130,17 +154,6 @@ namespace CubeHags.common
             tw.size[1] = maxs - offset;
             tw.start = start + offset;
             tw.end = end + offset;
-
-            // if a sphere is already specified
-            if (sphere != null)
-                tw.sphere = sphere;
-            else
-            {
-                tw.sphere.use = capsule==1?true:false;
-                tw.sphere.radius = (tw.size[1][0] > tw.size[1][2]) ? tw.size[1][2] : tw.size[1][0];
-                tw.sphere.halfheight = tw.size[1][2];
-                tw.sphere.offset = new Vector3(0, 0, tw.size[1][2] - tw.sphere.radius);
-            }
 
             tw.maxOffset = tw.size[1][0] + tw.size[1][1] + tw.size[1][2];
 
@@ -180,38 +193,20 @@ namespace CubeHags.common
             //
             // calculate bounds
             //
-            if (tw.sphere.use)
+            for (int i = 0; i < 3; i++)
             {
-                for (int i = 0; i < 3; i++)
+                if (tw.start[i] < tw.end[i])
                 {
-                    if (tw.start[i] < tw.end[i])
-                    {
-                        tw.bounds[0][i] = tw.start[i] - (float)Math.Abs(tw.sphere.offset[i]) - tw.sphere.radius;
-                        tw.bounds[1][i] = tw.end[i] + (float)Math.Abs(tw.sphere.offset[i]) + tw.sphere.radius;
-                    }
-                    else
-                    {
-                        tw.bounds[0][i] = tw.end[i] - (float)Math.Abs(tw.sphere.offset[i]) - tw.sphere.radius;
-                        tw.bounds[1][i] = tw.start[i] + (float)Math.Abs(tw.sphere.offset[i]) + tw.sphere.radius;
-                    }
+                    tw.bounds[0][i] = tw.start[i] + tw.size[0][i];
+                    tw.bounds[1][i] = tw.end[i] + tw.size[1][i];
+                }
+                else
+                {
+                    tw.bounds[0][i] = tw.end[i] + tw.size[0][i];
+                    tw.bounds[1][i] = tw.start[i] + tw.size[1][i];
                 }
             }
-            else
-            {
-                for (int i = 0; i < 3; i++)
-                {
-                    if (tw.start[i] < tw.end[i])
-                    {
-                        tw.bounds[0][i] = tw.start[i] + tw.size[0][i];
-                        tw.bounds[1][i] = tw.end[i] + tw.size[1][i];
-                    }
-                    else
-                    {
-                        tw.bounds[0][i] = tw.end[i] + tw.size[0][i];
-                        tw.bounds[1][i] = tw.start[i] + tw.size[1][i];
-                    }
-                }
-            }
+            
 
             //
             // check for position test special case
@@ -221,21 +216,7 @@ namespace CubeHags.common
                 if (model > 0)
                 {
                     int test = 2;
-                    //if (model == 254) // CAPSULE_MODEL_HANDLE
-                    //{
-                    //    if (tw.sphere.use)
-                    //    {
-                    //        TestCapsuleInCapsule(tw, model);
-                    //    }
-                    //    else
-                    //    {
-                    //        TestBoundingBoxInCapsule(tw, model);
-                    //    }
-                    //}
-                    //else
-                    //{
-                    //    TestInLeaf(tw, cmod.leaf);
-                    //}
+                    //TestInLeaf(tw, cmod.leaf);
                 }
                 else
                 {
@@ -264,21 +245,7 @@ namespace CubeHags.common
                 if (model > 0)
                 {
                     int test = 2;
-                    //if (model == 254) // CAPSULE_MODEL_HANDLE
-                    //{
-                    //    if (tw.sphere.use)
-                    //    {
-                    //        TraceCapsuleThroughCapsule(tw, model);
-                    //    }
-                    //    else
-                    //    {
-                    //        TraceBoundingBoxThroughCapsule(tw, model);
-                    //    }
-                    //}
-                    //else
-                    //{
-                    //    TraceThroughLeaf(tw, cmod.leaf);
-                    //}
+                    //TraceThroughLeaf(tw, cmod.leaf);
                 }
                 else
                 {
@@ -302,86 +269,6 @@ namespace CubeHags.common
             // Otherwise, the normal on the plane should have unit length
             Debug.Assert(tw.trace.allsolid || tw.trace.fraction == 1f || tw.trace.plane.normal.LengthSquared() > 0.9999f);
             return tw.trace;
-        }
-
-        void TraceTest(int num)
-        {
-            List<int> llist = new List<int>();
-            for (int h = 0; h < leafbrushes.Count; h++)
-            {
-                if (leafbrushes[h] == 0)
-                {
-                    llist.Add(h);
-                }
-            }
-
-            for (int j = 0; j < leafs.Length; j++)
-            {
-                foreach (int ll in llist)
-                {
-                    if (leafs[j].firstleafbrush <= ll && ll - leafs[j].firstleafbrush < leafs[j].numleafbrushes)
-                    {
-                        int test = 2;
-                    }
-                }
-            }
-
-            for (int i = -1; i > -(leafs.Length+1); i--)
-            {
-                TraceTest2(i);
-            }
-
-            if (num < 0)
-            {
-                TraceTest2(num);
-                return;
-            }
-
-            dnode_t node = nodes[num];
-            cplane_t plane = node.plane;
-
-            TraceTest(node.children[0]);
-            TraceTest(node.children[1]);
-        }
-
-        void TraceTest2(int num)
-        {
-            dleaf_t leaf = leafs[-1 - num];
-            dbrush_t b;
-            // trace line against all brushes in the leaf
-            for (int k = 0; k < leaf.numleafbrushes+1; k++)
-            {
-                b = brushes[leafbrushes[leaf.firstleafbrush + k]];
-                if (b.checkcount == checkcount)
-                    continue;   // already checked this brush in another leaf
-                b.checkcount = checkcount;
-
-                if (b.contents == brushflags.CONTENTS_EMPTY || ((int)b.contents & 1) != 1)
-                    continue;
-                if (b.boundsmax.Y != 512.0f)
-                    continue;
-                //if (!BoundsIntersect(new Vector3(100, 490, 40), new Vector3(100, 492, 40), b.boundsmin, b.boundsmax))
-                //    continue;
-
-                TraceTest3(b);
-                //if (tw.trace.fraction == 0.0f)
-                //    return;
-            }
-        }
-
-        void TraceTest3(dbrush_t brush)
-        {
-            for (int i = 0; i < brush.sides.Length; i++)
-            {
-                dbrushside_t side = brush.sides[i];
-                cplane_t plane = side.plane;
-
-                if (plane.normal == new Vector3(0, 1f, 0) && plane.dist == 512f)
-                {
-                    int test = 2;
-                }
-            }
-        
         }
 
         void RecursiveHullCheck(traceWork_t tw, int num, float p1f, float p2f, Vector3 p1, Vector3 p2)
@@ -471,7 +358,7 @@ namespace CubeHags.common
             if (num < 0)
             {
                 //TraceToLeaf(tw, -1 - num, p1f, p2f);
-                TraceThroughLeaf(tw, leafs[-1 - num]);
+                TraceThroughLeaf(tw, -1 - num);
                 return;
             }
 
@@ -514,45 +401,45 @@ namespace CubeHags.common
             RecursiveHullCheck(tw, node.children[side ^ 1], midf, p2f, mid, p2);
         }
 
-        void TraceToLeaf(traceWork_t tw, int ndxLeaf, float startFrac, float endFrac)
-        {
-            //int nCurrentDepth = CurrentCheckCount();
-            //int nDepth = CurrentCheckCountDepth();
+        //void TraceToLeaf(traceWork_t tw, int ndxLeaf, float startFrac, float endFrac)
+        //{
+        //    //int nCurrentDepth = CurrentCheckCount();
+        //    //int nDepth = CurrentCheckCountDepth();
 
-            // get the leaf
-            dleaf_t pLeaf = leafs[ndxLeaf];
+        //    // get the leaf
+        //    dleaf_t pLeaf = leafs[ndxLeaf];
 
-            //
-            // trace ray/box sweep against all brushes in this leaf
-            //
-            for (int ndxLeafBrush = 0; ndxLeafBrush < pLeaf.numleafbrushes; ndxLeafBrush++)
-            {
-                // get the current brush
-                int ndxBrush = leafbrushes[pLeaf.firstleafbrush + ndxLeafBrush];
-                dbrush_t brush = brushes[ndxBrush];
+        //    //
+        //    // trace ray/box sweep against all brushes in this leaf
+        //    //
+        //    for (int ndxLeafBrush = 0; ndxLeafBrush < pLeaf.numleafbrushes; ndxLeafBrush++)
+        //    {
+        //        // get the current brush
+        //        int ndxBrush = leafbrushes[pLeaf.firstleafbrush + ndxLeafBrush];
+        //        dbrush_t brush = brushes[ndxBrush];
 
-                //// make sure we only check this brush once per trace/stab
-                //if (brush.checkcount[nDepth] == nCurrentCheckCount)
-                //    continue;
+        //        //// make sure we only check this brush once per trace/stab
+        //        //if (brush.checkcount[nDepth] == nCurrentCheckCount)
+        //        //    continue;
                 
-                //// mark the brush as checked
-                //brush.checkcount[nDepth] = nCurrentCheckCount;
+        //        //// mark the brush as checked
+        //        //brush.checkcount[nDepth] = nCurrentCheckCount;
 
-                // only collide with objects you are interested in
-                if (((int)brush.contents & tw.contents) != tw.contents)
-                    continue;
+        //        // only collide with objects you are interested in
+        //        if (((int)brush.contents & tw.contents) == 0)
+        //            continue;
 
-                // trace against the brush and find impact point -- if any?
-                // NOTE: trace_trace.fraction == 0.0f only when trace starts inside of a brush!
-                ClipBoxToBrush(tw, brush);
-                if (tw.trace.fraction == 0.0f)
-                    return;
-            }
+        //        // trace against the brush and find impact point -- if any?
+        //        // NOTE: trace_trace.fraction == 0.0f only when trace starts inside of a brush!
+        //        ClipBoxToBrush(tw, brush);
+        //        if (tw.trace.fraction == 0.0f)
+        //            return;
+        //    }
 
-            // TODO: this may be redundant
-            if (tw.trace.startsolid)
-                return;
-        }
+        //    // TODO: this may be redundant
+        //    if (tw.trace.startsolid)
+        //        return;
+        //}
 
         
 
@@ -676,26 +563,74 @@ namespace CubeHags.common
         //    TraceThroughTree(tw, node.children[side ^ 1], midf, p2f, mid, p2);
         //}
 
-        void TraceThroughLeaf(traceWork_t tw, dleaf_t leaf)
+        void TraceThroughLeaf(traceWork_t tw, int num)
         {
+            dleaf_t leaf = leafs[num];
             dbrush_t b;
             // trace line against all brushes in the leaf
             for (int k = 0; k < leaf.numleafbrushes; k++)
             {
                 b = brushes[leafbrushes[leaf.firstleafbrush + k]];
+
                 if (b.checkcount == checkcount)
                     continue;   // already checked this brush in another leaf
                 b.checkcount = checkcount;
 
-                if (((int)b.contents & tw.contents) != tw.contents)
+                if (((int)b.contents & tw.contents) == 0)
                     continue;
 
                 //if (!BoundsIntersect(tw.bounds[0], tw.bounds[1], b.boundsmin, b.boundsmax))
                 //    continue;
+
                 //ClipBoxToBrush(tw, b);
                 TraceThroughBrush(tw, b);
                 if (tw.trace.fraction == 0.0f)
                     return;
+            }
+
+            if (tw.trace.fraction == 0.0f)
+                return;
+
+            //// Check displacements
+            //if (Renderer.Instance.SourceMap != null)
+            //{
+            //    World world = Renderer.Instance.SourceMap.world;
+            //    leaf = world.leafs[num];
+            //    if (leaf.DisplacementIndexes != null)
+            //    {
+            //        KeyValuePair<int,int>[] indx = leaf.DisplacementIndexes;
+            //        for (int i = 0; i < indx.Length; i++)
+            //        {
+
+            //            DispCollTree dispTree = world.dispCollTrees[indx[i].Value];
+
+            //            if ((dispTree.m_Contents & tw.contents) == 0)
+            //                continue;
+
+            //            TraceToDispTree(dispTree, tw.start, tw.end, tw.size[0], tw.size[1], 0f, 1f, tw.trace, false);
+
+            //            if (tw.trace.fraction == 0f)
+            //                break;
+            //            //if (face2.lastVisCount != VisCount)
+            //            //{
+            //            //    face2.lastVisCount = VisCount;
+            //            //    visibleRenderItems[face2.item.material.MaterialID].Add(face2.item);
+            //            //}
+            //        }
+            //    }
+            //}
+
+            if (tw.trace.fraction != 1.0f)
+            {
+                //
+                // determine whether or not we are in solid
+                //	
+                Vector3 traceDir = tw.end - tw.start;
+                if (Vector3.Dot(tw.trace.plane.normal, traceDir) > 0.0f)
+                {
+                    tw.trace.allsolid = true;
+                    tw.trace.startsolid = true;
+                }
             }
         }
 
@@ -714,79 +649,72 @@ namespace CubeHags.common
 
             dbrushside_t leadside = null;
 
-            //if (tw.sphere.use)
-            //{
-            //    int test = 2;
-            //}
-            //else
-            //{
-                //
-                // compare the trace against all planes of the brush
-                // find the latest time the trace crosses a plane towards the interior
-                // and the earliest time the trace crosses a plane towards the exterior
-                //
-                for (int i = 0; i < brush.numsides; i++)
-                {
-                    dbrushside_t side = brushsides[brush.firstside + i];
-                    cplane_t plane = side.plane;
+            //
+            // compare the trace against all planes of the brush
+            // find the latest time the trace crosses a plane towards the interior
+            // and the earliest time the trace crosses a plane towards the exterior
+            //
+            for (int i = 0; i < brush.numsides; i++)
+            {
+                dbrushside_t side = brushsides[brush.firstside + i];
+                cplane_t plane = side.plane;
 
-                    if (side.plane.normal.X == 0f && side.plane.normal.Y == 0f && side.plane.normal.Z == 0f)
+                if (side.plane.normal.X == 0f && side.plane.normal.Y == 0f && side.plane.normal.Z == 0f)
+                    continue;
+
+                float dist = plane.dist - Vector3.Dot(tw.offsets[plane.signbits], plane.normal);
+
+                float d1 = Vector3.Dot(tw.start, plane.normal) - dist;
+                float d2 = Vector3.Dot(tw.end, plane.normal) - dist;
+
+                // if completely in front of face, no intersection
+                if (d1 > 0.0f)
+                {
+                    startout = true;
+
+                    // d1 > 0.f && d2 > 0.f
+                    if (d2 > 0.0f)
+                        return;
+                }
+                else
+                {
+                    // d1 <= 0.f && d2 <= 0.f
+                    if (d2 <= 0.0f)
                         continue;
 
-                    float dist = plane.dist - Vector3.Dot(tw.offsets[plane.signbits], plane.normal);
+                    // d2 > 0.f
+                    getout = true;  // endpoint is not in solid
+                }
 
-                    float d1 = Vector3.Dot(tw.start, plane.normal) - dist;
-                    float d2 = Vector3.Dot(tw.end, plane.normal) - dist;
-
-                    // if completely in front of face, no intersection
-                    if (d1 > 0.0f)
+                // crosses face
+                if (d1 > d2)    // enter
+                {
+                    // enter
+                    // JAY: This could be negative if d1 is less than the epsilon.
+                    // If the trace is short (d1-d2 is small) then it could produce a large
+                    // negative fraction.  I can't believe this didn't break Q2!
+                    float f = (d1 - EPSILON);
+                    if (f < 0.0f)
+                        f = 0.0f;
+                    f = f / (d1 - d2);
+                    if (f > enterFrac)
                     {
-                        startout = true;
-
-                        // d1 > 0.f && d2 > 0.f
-                        if (d2 > 0.0f)
-                            return;
-                    }
-                    else
-                    {
-                        // d1 <= 0.f && d2 <= 0.f
-                        if (d2 <= 0.0f)
-                            continue;
-
-                        // d2 > 0.f
-                        getout = true;  // endpoint is not in solid
-                    }
-
-                    // crosses face
-                    if (d1 > d2)    // enter
-                    {
-                        // enter
-                        // JAY: This could be negative if d1 is less than the epsilon.
-                        // If the trace is short (d1-d2 is small) then it could produce a large
-                        // negative fraction.  I can't believe this didn't break Q2!
-                        float f = (d1 - EPSILON);
-                        if (f < 0.0f)
-                            f = 0.0f;
-                        f = f / (d1 - d2);
-                        if (f > enterFrac)
-                        {
-                            enterFrac = f;
-                            clipplane = plane;
-                            leadside = side;
-                        }
-                    }
-                    else // leave
-                    {
-                        float f = (d1 + EPSILON) / (d1 - d2);
-                        //if (f > 1)
-                        //    f = 1;
-                        if (f < leaveFrac)
-                        {
-                            leaveFrac = f;
-                        }
+                        enterFrac = f;
+                        clipplane = plane;
+                        leadside = side;
                     }
                 }
-            //}
+                else // leave
+                {
+                    float f = (d1 + EPSILON) / (d1 - d2);
+                    //if (f > 1)
+                    //    f = 1;
+                    if (f < leaveFrac)
+                    {
+                        leaveFrac = f;
+                    }
+                }
+            }
 
             //
             // all planes have been checked, and the trace was not
@@ -821,6 +749,8 @@ namespace CubeHags.common
                         enterFrac = 0;
                     tw.trace.fraction = enterFrac;
                     tw.trace.plane = clipplane;
+                    //if (leadside.dispinfo == -1)
+                    tw.trace.surfaceFlags = (int)texinfos[leadside.texinfo].flags;
                     //tw.trace.surfaceFlags = leadside.bevel;
                     tw.trace.contents = (int)brush.contents;
 
@@ -828,190 +758,206 @@ namespace CubeHags.common
             }
         }
 
-        void ClipBoxToBrush(traceWork_t tw, dbrush_t brush)
+        void TraceToDispTree(DispCollTree dispTree, Vector3 start, Vector3 end, Vector3 mins, Vector3 maxs, float startf, float endf, trace_t trace, bool raycast)
         {
-            if (brush.numsides <= 0)
-                return;
-
-            float enterFrac = -9999f;
-            float leaveFrac = 1.0f;
-            cplane_t clipPlane = null;
-
-            bool getout = false;
-            bool getout2 = false;
-            bool startout = false;
-            bool startout2 = false;
-            dbrushside_t leadside = null;
-
-            float dist;
-            cplane_t plane = new cplane_t();
-
-            dbrushside_t side;
-            for (int i = 0; i < brush.numsides; i++)
+            if (raycast)
             {
-                side = brushsides[brush.firstside+i];
-                plane = side.plane;
-
-                if (!tw.isPoint)
-                {
-                    // general box case
-
-                    // push the plane out apropriately for mins/maxs
-
-                    // FIXME: special case for axial - NOTE: These axial planes are not always positive!!!
-                    // FIXME: use signbits into 8 way lookup for each mins/maxs
-
-                    // Compute the sign bits
-                    //unsigned nSigns  =  ( *(int*)(&plane->normal[0])) & 0x80000000;
-                    //		   nSigns |= (( *(int*)(&plane->normal[1]) & 0x80000000 ) >> 1);
-                    //         nSigns |= (( *(int*)(&plane->normal[2]) & 0x80000000 ) >> 2);
-
-                    Vector3 ofs = Vector3.Zero;
-                    ofs[0] = (plane.normal[0] < 0.0f) ? tw.extents[0] : tw.extents[0] * -1f;
-                    ofs[1] = (plane.normal[1] < 0.0f) ? tw.extents[1] : tw.extents[1] * -1f;
-                    ofs[2] = (plane.normal[2] < 0.0f) ? tw.extents[2] : tw.extents[2] * -1f;
-
-                    dist = plane.dist - Vector3.Dot(ofs, plane.normal);
-                }
-                else
-                {
-                    // special point case
-                    dist = plane.dist;
-                    // don't trace rays against bevel planes 
-                    if (side.bevel > 0)
-                        continue;
-                }
-
-                //for (int j = 0; j < planes.Count; j++)
-                //{
-                //    if ( planes[j].dist == -512f)
-                //    {
-                //        int test = 2;
-                //    }
-                //}
-
-                //if ( plane.normal.Y == -1.0f && plane.dist == -544.0f)
-                //{
-                //    int test = 2;
-                //}
-
-                float d1 = Vector3.Dot(tw.start, plane.normal) - dist;
-                float d2 = Vector3.Dot(tw.end, plane.normal) - dist;
-
-                // if completely in front of face, no intersection
-                if (d1 > 0.0f)
-                {
-                    startout2 = true;
-
-                    //if (d2 > 0.0f)
-                    //    return;
-                }
-                else
-                {
-                    if (d2 <= 0.0f)
-                        continue;
-
-                    getout2 = true;
-                }
-
-                // crosses face
-                if (d1 > d2)
-                {
-                    // enter
-                    // JAY: This could be negative if d1 is less than the epsilon.
-                    // If the trace is short (d1-d2 is small) then it could produce a large
-                    // negative fraction.  I can't believe this didn't break Q2!
-                    float f = (d1 - EPSILON);
-                    if (f < 0.0f)
-                        f = 0.0f;
-                    f = f / (d1 - d2);
-                    if (f > enterFrac)
-                    {
-                        enterFrac = f;
-                        clipPlane = plane;
-                        leadside = side;
-                        getout = getout2;
-                        startout = startout2;
-                    }
-
-                }
-                else
-                {
-                    // leave
-                    float f = (d1 + EPSILON) / (d1 - d2);
-                    if (f < leaveFrac)
-                    {
-                        leaveFrac = f;
-                        getout = getout2;
-                        startout = startout2;
-                    }
-                }
-            }
-
-            // when this happens, we entered the brush *after* leaving the previous brush.
-            // Therefore, we're still outside!
-
-            // NOTE: We only do this test against points because fractionleftsolid is
-            // not possible to compute for brush sweeps without a *lot* more computation
-            // So, client code will never get fractionleftsolid for box sweeps
-            if (tw.isPoint && startout)
-            {
-                // Add a little sludge.  The sludge should already be in the fractionleftsolid
-                // (for all intents and purposes is a leavefrac value) and enterfrac values.  
-                // Both of these values have +/- DIST_EPSILON values calculated in.  Thus, I 
-                // think the test should be against "0.0."  If we experience new "left solid"
-                // problems you may want to take a closer look here!
-                //		if ((trace->fractionleftsolid - enterfrac) > -1e-6)
-                if (tw.trace.fractionleftsolid - enterFrac > 0.0f)
-                    startout = false;
-            }
-
-            if (!startout)
-            {
-                // original point was inside brush
-                tw.trace.startsolid = true;
-                // return starting contents
-                tw.trace.contents = (int)brush.contents;
-
-                if (!getout)
-                {
-                    tw.trace.allsolid = true;
-                    tw.trace.plane = plane;
-                    tw.trace.fraction = 0.0f;
-                    tw.trace.fractionleftsolid = 1.0f;
-                }
-                else
-                {
-                    // if leavefrac == 1, this means it's never been updated or we're in allsolid
-                    // the allsolid case was handled above
-                    if ((leaveFrac != 1.0f) && (leaveFrac > tw.trace.fractionleftsolid))
-                    {
-                        tw.trace.fractionleftsolid = leaveFrac;
-
-                        // This could occur if a previous trace didn't start us in solid
-                        if (tw.trace.fraction <= leaveFrac)
-                        {
-                            tw.trace.fraction = 1.0f;
-                        }
-                    }
-                }
-                return;
 
             }
-
-            // We haven't hit anything at all until we've left...
-            if (enterFrac < leaveFrac)
+            else
             {
-                if (enterFrac > -9999 && enterFrac < tw.trace.fraction)
+                Vector3 boxExtends = ((mins + maxs) * 0.5f) - mins;
+                if(dispTree.AABBSweep(start, end, boxExtends, startf, endf, ref trace)) 
                 {
-                    if (enterFrac < 0)
-                        enterFrac = 0;
-                    tw.trace.fraction = enterFrac;
-                    tw.trace.plane = clipPlane;
-                    tw.trace.contents = (int)brush.contents;
+
                 }
             }
         }
+
+        //void ClipBoxToBrush(traceWork_t tw, dbrush_t brush)
+        //{
+        //    if (brush.numsides <= 0)
+        //        return;
+
+        //    float enterFrac = -9999f;
+        //    float leaveFrac = 1.0f;
+        //    cplane_t clipPlane = null;
+
+        //    bool getout = false;
+        //    bool getout2 = false;
+        //    bool startout = false;
+        //    bool startout2 = false;
+        //    dbrushside_t leadside = null;
+
+        //    float dist;
+        //    cplane_t plane = new cplane_t();
+
+        //    dbrushside_t side;
+        //    for (int i = 0; i < brush.numsides; i++)
+        //    {
+        //        side = brushsides[brush.firstside+i];
+        //        plane = side.plane;
+
+        //        if (!tw.isPoint)
+        //        {
+        //            // general box case
+
+        //            // push the plane out apropriately for mins/maxs
+
+        //            // FIXME: special case for axial - NOTE: These axial planes are not always positive!!!
+        //            // FIXME: use signbits into 8 way lookup for each mins/maxs
+
+        //            // Compute the sign bits
+        //            //unsigned nSigns  =  ( *(int*)(&plane->normal[0])) & 0x80000000;
+        //            //		   nSigns |= (( *(int*)(&plane->normal[1]) & 0x80000000 ) >> 1);
+        //            //         nSigns |= (( *(int*)(&plane->normal[2]) & 0x80000000 ) >> 2);
+
+        //            Vector3 ofs = Vector3.Zero;
+        //            ofs[0] = (plane.normal[0] < 0.0f) ? tw.extents[0] : tw.extents[0] * -1f;
+        //            ofs[1] = (plane.normal[1] < 0.0f) ? tw.extents[1] : tw.extents[1] * -1f;
+        //            ofs[2] = (plane.normal[2] < 0.0f) ? tw.extents[2] : tw.extents[2] * -1f;
+
+        //            dist = plane.dist - Vector3.Dot(ofs, plane.normal);
+        //        }
+        //        else
+        //        {
+        //            // special point case
+        //            dist = plane.dist;
+        //            // don't trace rays against bevel planes 
+        //            if (side.bevel > 0)
+        //                continue;
+        //        }
+
+        //        //for (int j = 0; j < planes.Count; j++)
+        //        //{
+        //        //    if ( planes[j].dist == -512f)
+        //        //    {
+        //        //        int test = 2;
+        //        //    }
+        //        //}
+
+        //        //if ( plane.normal.Y == -1.0f && plane.dist == -544.0f)
+        //        //{
+        //        //    int test = 2;
+        //        //}
+
+        //        float d1 = Vector3.Dot(tw.start, plane.normal) - dist;
+        //        float d2 = Vector3.Dot(tw.end, plane.normal) - dist;
+
+        //        // if completely in front of face, no intersection
+        //        if (d1 > 0.0f)
+        //        {
+        //            startout2 = true;
+
+        //            //if (d2 > 0.0f)
+        //            //    return;
+        //        }
+        //        else
+        //        {
+        //            if (d2 <= 0.0f)
+        //                continue;
+
+        //            getout2 = true;
+        //        }
+
+        //        // crosses face
+        //        if (d1 > d2)
+        //        {
+        //            // enter
+        //            // JAY: This could be negative if d1 is less than the epsilon.
+        //            // If the trace is short (d1-d2 is small) then it could produce a large
+        //            // negative fraction.  I can't believe this didn't break Q2!
+        //            float f = (d1 - EPSILON);
+        //            if (f < 0.0f)
+        //                f = 0.0f;
+        //            f = f / (d1 - d2);
+        //            if (f > enterFrac)
+        //            {
+        //                enterFrac = f;
+        //                clipPlane = plane;
+        //                leadside = side;
+        //                getout = getout2;
+        //                startout = startout2;
+        //            }
+
+        //        }
+        //        else
+        //        {
+        //            // leave
+        //            float f = (d1 + EPSILON) / (d1 - d2);
+        //            if (f < leaveFrac)
+        //            {
+        //                leaveFrac = f;
+        //                getout = getout2;
+        //                startout = startout2;
+        //            }
+        //        }
+        //    }
+
+        //    // when this happens, we entered the brush *after* leaving the previous brush.
+        //    // Therefore, we're still outside!
+
+        //    // NOTE: We only do this test against points because fractionleftsolid is
+        //    // not possible to compute for brush sweeps without a *lot* more computation
+        //    // So, client code will never get fractionleftsolid for box sweeps
+        //    if (tw.isPoint && startout)
+        //    {
+        //        // Add a little sludge.  The sludge should already be in the fractionleftsolid
+        //        // (for all intents and purposes is a leavefrac value) and enterfrac values.  
+        //        // Both of these values have +/- DIST_EPSILON values calculated in.  Thus, I 
+        //        // think the test should be against "0.0."  If we experience new "left solid"
+        //        // problems you may want to take a closer look here!
+        //        //		if ((trace->fractionleftsolid - enterfrac) > -1e-6)
+        //        if (tw.trace.fractionleftsolid - enterFrac > 0.0f)
+        //            startout = false;
+        //    }
+
+        //    if (!startout)
+        //    {
+        //        // original point was inside brush
+        //        tw.trace.startsolid = true;
+        //        // return starting contents
+        //        tw.trace.contents = (int)brush.contents;
+
+        //        if (!getout)
+        //        {
+        //            tw.trace.allsolid = true;
+        //            tw.trace.plane = plane;
+        //            tw.trace.fraction = 0.0f;
+        //            tw.trace.fractionleftsolid = 1.0f;
+        //        }
+        //        else
+        //        {
+        //            // if leavefrac == 1, this means it's never been updated or we're in allsolid
+        //            // the allsolid case was handled above
+        //            if ((leaveFrac != 1.0f) && (leaveFrac > tw.trace.fractionleftsolid))
+        //            {
+        //                tw.trace.fractionleftsolid = leaveFrac;
+
+        //                // This could occur if a previous trace didn't start us in solid
+        //                if (tw.trace.fraction <= leaveFrac)
+        //                {
+        //                    tw.trace.fraction = 1.0f;
+        //                }
+        //            }
+        //        }
+        //        return;
+
+        //    }
+
+        //    // We haven't hit anything at all until we've left...
+        //    if (enterFrac < leaveFrac)
+        //    {
+        //        if (enterFrac > -9999 && enterFrac < tw.trace.fraction)
+        //        {
+        //            if (enterFrac < 0)
+        //                enterFrac = 0;
+        //            tw.trace.fraction = enterFrac;
+        //            tw.trace.plane = clipPlane;
+        //            tw.trace.contents = (int)brush.contents;
+        //        }
+        //    }
+        //}
 
         bool BoundsIntersect(Vector3 mins, Vector3 maxs, Vector3 mins2, Vector3 maxs2)
         {
@@ -1028,26 +974,24 @@ namespace CubeHags.common
             return true;
         }
 
-        int FindParentNode(int nodeid)
-        {
-            //System.Console.WriteLine("Parent for " + nodeid);
-            if (nodeid == 0)
-                return 0;
-            for (int i = 0; i < nodes.Length; i++)
-            {
-                if (nodes[i].children[0] == nodeid)
-                    return FindParentNode(i);
-                else if (nodes[i].children[1] == nodeid)
-                    return FindParentNode(i);
-            }
-            return -1;
-        }
+        //int FindParentNode(int nodeid)
+        //{
+        //    //System.Console.WriteLine("Parent for " + nodeid);
+        //    if (nodeid == 0)
+        //        return 0;
+        //    for (int i = 0; i < nodes.Length; i++)
+        //    {
+        //        if (nodes[i].children[0] == nodeid)
+        //            return FindParentNode(i);
+        //        else if (nodes[i].children[1] == nodeid)
+        //            return FindParentNode(i);
+        //    }
+        //    return -1;
+        //}
 
         void PositionTest(traceWork_t tw)
         {
-            
             // identify the leafs we are touching
-            
             ll.bounds[0] = tw.start - tw.size[0];
             ll.bounds[1] = tw.end - tw.size[1];
 
@@ -1073,7 +1017,7 @@ namespace CubeHags.common
             // test the contents of the leafs
             for (int i = 0; i < ll.count; i++)
             {
-                TraceThroughLeaf(tw, leafs[lleafs[i]]);
+                TraceThroughLeaf(tw, lleafs[i]);
                 if (tw.trace.allsolid)
                     break;
             }
@@ -1090,7 +1034,6 @@ namespace CubeHags.common
                 if (nodenum < 0)
                 {
                     StoreLeafs(ll, nodenum);
-                    //ll.RunStoreLeaf(ll, nodenum);
                     return;
                 }
 
@@ -1130,14 +1073,14 @@ namespace CubeHags.common
             ll.list[ll.count++] = leafnum;
         }
 
-        cmodel_t ClipHandleToModel(int handle)
-        {
-            if (handle < 0)
-                Common.Instance.Error("ClipHandleToModel: bad handle " + handle);
+        //cmodel_t ClipHandleToModel(int handle)
+        //{
+        //    if (handle < 0)
+        //        Common.Instance.Error("ClipHandleToModel: bad handle " + handle);
 
-            //if(handle < numSubModels)
-            return new cmodel_t();
-        }
+        //    //if(handle < numSubModels)
+        //    return new cmodel_t();
+        //}
 
         //void TestInLeaf(traceWork_t tw, dleaf_t leaf)
         //{
@@ -1228,42 +1171,6 @@ namespace CubeHags.common
         //    tw.trace.contents = (int)brush.contents;
         //}
 
-        public class leafList_t 
-        {
-            public int count;
-            public int maxcount;
-            public bool overflowed;
-            public int[] list;
-            public Vector3[] bounds = new Vector3[2];
-            public int lastLeaf;		// for overflows where each leaf can't be stored individually
-        	public event StoreLeafDelegate StoreLeaf;
-            public void RunStoreLeaf(leafList_t ll, int nodenum) { StoreLeaf(ll, nodenum); }
-        } 
-
-        public delegate void StoreLeafDelegate(leafList_t ll, int nodenum);
-
-        public class traceWork_t {
-        	public Vector3		start;
-        	public Vector3		end;
-        	public Vector3[]		size = new Vector3[2];	// size of the box being swept through the model
-        	public Vector3[]		offsets = new Vector3[8];	// [signbits][x] = either size[0][x] or size[1][x]
-        	public float		maxOffset;	// longest corner length from origin
-        	public Vector3		extents;	// greatest of abs(size[0]) and abs(size[1])
-            public Vector3[] bounds = new Vector3[2];	// enclosing box of start and end surrounding by size
-        	public Vector3		modelOrigin;// origin of the model tracing through
-        	public int			contents;	// ored contents of the model tracing through
-        	public bool	isPoint;	// optimized case
-        	public trace_t		trace = new trace_t();		// returned from trace call
-        	public sphere_t	sphere = new sphere_t();		// sphere for oriendted capsule collision
-        }
-
-        // Used for oriented capsule collision detection
-        public class sphere_t
-        {
-        	public bool	        use;
-        	public float		radius;
-        	public float		halfheight;
-        	public Vector3		offset;
-        }
+        
     }
 }

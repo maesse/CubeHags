@@ -65,7 +65,7 @@ namespace CubeHags.client
             //Frustrum.SetupFrustrum(this);
         }
 
-        static Matrix flipMatrix = new Matrix()
+       public static Matrix flipMatrix = new Matrix()
         {
             M11 =  0, M12 = 0, M13 = -1, M14 = 0,
             M21 = -1, M22 = 0, M23 =  0, M24 = 0,

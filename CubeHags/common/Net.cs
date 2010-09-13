@@ -282,7 +282,7 @@ namespace CubeHags.common
                 server.Start();
             }
             client = new NetClient(clConfig);
-            client.SimulatedMinimumLatency = 0.5f;
+            //client.SimulatedMinimumLatency = 0.2f;
             //client.RunSleep = 0;
             client.EnabledMessageTypes |= NetMessageType.OutOfBandData;
             client.Start();
@@ -688,7 +688,7 @@ namespace CubeHags.common
             to.grapplePoint.X = msg.ReadBoolean() ? msg.ReadFloat() : from.grapplePoint.X;
             to.grapplePoint.Y = msg.ReadBoolean() ? msg.ReadFloat() : from.grapplePoint.Y;
             to.grapplePoint.Z = msg.ReadBoolean() ? msg.ReadFloat() : from.grapplePoint.Z;
-            
+            to.speed = msg.ReadBoolean() ? msg.ReadInt32() : from.speed;
             to.eFlags = msg.ReadBoolean() ? (Common.EntityFlags)Enum.Parse(typeof(Common.EntityFlags), ""+msg.ReadInt32()) : from.eFlags;
             to.eventSequence = msg.ReadBoolean() ? msg.ReadInt32() : from.eventSequence;
             to.events[0] = msg.ReadBoolean() ? msg.ReadInt32() : from.events[0];
@@ -785,7 +785,8 @@ namespace CubeHags.common
             if (from.grapplePoint.X != to.grapplePoint.X) { msg.Write(true); msg.Write(to.grapplePoint.X); } else { msg.Write(false); }
             if (from.grapplePoint.Y != to.grapplePoint.Y) { msg.Write(true); msg.Write(to.grapplePoint.Y); } else { msg.Write(false); }
             if (from.grapplePoint.Z != to.grapplePoint.Z) { msg.Write(true); msg.Write(to.grapplePoint.Z); } else { msg.Write(false); }
-            
+            if (from.speed != to.speed) { msg.Write(true); msg.Write(from.speed); } else { msg.Write(false); }
+
             if (from.eFlags != to.eFlags) { msg.Write(true); msg.Write((int)to.eFlags); } else { msg.Write(false); }
             if (from.eventSequence != to.eventSequence) { msg.Write(true); msg.Write(to.eventSequence); } else { msg.Write(false); }
             if (from.events[0] != to.events[0]) { msg.Write(true); msg.Write(to.events[0]); } else { msg.Write(false); }

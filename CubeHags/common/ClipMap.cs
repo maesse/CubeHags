@@ -56,6 +56,7 @@ namespace CubeHags.common
     	public int			checkcount;					// incremented on each trace
         public int c_traces;
         int c_brush_traces;
+        public texinfo_t[] texinfos;
 
         cmodel_t box_model;
         List<cplane_t> box_planes = new List<cplane_t>();
@@ -63,6 +64,15 @@ namespace CubeHags.common
         dvis_t vis;
 
         CVar cm_noAreas = CVars.Instance.Get("cm_noAreas", "1", CVarFlags.TEMP);
+
+        public edge_t[] edges;
+        public int[] DispIndexToFaceIndex;
+        public ddispinfo_t[] ddispinfos;
+        public byte[] dispLightmapSamples;
+        public dDispVert[] dispVerts;
+        public dDispTri[] dispTris;
+        public DispCollTree[] dispCollTrees;
+        public int[] surfEdges;
 
         ClipMap()
         {
@@ -288,6 +298,7 @@ namespace CubeHags.common
             sHeader.mapRevision = br.ReadInt32();
 
             // Parse lumps
+            ReadTexInfos(sHeader, br);
             ReadLeafs(sHeader, br);
             ReadLeafBrushes(sHeader, br);
             ReadLeafFaces(sHeader, br);
@@ -306,6 +317,7 @@ namespace CubeHags.common
 
             name = filename;
         }
+
 
         public void ClearMap()
         {
@@ -410,6 +422,54 @@ namespace CubeHags.common
                 {
                     visibility[i] = 255;
                 }
+            }
+        }
+
+        void ReadTexInfos(Header header, BinaryReader br)
+        {
+            // Read texdata
+            br.BaseStream.Seek(header.lumps[2].fileofs, SeekOrigin.Begin);
+            int nTextdata = header.lumps[2].filelen / 32;
+            texdata_t[] texdatas = new texdata_t[nTextdata];
+            for (int i = 0; i < nTextdata; i++)
+            {
+
+                texdata_t texdata = new texdata_t();
+                texdata.reflectivity = new Vector3(br.ReadSingle(), br.ReadSingle(), br.ReadSingle());
+                texdata.nameStringTableID = br.ReadInt32();
+                //texdata.name = TextureNames[texdata.nameStringTableID];
+                texdata.width = br.ReadInt32();
+                texdata.height = br.ReadInt32();
+                texdata.view_width = br.ReadInt32();
+                texdata.view_height = br.ReadInt32();
+                texdata.mat = null;
+                texdatas[i] = texdata;
+            }
+
+            // Read texinfo
+            br.BaseStream.Seek(header.lumps[6].fileofs, SeekOrigin.Begin);
+            int nTexinfo = header.lumps[6].filelen / 72;
+            texinfos = new texinfo_t[nTexinfo];
+            for (int i = 0; i < nTexinfo; i++)
+            {
+                // Init structure
+                texinfo_t texinfo;
+                texinfo.textureVecs = new Vector4[2];
+                texinfo.lightmapVecs = new Vector3[2];
+                texinfo.lightmapVecs2 = new float[2];
+
+                // Read structure
+                texinfo.textureVecs[0] = new Vector4(br.ReadSingle(), br.ReadSingle(), br.ReadSingle(), br.ReadSingle());
+                texinfo.textureVecs[1] = new Vector4(br.ReadSingle(), br.ReadSingle(), br.ReadSingle(), br.ReadSingle());
+                texinfo.lightmapVecs[0] = new Vector3(br.ReadSingle(), br.ReadSingle(), br.ReadSingle());
+                texinfo.lightmapVecs2[0] = br.ReadSingle();
+                texinfo.lightmapVecs[1] = new Vector3(br.ReadSingle(), br.ReadSingle(), br.ReadSingle());
+                texinfo.lightmapVecs2[1] = br.ReadSingle();
+                texinfo.flags = (SurfFlags)br.ReadInt32();
+                texinfo.texdata = br.ReadInt32();
+                texinfo.texdata_t = texdatas[texinfo.texdata];
+
+                texinfos[i] = texinfo;
             }
         }
 

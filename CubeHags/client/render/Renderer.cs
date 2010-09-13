@@ -46,7 +46,6 @@ namespace CubeHags.client
 
         // Gui for showing messageboxes...
         public RenderForm form;
-        private System.Windows.Forms.FormWindowState currentWindowState;
         bool formIsResizing = false;
 
         // Text
@@ -60,8 +59,6 @@ namespace CubeHags.client
 
         // Display options 
         public Size RenderSize = new Size(1280, 800);
-        //public bool Windowed = true;
-        //public bool VSync = true;
         public MultisampleType MultiSampling = MultisampleType.FourSamples;
         private FillMode _fillMode = FillMode.Solid;
         public FillMode FillMode { get { return _fillMode; } set { _fillMode = value; device.SetRenderState<FillMode>(RenderState.FillMode, value); } }
@@ -83,16 +80,6 @@ namespace CubeHags.client
         public Texture AvgLum { get { return tonemap.AverageLum; } }
         public float DetailMultiplier = 2f;
 
-        // Profiling
-        private float Profile_PreFrame = 0f;
-        private float Profile_Render = 0f;
-        private float Profile_Sort = 0f;
-        private float Profile_Final = 0f;
-        private float Profile_Present = 0f;
-        private int nProfileCount;
-        private int nProfileSamples = 60;
-        private int nSameMaterial = 0;
-        public bool EnableProfiling = false;
         private int _nextRenderItemID = 1;
         public int NextRenderItemID { get { return _nextRenderItemID++; } }
 
@@ -127,6 +114,17 @@ namespace CubeHags.client
         public CVar r_fs = CVars.Instance.Get("r_fs", "0", CVarFlags.ARCHIVE);
         public CVar r_resulution = CVars.Instance.Get("r_res", "1280x800", CVarFlags.ARCHIVE);
         public CVar r_showfps = CVars.Instance.Get("r_showfps", "1", CVarFlags.ARCHIVE);
+        public CVar tone_saturate = CVars.Instance.Get("tone_saturate", "1", CVarFlags.TEMP);
+        public CVar tone_luminance = CVars.Instance.Get("tone_luminance", "0.01", CVarFlags.TEMP);
+        public CVar tone_white = CVars.Instance.Get("tone_white", "1.5", CVarFlags.TEMP);
+        public CVar tone_grey = CVars.Instance.Get("tone_white", "0.72", CVarFlags.TEMP);
+        public CVar tone_a = CVars.Instance.Get("tone_a", "0.18", CVarFlags.TEMP);
+        public CVar tone_b = CVars.Instance.Get("tone_b", "0.37", CVarFlags.TEMP);
+        public CVar tone_c = CVars.Instance.Get("tone_c", "0.08", CVarFlags.TEMP);
+        public CVar tone_d = CVars.Instance.Get("tone_d", "0.3", CVarFlags.TEMP);
+        public CVar tone_e = CVars.Instance.Get("tone_e", "0.02", CVarFlags.TEMP);
+        public CVar tone_f = CVars.Instance.Get("tone_f", "0.3", CVarFlags.TEMP);
+        public CVar tone_w = CVars.Instance.Get("tone_w", "11.2", CVarFlags.TEMP);
 
         public List<string> ValidResolutions = new List<string>();
 
@@ -168,22 +166,6 @@ namespace CubeHags.client
             Camera.RotateForViewer();
         }
 
-
-        void myGlMultMatrix( Matrix a, Matrix b, out Matrix c ) 
-        {
-        	int		i, j;
-            c = new Matrix();
-        	for ( i = 0 ; i < 4 ; i++ ) {
-        		for ( j = 0 ; j < 4 ; j++ ) {
-        			c[ i,  j ] =
-        				a [ i , 0 ] * b [ 0 ,  j ]
-        				+ a [ i,  1 ] * b [ 1 ,  j ]
-        				+ a [ i ,  2 ] * b [ 2 ,  j ]
-        				+ a [ i,  3 ] * b [ 3 ,  j ];
-        		}
-        	}
-        }
-
         public void Render(ViewParams view)
         {
             view.Origin = new render.Orientation();
@@ -197,62 +179,112 @@ namespace CubeHags.client
             RenderView(view);
         }
 
+        // Make sure we have a device to send commands to!
+        public bool PreFrame()
+        {
+            // Dont render while resizing
+            if (formIsResizing)
+                return false;
+
+            // Only draw ~10fps when not in focus
+            if (!form.Focused && !r_fs.Bool)
+            {
+                Thread.Sleep(100);
+                return true;
+            }
+
+            try
+            {
+                Result coopResult = device.TestCooperativeLevel();
+                // Check if we lost control over the device
+                if (coopResult == ResultCode.DeviceLost)
+                {
+                    if (!deviceLost)
+                        OnLostDevice();
+                    deviceLost = true;
+                    Thread.Sleep(10);
+                    return false;
+                }
+                // device is ready to be reset
+                else if (coopResult == ResultCode.DeviceNotReset)
+                {
+                    // Has lost device already been handled?
+                    if (deviceLost)
+                    {
+                        device.Reset(_pp);
+                        OnResetDevice();
+                        deviceLost = false;
+                    }
+                    else
+                    {
+                        // handle lost device before resetting
+                        OnLostDevice();
+
+                        device.Reset(_pp);
+                        OnResetDevice();
+                    }
+                }
+
+                if (_sizeChanged)
+                {
+                    coopResult = device.TestCooperativeLevel();
+                    if (coopResult == ResultCode.DeviceNotReset || coopResult == ResultCode.DeviceLost)
+                        return false;   // Don't do anything fancy if the device is acting up
+
+                    // Decided on a resolution
+                    if (!CVars.Instance.FindVar("r_fs").Bool)
+                    {
+                        // Windowed
+                        form.ClientSize = GetResolution();
+                        RenderSize = form.ClientSize;
+                        _pp.BackBufferWidth = RenderSize.Width;
+                        _pp.BackBufferHeight = RenderSize.Height;
+                        _pp.FullScreenRefreshRateInHertz = 0;
+                    }
+                    else
+                    {
+                        // FS
+                        RenderSize = GetResolution();
+                        _pp.BackBufferHeight = RenderSize.Height;
+                        _pp.BackBufferWidth = RenderSize.Width;
+                    }
+
+                    _pp.SwapEffect = (_is3D9Ex ? (!r_fs.Bool ? SwapEffect.Discard : SwapEffect.Discard) : SwapEffect.Discard);
+                    _pp.PresentationInterval = (r_vsync.Bool ? PresentInterval.One : PresentInterval.Immediate);
+                    _pp.Windowed = !r_fs.Bool;
+                    _sizeChanged = false;
+
+                    // Clear the device
+                    OnLostDevice();
+
+                    // Reset it..
+                    device.Reset(_pp);
+                    OnResetDevice();
+                    form.FormBorderStyle = (!r_fs.Bool ? System.Windows.Forms.FormBorderStyle.Sizable : System.Windows.Forms.FormBorderStyle.None);
+                    form.TopMost = r_fs.Bool;
+                    form.MaximizeBox = !r_fs.Bool;
+                    form.Focus();
+                    // Reset GUI windows
+                    WindowManager.Instance.SetAllWindowPositions();
+                    return false;
+                }
+            }
+            catch
+            {
+                // If the device is complaining, don't try to render to it
+                return false;
+            }
+
+            return true;
+        }
+
         // Renders the scene. This is the core render method.
         public void Render()
         {
-            if (formIsResizing)
-                return;
+            if (!PreFrame())
+                return; // Not ready to render
 
-            //if (Client.Instance.cin.playing)
-            //    return;
-            //{
-            //    // snooze
-            //    Thread.Sleep(0);
-            //    return;
-            //}
-
-            if (deviceLost)
-            {
-                Result res = device.TestCooperativeLevel();
-                if (res == ResultCode.DeviceNotReset)
-                {
-                    device.Reset(_pp);
-                    OnResetDevice();
-                    deviceLost = false;
-                }
-                else
-                {
-                    System.Threading.Thread.Sleep(100);
-                    return;
-                }
-            }
-
-            long profile_preframe = HighResolutionTimer.Ticks;
-            // Set new size if using WPF
-            if (_sizeChanged)
-            {
-                if (r_fs.Integer == 0)
-                {
-                    // Get window size
-                    RenderSize = form.ClientSize;
-
-                    _pp.BackBufferWidth = RenderSize.Width;
-                    _pp.BackBufferHeight = RenderSize.Height;
-                }
-
-                _pp.Windowed = r_fs.Integer == 0?true:false;
-                _sizeChanged = false;
-
-                OnLostDevice();
-                // Reset device
-                device.Reset(_pp);
-                OnResetDevice();
-                return;
-            }
-            
             SetupFrame();
-
-            // Begin drawing
             device.BeginScene();
 
             // Swich drawcall list
@@ -282,12 +314,6 @@ namespace CubeHags.client
             MiscRender.DrawRenderStats(this);
 
             device.EndScene();
-            if (device.TestCooperativeLevel() == ResultCode.DeviceLost)
-            {
-                deviceLost = true;
-                OnLostDevice();
-                return;
-            }
             device.Present();
             HighResolutionTimer.Instance.Set();
         }
@@ -474,6 +500,8 @@ namespace CubeHags.client
                     //device.SetTexture(1, null);
                     effect.Technique = technique;
                 }
+                else if (currentViewport == SortItem.Viewport.FOUR)
+                    effect.Technique = technique;
                 currentViewport = vp;
                 switch (vp)
                 {
@@ -482,6 +510,9 @@ namespace CubeHags.client
                         effect.SetValue("WorldViewProj", worldview * Camera.Projection);
                         effect.Technique = "TexturedInstaced";
                         //device.SetTexture(1, SourceMap.ambientLightTexture);
+                        break;
+                    case SortItem.Viewport.FOUR:
+                        effect.Technique = "PositionTexturedColor";
                         break;
                 }
             }
@@ -499,9 +530,9 @@ namespace CubeHags.client
                     case SortItem.Translucency.OPAQUE:
                         if (vpLayer == SortItem.VPLayer.SKYBOX3D)
                             effect.Technique = "Sky3d";
-                        else if (vpLayer != SortItem.VPLayer.HUD && currentViewport != SortItem.Viewport.INSTANCED)
+                        else if (vpLayer != SortItem.VPLayer.HUD && currentViewport != SortItem.Viewport.INSTANCED && currentViewport != SortItem.Viewport.FOUR)
                             effect.Technique = technique;
-                        else if (currentViewport != SortItem.Viewport.INSTANCED)
+                        else if (currentViewport != SortItem.Viewport.INSTANCED && currentViewport != SortItem.Viewport.FOUR)
                             effect.Technique = "FinalPass_RGBE8";
                         break;
                     case SortItem.Translucency.ADDITIVE:
@@ -511,7 +542,7 @@ namespace CubeHags.client
                         {
                             effect.Technique = "Sky3d";
                         }
-                        else if (vpLayer != SortItem.VPLayer.HUD && currentViewport != SortItem.Viewport.INSTANCED && vpLayer != SortItem.VPLayer.EFFECT)
+                        else if (vpLayer != SortItem.VPLayer.HUD && currentViewport != SortItem.Viewport.INSTANCED && vpLayer != SortItem.VPLayer.EFFECT && currentViewport != SortItem.Viewport.FOUR)
                             effect.Technique = "TexturedLightmapAlpha";
                         else if (currentViewport != SortItem.Viewport.INSTANCED && vpLayer == SortItem.VPLayer.HUD)
                                 effect.Technique = "GUIAlpha";
@@ -574,8 +605,8 @@ namespace CubeHags.client
             device.SetSamplerState(0, SamplerState.MinFilter, (int)TextureFilter.Linear);
             device.SetSamplerState(0, SamplerState.MinFilter, (int)TextureFilter.Anisotropic);
             device.SetSamplerState(0, SamplerState.MaxAnisotropy, 4);
-            device.SetRenderState(RenderState.SrgbWriteEnable, true);
-            device.SetSamplerState(0, SamplerState.SrgbTexture, 1);
+            device.SetRenderState(RenderState.SrgbWriteEnable, false);
+            device.SetSamplerState(0, SamplerState.SrgbTexture, 0);
             device.SetSamplerState(0, SamplerState.MagFilter, (int)TextureFilter.Linear);
             device.SetSamplerState(1, SamplerState.MipFilter, (int)TextureFilter.Linear);
             device.SetSamplerState(1, SamplerState.MinFilter, (int)TextureFilter.Linear);
@@ -583,6 +614,29 @@ namespace CubeHags.client
             effect.SetValue("detailMultiplier", DetailMultiplier);
             device.SetRenderState(RenderState.ZEnable, true);
             device.SetRenderState(RenderState.ScissorTestEnable, true);
+
+            // Tone mapping
+            effect.SetValue("saturationAmount", tone_saturate.Value);
+            
+            
+            //double logLum = Math.Pow(10.0,tone_luminance.Value);
+            effect.SetValue("ExposureBias", tone_luminance.Value);
+            //effect.SetValue("avgLogLum", (float)logLum);
+            effect.SetValue("MIDDLE_GRAY", tone_grey.Value);
+            effect.SetValue("LUM_WHITE", tone_white.Value);
+            effect.SetValue("A", tone_a.Value);
+            effect.SetValue("B", tone_b.Value);
+            effect.SetValue("C", tone_c.Value);
+            effect.SetValue("D", tone_d.Value);
+            effect.SetValue("E", tone_e.Value);
+            effect.SetValue("F", tone_f.Value);
+            effect.SetValue("W", tone_w.Value);
+
+            if (SourceMap != null && SourceMap.fogController != null)
+            {
+                effect.SetValue<Color3>("FogColor", SourceMap.fogController.GetFogColor());
+
+            }
         }
 
         private void FinalPass()
@@ -601,9 +655,7 @@ namespace CubeHags.client
             
             form.ResizeBegin += new System.EventHandler((o, e) => { formIsResizing = true; });
             form.ResizeEnd += new EventHandler((o, e) => { formIsResizing = false; if(form.ClientSize != RenderSize) _sizeChanged = true; });
-
-            //VSync = CVars.Instance.Get("r_vsync", "1", CVarFlags.ARCHIVE).Integer == 1 ? true : false;
-
+            form.Show();
             InitDevice();
             
             // Init input
@@ -612,32 +664,39 @@ namespace CubeHags.client
         }
 
         private void InitDevice()
-        {   
-            currentWindowState = form.WindowState;
-            form.Resize += (o, args) =>
-            {
-                if (form.WindowState != currentWindowState)
-                {
-                    HandleResize(o, args);
-                }
-                currentWindowState = form.WindowState;
-            };
-            form.ResizeBegin += (o, args) => { formIsResizing = true; };
-            form.ResizeEnd += (o, args) =>
-            {
-                formIsResizing = false;
-                HandleResize(o, args);
-            };
-
-            form.Show();
+        {
+            // Use D3DEx for Vista/Win7+
             _is3D9Ex = false;
+            if (Environment.OSVersion.Platform == PlatformID.Win32NT && Environment.OSVersion.Version.Major >= 6)
+            {
+                _is3D9Ex = true;
+            }
             
             DeviceType devType = DeviceType.Hardware;
             int adapterOrdinal = 0;
-            Direct3D d3d = new Direct3D();
+
+            Direct3D d3d = null;
+            Direct3DEx d3dex = null;
+
+            
+            if (_is3D9Ex)
+            {
+                try
+                {
+                    // Create Ex, fallback if it fails
+                    d3dex = new Direct3DEx();
+                }
+                catch
+                {
+                    d3d = new Direct3D();
+                    _is3D9Ex = false;
+                }
+            }
+            else
+                d3d = new Direct3D();
             
             // Look for PerfHUD
-            AdapterCollection adapters = d3d.Adapters;
+            AdapterCollection adapters = (_is3D9Ex ? d3dex : d3d).Adapters;
             foreach (AdapterInformation adap in adapters)
             {
                 if (adap.Details.Description.Contains("PerfH"))
@@ -646,6 +705,7 @@ namespace CubeHags.client
                     devType = DeviceType.Reference;
                 }
             }
+
             foreach (var item in adapters[adapterOrdinal].GetDisplayModes(Format.X8R8G8B8))
         	{
                 string val = item.Width + "x" + item.Height;
@@ -673,7 +733,7 @@ namespace CubeHags.client
             _pp.SwapEffect = SwapEffect.Discard;
             _pp.EnableAutoDepthStencil = true;
             _pp.AutoDepthStencilFormat = Format.D24S8;
-            _pp.PresentationInterval = (r_vsync.Integer==1? PresentInterval.Default: PresentInterval.Immediate);
+            _pp.PresentationInterval = (r_vsync.Integer==1? PresentInterval.One: PresentInterval.Immediate);
             _pp.Multisample = MultiSampling;
             _pp.BackBufferWidth = RenderSize.Width;
             _pp.BackBufferHeight = RenderSize.Height;
@@ -686,24 +746,100 @@ namespace CubeHags.client
 
             // Got hardare vertex?
             if ((caps.DeviceCaps & DeviceCaps.HWTransformAndLight) == DeviceCaps.HWTransformAndLight)
-                createFlags = CreateFlags.HardwareVertexProcessing;
-            // Support pure device?
-            if ((caps.DeviceCaps & DeviceCaps.PureDevice) == DeviceCaps.PureDevice)
-                createFlags |= CreateFlags.PureDevice;
-            createFlags |= CreateFlags.FpuPreserve;
-            // Shader fallback
-            if (caps.VertexShaderVersion < new Version(3, 0) || caps.PixelShaderVersion < new Version(3,0))
             {
-                devType = DeviceType.Reference;
-                System.Console.WriteLine("[Render] Using Reference Device! :(");
+                createFlags = CreateFlags.HardwareVertexProcessing;
+                // Support pure device?
+                if ((caps.DeviceCaps & DeviceCaps.PureDevice) == DeviceCaps.PureDevice)
+                    createFlags |= CreateFlags.PureDevice;
             }
+            
+            createFlags |= CreateFlags.FpuPreserve;
+
+            // Create d3d device + behemoth fallback
             try
             {
-                device = new Device(d3d, adapterOrdinal, devType, form.Handle, createFlags, _pp);
+                if (_is3D9Ex)
+                {
+                    if (r_fs.Bool)
+                    {
+                        DisplayModeEx dsp = new DisplayModeEx();
+                        dsp.Width = _pp.BackBufferWidth;
+                        dsp.Height = _pp.BackBufferHeight;
+                        dsp.Format = _pp.BackBufferFormat;
+                        dsp.RefreshRate = 60;
+                        _pp.FullScreenRefreshRateInHertz = 60;
+                        //DisplayModeEx dispMode = d3dex.GetAdapterDisplayModeEx(adapterOrdinal);
+                        //RenderSize = new Size(dispMode.Width, dispMode.Height);
+                        //form.ClientSize = new Size(dispMode.Width, dispMode.Height);
+                        //_pp.BackBufferFormat = dispMode.Format;
+                        //_pp.BackBufferWidth = dispMode.Width;
+                        //_pp.BackBufferHeight = dispMode.Height;
+                        //_pp.FullScreenRefreshRateInHertz = dispMode.RefreshRate;
+                        device = new DeviceEx(d3dex, adapterOrdinal, devType, form.Handle, createFlags, _pp, dsp);
+                    }
+                    else
+                        device = new DeviceEx(d3dex, adapterOrdinal, devType, form.Handle, createFlags, _pp);
+                }
+                else
+                    device = new Device(d3d, adapterOrdinal, devType, form.Handle, createFlags, _pp);
+
             }
-            catch (Exception ex)
+            catch (Direct3D9Exception ex)
             {
-                throw ex;
+                if (ex.ResultCode == ResultCode.NotAvailable)
+                {
+                    // Try again with different settings
+                    RenderSize = new Size(800, 600);
+                    form.ClientSize = new Size(800, 600);
+                    _pp.BackBufferWidth = 800;
+                    _pp.BackBufferHeight = 600;
+                    _pp.BackBufferCount = 1;
+                    _pp.SwapEffect = SwapEffect.Discard;
+                    createFlags &= ~(CreateFlags.PureDevice | CreateFlags.HardwareVertexProcessing);
+                    createFlags |= CreateFlags.SoftwareVertexProcessing;
+                    try
+                    {
+                        if (_is3D9Ex)
+                        {
+                            if (r_fs.Bool)
+                            {
+                                DisplayModeEx dispMode = d3dex.GetAdapterDisplayModeEx(adapterOrdinal);
+                                RenderSize = new Size(dispMode.Width, dispMode.Height);
+                                form.ClientSize = new Size(dispMode.Width, dispMode.Height);
+                                _pp.BackBufferFormat = dispMode.Format;
+                                _pp.BackBufferWidth = dispMode.Width;
+                                _pp.BackBufferHeight = dispMode.Height;
+                                _pp.FullScreenRefreshRateInHertz = dispMode.RefreshRate;
+                                device = new DeviceEx(d3dex, adapterOrdinal, devType, form.Handle, createFlags, _pp, dispMode);
+                            }
+                            else
+                                device = new DeviceEx(d3dex, adapterOrdinal, devType, form.Handle, createFlags, _pp);
+                        }
+                        else
+                            device = new Device(d3d, adapterOrdinal, devType, form.Handle, createFlags, _pp);
+                    }
+                    catch (Exception ex2)
+                    {
+                        if (_is3D9Ex)
+                        {
+                            // 3. fallback.. disable ex
+                            _is3D9Ex = false;
+                            Size ress = GetResolution();
+                            RenderSize = ress;
+                            form.ClientSize = ress;
+                            _pp.BackBufferWidth = ress.Width;
+                            _pp.BackBufferHeight = ress.Height;
+                            _pp.BackBufferCount = 1;
+                            _pp.SwapEffect = SwapEffect.Discard;
+                            d3dex.Dispose();
+                            device = new Device(new Direct3D(), adapterOrdinal, devType, form.Handle, createFlags, _pp);
+                        }
+                        else
+                            throw ex2;
+                    }
+                }
+                else
+                    throw ex;
             }
             
             // Load main shader
@@ -713,7 +849,7 @@ namespace CubeHags.client
                 SlimDX.Configuration.ThrowOnError = false;
                 effect = Effect.FromFile(device, System.Windows.Forms.Application.StartupPath + "/client/render/simple.fx", null, null, null, ShaderFlags.None, null, out shaderOutput);
 
-                if (shaderOutput != null && shaderOutput != "")
+                if (shaderOutput != null && shaderOutput != "" && effect == null)
                 {
                     // Shader problem :..(
                     System.Windows.Forms.MessageBox.Show(shaderOutput, "Shader Compilation error :(", System.Windows.Forms.MessageBoxButtons.OK, System.Windows.Forms.MessageBoxIcon.Error);
@@ -727,13 +863,15 @@ namespace CubeHags.client
                 System.Console.WriteLine("Could not find shader..");
             }
 
-            //effect.
 
             // Add fonts
             if (Fonts.Count == 0)
             {
+                System.Drawing.Text.PrivateFontCollection col = new System.Drawing.Text.PrivateFontCollection();
+                col.AddFontFile(System.Windows.Forms.Application.StartupPath + @"\data\gui\Candara.ttf");
+
                 // UI Title
-                System.Drawing.Font localFont = new System.Drawing.Font("Constantia", 10.5f, System.Drawing.FontStyle.Regular);
+                System.Drawing.Font localFont = new System.Drawing.Font(col.Families[0], 10.5f, System.Drawing.FontStyle.Regular);
                 SlimDX.Direct3D9.Font font = new SlimDX.Direct3D9.Font(Renderer.Instance.device, localFont);
                 Fonts.Add("title", font);
 
@@ -742,20 +880,20 @@ namespace CubeHags.client
                 Fonts.Add("diag", font);
 
                 // Labels and UI elements
-                localFont = new System.Drawing.Font("Candara", 10f, System.Drawing.FontStyle.Regular);
+                localFont = new System.Drawing.Font(col.Families[0], 10f, System.Drawing.FontStyle.Regular);
                 font = new SlimDX.Direct3D9.Font(Renderer.Instance.device, localFont);
                 Fonts.Add("label", font);
 
-                localFont = new System.Drawing.Font("Candara", 15f, System.Drawing.FontStyle.Regular);
+                localFont = new System.Drawing.Font(col.Families[0], 15f, System.Drawing.FontStyle.Regular);
                 font = new SlimDX.Direct3D9.Font(Renderer.Instance.device, localFont);
                 Fonts.Add("biglabel", font);
 
-                localFont = new System.Drawing.Font("Candara", 23f, System.Drawing.FontStyle.Regular);
+                localFont = new System.Drawing.Font(col.Families[0], 23f, System.Drawing.FontStyle.Regular);
                 font = new SlimDX.Direct3D9.Font(Renderer.Instance.device, localFont);
                 Fonts.Add("biggerlabel", font);
 
                 // Textbox
-                System.Drawing.Text.PrivateFontCollection col = new System.Drawing.Text.PrivateFontCollection();
+                col = new System.Drawing.Text.PrivateFontCollection();
                 col.AddFontFile(System.Windows.Forms.Application.StartupPath + @"\data\gui\dina10px.ttf");
                 localFont = new System.Drawing.Font(col.Families[0], 12f, FontStyle.Regular);
                 font = new SlimDX.Direct3D9.Font(Renderer.Instance.device, localFont);
@@ -770,8 +908,6 @@ namespace CubeHags.client
 
             // Init windowing system
             WindowManager.Instance.Init(device);
-            
-            Render();
         }
 
         Size GetResolution()

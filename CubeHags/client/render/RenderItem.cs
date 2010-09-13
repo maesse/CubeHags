@@ -6,6 +6,7 @@ using SlimDX.Direct3D9;
 using SlimDX;
 using CubeHags.client.map.Source;
 using CubeHags.client.render;
+using CubeHags.client.render.Formats;
 
 namespace CubeHags.client
 {
@@ -30,6 +31,8 @@ namespace CubeHags.client
         public RenderChildren parent;
         public int ID; // RenderItem ID
 
+        public ushort depth; // used for alpha sorting static map
+
         // Info
         bool itemsOptimized = false;
         public int nVerts;
@@ -43,6 +46,7 @@ namespace CubeHags.client
         // Special stuff
         public int TextureID; // Used by Quake3
         public Face face = null; // Used by Source
+        public List<VertexPositonNormalColorTexture> verts = null;
 
         public RenderItem(RenderChildren parent, SourceMaterial material)
         {
@@ -143,7 +147,7 @@ namespace CubeHags.client
                 if (ib == null)
                     ib = new HagsIndexBuffer();
                 
-                    ib.SetIB<uint>(indices.ToArray(), nBytes, Usage.WriteOnly, false);
+                    ib.SetIB<uint>(indices.ToArray(), nBytes, Usage.WriteOnly | Usage.Dynamic, false);
 
                 // Figure out nverts
                 uint min = indices[0], max = indices[0];
