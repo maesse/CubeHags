@@ -17,7 +17,7 @@ namespace CubeHags.client.cgame
                 Common.Instance.WriteLine(Commands.Args(tokens));
                 return;
             }
-
+            
             if (command.Equals("cs"))
             {
                 ConfigStringModified(tokens);
@@ -32,7 +32,9 @@ namespace CubeHags.client.cgame
 
             if (command.Equals("chat"))
             {
-                Common.Instance.WriteLine(Commands.Args(tokens)+"\n");
+                string text = Commands.Args(tokens);
+                text = RemoveChatEscapeChar(text);
+                Common.Instance.Printf(text+"\n");
                 return;
             }
 
@@ -42,6 +44,19 @@ namespace CubeHags.client.cgame
             //    return;
             //}
             Common.Instance.WriteLine("Got Command: {0}", Commands.ArgsFrom(tokens, 0));
+        }
+
+        string RemoveChatEscapeChar(string text)
+        {
+            int i;
+            StringBuilder str = new StringBuilder(text.Length);
+            for (i = 0; i < text.Length; i++)
+            {
+                if (text[i] == (char)0x19)
+                    continue;
+                str.Append(text[i]);
+            }
+            return str.ToString();
         }
 
         void ConfigStringModified(string[] tokens)

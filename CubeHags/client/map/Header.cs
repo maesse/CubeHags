@@ -9,11 +9,6 @@ using CubeHags.common;
 
 namespace CubeHags.client.map.Source
 {
-
-    
-
-    
-    
     public struct Header
     {
         public static int HEADER_LUMPS = 64;
@@ -172,7 +167,7 @@ namespace CubeHags.client.map.Source
     public class cplane_t {
     	public Vector3	normal;
         public float dist;
-        public int type;			// for fast side tests: 0,1,2 = axial, 3 = nonaxial
+        public int type;		// for fast side tests: 0,1,2 = axial, 3 = nonaxial
         public byte signbits;		// signx + (signy<<1) + (signz<<2), used as lookup during collision
 
         public override string ToString()

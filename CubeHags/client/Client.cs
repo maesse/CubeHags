@@ -45,6 +45,8 @@ namespace CubeHags.client
         public List<serverInfo_t> localServers = new List<serverInfo_t>();
         public bool HasNewServers = false;
 
+        Ping[] PingList = new Ping[32];
+
         public Client()
         {
 
@@ -95,6 +97,36 @@ namespace CubeHags.client
             packet.Buffer.Position = oldpos;
             clc.lastPacketTime = realtime;
             ParseServerMessage(packet);
+        }
+
+
+        /*
+        ===================
+        CL_ForwardCommandToServer
+
+        adds the current command line as a clientCommand
+        things like godmode, noclip, etc, are commands directed to the server,
+        so when they are typed in at the console, they will need to be forwarded.
+        ===================
+        */
+        public void CL_ForwardCommandToServer(string text, string[] tokens)
+        {
+            string cmd = tokens[0];
+
+            // ignore key up
+            if (cmd[0] == '-')
+                return;
+
+            if ((int)state < (int)ConnectState.CONNECTED || cmd[0] == '+')
+            {
+                Common.Instance.WriteLine("Unknown command \"{0}^7\"\n", cmd);
+                return;
+            }
+
+            if (tokens.Length > 1)
+                AddReliableCommand(text, false);
+            else
+                AddReliableCommand(cmd, false);
         }
 
         void ConnectionlessPacket(Net.Packet packet)
@@ -214,29 +246,190 @@ namespace CubeHags.client
         public void Init()
         {
             Common.Instance.WriteLine("------- Client initialization --------");
-            
+
             form = new RenderForm("CubeHags")
             {
                 ClientSize = Renderer.Instance.RenderSize,
                 StartPosition = System.Windows.Forms.FormStartPosition.CenterScreen
             };
 
+            for (int i = 0; i < PingList.Length; i++)
+            {
+                PingList[i] = new Ping();
+            }
+
+            ClearState();
+            state = ConnectState.DISCONNECTED;
+            realtime = 0;
+
             CVars.Instance.Get("name", "UnknownCube", CVarFlags.USER_INFO | CVarFlags.ARCHIVE);
             CVars.Instance.Get("rate", "25000", CVarFlags.USER_INFO | CVarFlags.ARCHIVE);
             CVars.Instance.Get("model", "unknown", CVarFlags.USER_INFO | CVarFlags.ARCHIVE);
             CVars.Instance.Get("cl_updaterate", "40", CVarFlags.USER_INFO | CVarFlags.ARCHIVE);
+            CVars.Instance.Get("cl_showTimeDelta", "0", CVarFlags.TEMP);
+            CVars.Instance.Get("cl_timeout", "30", CVarFlags.NONE);
+
+            cin = new Cinematic();
+
+            // Register commands
+            Commands.Instance.AddCommand("cinematic", new CommandDelegate(cin.PlayCinematic_f));
+            Commands.Instance.AddCommand("connect", new CommandDelegate(CL_Connect_f));
+            Commands.Instance.AddCommand("localservers", new CommandDelegate(CL_LocalServers_f));
+            Commands.Instance.AddCommand("cmd", new CommandDelegate(CL_ForwardToServer_f));
+            Commands.Instance.AddCommand("configstrings", new CommandDelegate(CL_Configstrings_f));
+            Commands.Instance.AddCommand("clientinfo", new CommandDelegate(CL_Clientinfo_f));
+            Commands.Instance.AddCommand("disconnect", new CommandDelegate(CL_Disconnect_f));
+            //Commands.Instance.AddCommand("rcon", new CommandDelegate(CL_Rcon_f));
+            Commands.Instance.AddCommand("ping", new CommandDelegate(CL_Ping_f));
+            Commands.Instance.AddCommand("serverstatus", new CommandDelegate(CL_ServerStatus_f));
+            Commands.Instance.AddCommand("model", new CommandDelegate(CL_SetModel_f));
 
             Renderer.Instance.Init(form);
             Input.Instance.InitializeInput();
             HagsConsole.Instance.Init();
 
             CVars.Instance.Set("cl_running", "1");
-            cin = new Cinematic();
-            Commands.Instance.AddCommand("cinematic", new CommandDelegate(cin.PlayCinematic_f));
-            Commands.Instance.AddCommand("connect", new CommandDelegate(CL_Connect_f));
-            Commands.Instance.AddCommand("localservers", new CommandDelegate(CL_LocalServers_f));
-            
             Common.Instance.WriteLine("------- Client initialization Complete --------");
+        }
+
+        void CL_SetModel_f(string[] tokens)
+        {
+            if (tokens.Length == 1)
+            {
+                Common.Instance.WriteLine("model is set to {0}", CVars.Instance.VariableString("model"));
+                return;
+            }
+
+            CVars.Instance.Set("model", tokens[1]);
+            //CVars.Instance.Set("headmodel", tokens[1]);
+        }
+
+        void CL_ServerStatus_f(string[] tokens)
+        {
+            if (tokens.Length > 1 || state != ConnectState.ACTIVE)
+            {
+                Common.Instance.WriteLine("CL_ServerStatus_f: Status for non-connected server not implemented");
+                return;
+            }
+
+            Net.Instance.OutOfBandMessage(Net.NetSource.CLIENT, clc.serverAddress, "getstatus");
+
+            // FIX
+        }
+
+        void CL_Ping_f(string[] tokens)
+        {
+            if (tokens.Length != 2)
+            {
+                Common.Instance.WriteLine("usage: ping server");
+                return;
+            }
+
+            string server = tokens[1];
+            IPEndPoint endp = Net.StringToAddr(server);
+            if (endp == null)
+                return;
+
+            Ping ping = FindFreePing();
+            ping.Addr = endp;
+            ping.Start = (int)Common.Instance.Milliseconds();
+            ping.Time = 0;
+
+
+            Net.Instance.OutOfBandMessage(Net.NetSource.CLIENT, ping.Addr, "getinfo xxx");
+        }
+
+        public Ping FindFreePing()
+        {
+            Ping ping;
+            for (int i = 0; i < 32; i++)
+            {
+                ping = PingList[i];
+
+                // Find free ping slot
+                if (ping.Addr != null)
+                {
+                    if (ping.Time == 0)
+                    {
+                        if (Common.Instance.Milliseconds() - ping.Start < 500)
+                            continue; // Still waiting for answer
+                    }
+                    else if (ping.Time < 500)
+                    {
+                        // results have not been queried
+                        continue;
+                    }
+                }
+                
+                // clear it
+                ping.Addr = null;
+                return ping;
+            }
+
+            // Use oldest entry
+            int oldest = int.MinValue;
+            Ping best = PingList[0];
+            Ping current;
+            for (int i = 0; i < PingList.Length; i++)
+            {
+                current = PingList[i];
+                int time = (int)(Common.Instance.Milliseconds() - current.Start);
+                if (time > oldest)
+                {
+                    best = current;
+                    oldest = time;
+                }
+            }
+            return best;
+        }
+
+        void CL_Disconnect_f(string[] tokens)
+        {
+            if (state != ConnectState.DISCONNECTED && state != ConnectState.CINEMATIC)
+            {
+                Common.Instance.Error("FIX DISCONNECT");
+            }
+        }
+
+        void CL_Clientinfo_f(string[] tokens)
+        {
+            Common.Instance.WriteLine("---- Client Information ----");
+            Common.Instance.WriteLine("State: {0}", Enum.GetName(typeof(ConnectState), state));
+            Common.Instance.WriteLine("Server: {0}", (servername==null||servername=="") ? "Not connected" : servername);
+            Common.Instance.WriteLine("User info settings:");
+            Info.Print(CVars.Instance.InfoString(CVarFlags.USER_INFO));
+            Common.Instance.WriteLine("----------------------------");
+        }
+
+        // Write out Configstrings to the console
+        void CL_Configstrings_f(string[] tokens)
+        {
+            if (state != ConnectState.ACTIVE)
+            {
+                Common.Instance.WriteLine("Not connected to a server.");
+                return;
+            }
+
+            foreach(int key in cl.gamestate.data.Keys)
+            {
+                Common.Instance.WriteLine("{0:0000}: {1}", key, cl.gamestate.data[key]);
+            }
+        }
+
+        // Forward a command to the server
+        void CL_ForwardToServer_f(string[] tokens) 
+        {
+            if (state != ConnectState.ACTIVE)
+            {
+                Common.Instance.WriteLine("Not connected to a server.");
+                return;
+            }
+
+            // don't forward the first argument
+            if (tokens.Length > 1)
+            {
+                AddReliableCommand(Commands.Args(tokens), false);
+            }
         }
 
         void CheckTimeout()
@@ -264,6 +457,7 @@ namespace CubeHags.client
         */
         void ClearState()
         {
+            // Clean out the client state.
             cl = new clientActive();
         }
 
@@ -516,44 +710,16 @@ namespace CubeHags.client
 
             Disconnect(true);
 
-            // Split connection string
-            string addr;
-            int portIndex = server.IndexOf(':');
-            int port = 27960;
-            if (portIndex > 0)
+            IPEndPoint endp = Net.StringToAddr(server);
+            if (endp == null)
             {
-                int portParse;
-                if (int.TryParse(server.Substring(portIndex+1), out portParse))
-                {
-                    port = portParse;
-                    addr = server.Substring(0, portIndex);
-                }
-                else
-                    addr = server;
-
-            }
-            else
-                addr = server;
-
-            // Do we need a dns lookup?
-            IPAddress ip;
-            if (!IPAddress.TryParse(addr, out ip))
-            {
-                IPAddress[] ips = Dns.GetHostAddresses(addr);
-                if (ips != null && ips.Length > 0)
-                {
-                    ip = ips[0];
-                }
-                else
-                {
-                    Common.Instance.WriteLine("^1Connect failed: Could not lookup {0}", addr);
-                    state = ConnectState.DISCONNECTED;
-                    return;
-                }
+                Common.Instance.WriteLine("^1Connect failed: Could not lookup {0}", server);
+                state = ConnectState.DISCONNECTED;
+                return;
             }
 
             servername = server;
-            clc.serverAddress = new IPEndPoint(ip, port);
+            clc.serverAddress = endp;
             state = ConnectState.CONNECTING;
             clc.connectTime = -99999;
             clc.connectPacketCount = 0;

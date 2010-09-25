@@ -21,6 +21,7 @@ namespace CubeHags.server
         CVar sv_speed;
         CVar g_synchrounousClients;
         CVar g_smoothClients;
+        CVar g_cheats;
 
 
         public level_locals_t level;
@@ -34,6 +35,16 @@ namespace CubeHags.server
             sv_speed = CVars.Instance.Get("sv_speed", "400", CVarFlags.SERVER_INFO);
             g_synchrounousClients = CVars.Instance.Get("g_synchrounousClients", "0", CVarFlags.SERVER_INFO);
             g_smoothClients = CVars.Instance.Get("g_smoothClients", "0", CVarFlags.SERVER_INFO);
+        }
+
+        public void LogPrintf(string fmt, params object[] data)
+        {
+            string.Format(fmt, data);
+        }
+
+        public void LogPrintf(string str)
+        {
+            Common.Instance.WriteLine("G: " + str);
         }
 
         public Server.svEntity_t SvEntityForGentity(sharedEntity gEnt) 
@@ -394,6 +405,7 @@ namespace CubeHags.server
             level.clients[clientNum] = new gclient_t();
             ent.client = level.clients[clientNum];
             gclient_t client = ent.client;
+            client.clientIndex = clientNum;
             client.pers.connected = clientConnected_t.CON_CONNECTING;
             // read or initialize the session data
             if (firstTime || level.newSession)
@@ -942,6 +954,10 @@ namespace CubeHags.server
 
         public void Init(float levelTime, int randSeed, int restart)
         {
+            LogPrintf("----- Game Initialization -----");
+
+            g_cheats = CVars.Instance.Get("g_cheats", "", CVarFlags.NONE);
+
             level.time = levelTime;
             level.startTime = levelTime;
             level.newSession = true;

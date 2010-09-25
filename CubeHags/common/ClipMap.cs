@@ -76,7 +76,29 @@ namespace CubeHags.common
 
         ClipMap()
         {
+            Commands.Instance.AddCommand("plane", new CommandDelegate(Plane_t));
+        }
+        void Plane_t(string[] tokens)
+        {
+            if (tokens.Length != 2)
+            {
+                Common.Instance.WriteLine("plane usage: plane <plane number>");
+                return;
+            }
 
+            int planeid = 0;
+            if (!int.TryParse(tokens[1], out planeid))
+            {
+                Common.Instance.WriteLine("Invalid argument.");
+                return;
+            }
+            else if (planeid < 0 || planeid > planes.Count)
+            {
+                Common.Instance.WriteLine("Plane doesn't exist");
+                return;
+            }
+
+            Common.Instance.WriteLine(planes[planeid].ToString());
         }
 
         public bool AreasConnected(int area1, int area2)
@@ -313,7 +335,7 @@ namespace CubeHags.common
             stream.Close();
             stream.Dispose();
 
-            InitHullBox();
+           // InitHullBox();
 
             name = filename;
         }
@@ -321,8 +343,44 @@ namespace CubeHags.common
 
         public void ClearMap()
         {
-
-            //_Instance = new ClipMap();
+            name = null;
+    	    numBrushSides = 0;
+    	    brushsides = new List<dbrushside_t>();
+    	    planes = new List<cplane_t>();
+    	    numNodes = 0;
+    	    nodes = null;
+    	    numLeafs = 0;
+    	    leafs = null;
+            numLeafBrushes = 0;
+    	    leafbrushes = new List<int>();
+    	    leafFaces = new List<int>();
+            numSubModels = 0;
+    	    cmodels = null;
+            brushes = new List<dbrush_t>();
+            numClusters = 0;
+    	    clusterBytes = 0;
+    	    visibility = null;
+    	    vised = false;			// if false, visibility is just a single cluster of ffs
+    	    entityString = null;
+    	    numAreas = 0;
+    	    numSurfaces = 0;
+    	    floodvalid = 0;
+    	    checkcount = 0;					// incremented on each trace
+            c_traces = 0;
+            c_brush_traces = 0;
+            texinfos = null;
+            box_model = new cmodel_t();
+            box_planes = new List<cplane_t>();
+            box_brush = new dbrush_t();
+            vis = new dvis_t();
+            edges  = null;
+            DispIndexToFaceIndex  = null;
+            ddispinfos  = null;
+            dispLightmapSamples  = null;
+            dispVerts  = null;
+            dispTris  = null;
+            dispCollTrees  = null;
+            surfEdges = null;
         }
 
         /*

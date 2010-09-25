@@ -194,6 +194,7 @@
     <Compile Include="common\Net.cs" />
     <Compile Include="server\game\GameClient.cs" />
     <Compile Include="server\game\GameCmds.cs" />
+    <Compile Include="server\game\GameTeam.cs" />
     <Compile Include="server\ServerCmds.cs" />
     <Compile Include="server\game\Game.cs" />
     <Compile Include="server\game\GameLocal.cs" />

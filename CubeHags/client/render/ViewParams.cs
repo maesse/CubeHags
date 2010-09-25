@@ -100,7 +100,7 @@ namespace CubeHags.client.render
 
             for (int i = 0; i < 4; i++)
             {
-                frustum[i].type = (byte)cplaneType.PLANE_NON_AXIAL;
+                frustum[i].type = (int)cplaneType.PLANE_NON_AXIAL;
                 frustum[i].dist = Vector3.Dot(Renderer.Instance.Camera.position, frustum[i].normal);
                 frustum[i].signbits = SignbitsForPlane(frustum[i]);
             }
@@ -135,14 +135,14 @@ namespace CubeHags.client.render
             return (byte)bits;
         }
 
-        public enum cplaneType : byte
+        public enum cplaneType : int
         {
             // 0-2 are axial planes
             PLANE_X = 0,
             PLANE_Y = 1,
             PLANE_Z = 2,
             // 3-5 are non-axial planes snapped to the nearest
-            PLANE_NON_AXIAL = 3,
+            PLANE_NON_AXIAL = 3
         }
     }
 

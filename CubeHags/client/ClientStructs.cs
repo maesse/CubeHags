@@ -444,6 +444,14 @@ namespace CubeHags.client
 
     }
 
+    public class Ping
+    {
+        public IPEndPoint Addr;
+        public int Start;
+        public int Time;
+        public string Info;
+    }
+
     public struct outPacket_t
     {
         public int p_cmdNumber;		// cl.cmdNumber when packet was sent

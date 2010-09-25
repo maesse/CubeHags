@@ -602,15 +602,18 @@ namespace CubeHags.client
 
             // Texture samplers
             device.SetSamplerState(0, SamplerState.MipFilter, (int)TextureFilter.Linear);
-            device.SetSamplerState(0, SamplerState.MinFilter, (int)TextureFilter.Linear);
+            device.SetSamplerState(0, SamplerState.MagFilter, (int)TextureFilter.Linear);
             device.SetSamplerState(0, SamplerState.MinFilter, (int)TextureFilter.Anisotropic);
             device.SetSamplerState(0, SamplerState.MaxAnisotropy, 4);
+            
             device.SetRenderState(RenderState.SrgbWriteEnable, false);
             device.SetSamplerState(0, SamplerState.SrgbTexture, 0);
-            device.SetSamplerState(0, SamplerState.MagFilter, (int)TextureFilter.Linear);
+
             device.SetSamplerState(1, SamplerState.MipFilter, (int)TextureFilter.Linear);
-            device.SetSamplerState(1, SamplerState.MinFilter, (int)TextureFilter.Linear);
+            device.SetSamplerState(1, SamplerState.MinFilter, (int)TextureFilter.Anisotropic);
             device.SetSamplerState(1, SamplerState.MagFilter, (int)TextureFilter.Linear);
+            device.SetSamplerState(1, SamplerState.MaxAnisotropy, 4);
+
             effect.SetValue("detailMultiplier", DetailMultiplier);
             device.SetRenderState(RenderState.ZEnable, true);
             device.SetRenderState(RenderState.ScissorTestEnable, true);

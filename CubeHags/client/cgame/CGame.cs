@@ -254,7 +254,13 @@ namespace CubeHags.client.cgame
 
         void InitConsoleCommands()
         {
-
+            Commands.Instance.AddCommand("kill", null);
+            Commands.Instance.AddCommand("say", null);
+            Commands.Instance.AddCommand("say_team", null);
+            Commands.Instance.AddCommand("god", null);
+            Commands.Instance.AddCommand("noclip", null);
+            Commands.Instance.AddCommand("team", null);
+            Commands.Instance.AddCommand("kill", null);
         }
     }
 }

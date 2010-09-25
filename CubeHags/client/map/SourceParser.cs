@@ -413,6 +413,10 @@ namespace CubeHags.client.map.Source
                 brushside.planenum = br.ReadUInt16();
 
                 brushside.plane = world.planes[brushside.planenum];
+                if (brushside.planenum == 9)
+                {
+                    int test = 2;
+                }
                 brushside.texinfo = br.ReadInt16();
                 brushside.dispinfo = br.ReadInt16();
                 brushside.bevel = br.ReadInt16();
@@ -1306,7 +1310,6 @@ namespace CubeHags.client.map.Source
                 plane.normal = new Vector3(br.ReadSingle(), br.ReadSingle(), br.ReadSingle());
                 plane.dist = br.ReadSingle();
                 plane.type = br.ReadInt32();
-                plane.type = plane.normal[0] == 1.0 ? 0 : (plane.normal[1] == 1.0 ? 1 : (plane.normal[2] == 1.0 ? 2 : 3));
                 int bits = 0;
                 for (int j = 0; j < 3; j++)
                 {

@@ -19,7 +19,7 @@ namespace CubeHags.common
                 while (of < s.Length && s[of] != '\\')
                     of++;
 
-                Common.Instance.Write("{0,20}", s.Substring(keystart, of));
+                Common.Instance.Write("{0,20}: ", s.Substring(keystart, of - keystart));
 
                 if (of == s.Length)
                 {
@@ -32,7 +32,7 @@ namespace CubeHags.common
                 while (of < s.Length && s[of] != '\\')
                     of++;
 
-                Common.Instance.Write("{0}\n", s.Substring(valstart, of));
+                Common.Instance.Write("{0}\n", s.Substring(valstart, of - valstart));
 
                 if (of < s.Length)
                     of++;

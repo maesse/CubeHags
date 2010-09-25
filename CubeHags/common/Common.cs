@@ -306,6 +306,19 @@ namespace CubeHags.common
             Environment.Exit(0);
         }
 
+        public enum ErrorCodes
+        {
+            FATAL, // Exit game with popup error
+            DROP, // Print to console and disconnect from game
+            SERVER_DISCONNECT, // don't kill server
+            DISCONNECT // client disconnect
+        }
+
+        //public void Error(ErrorCodes code, string str)
+        //{
+
+        //}
+
         public void Write(string str, params object[] args)
         {
             string formatted = string.Format(str, args);
@@ -319,6 +332,17 @@ namespace CubeHags.common
             
             logWriter.WriteLine(str);
             logWriter.Flush();
+        }
+
+        public void Printf(string fmt, params object[] args) 
+        {
+            Printf(string.Format(fmt, args));
+        }
+
+        public void Printf(string str)
+        {
+            Write(str);
+            WindowManager.Instance.AddChatMessage(str);
         }
 
         public void WriteLine(string str, params object[] args)

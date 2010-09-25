@@ -13,6 +13,7 @@ using CubeHags.client.gfx;
 using System.Drawing;
 using CubeHags.client.common;
 using CubeHags.client.render.Formats;
+using CubeHags.common;
 
 namespace CubeHags.client.gui
 {
@@ -27,6 +28,9 @@ namespace CubeHags.client.gui
         public InfoUI info;
 
         public ServerListUI serverList;
+
+        public KeyValuePair<int, string>[] ChatMessages = new KeyValuePair<int, string>[8];
+        public int currentChatMessage = -1;
 
         public enum CursorType
         {
@@ -236,15 +240,43 @@ namespace CubeHags.client.gui
             // Mouse is handled through events now
         }
 
+        public void AddChatMessage(string text)
+        {
+            int msStart = (++currentChatMessage) & 7;
+            ChatMessages[msStart] = new KeyValuePair<int, string>((int)Common.Instance.Milliseconds(), text);
+        }
+
+        public void RenderChatMessages()
+        {
+            string[] msgs = new string[8];
+            int msgc = 7;
+            for (int i = 0; i < 8; i++)
+			{
+                if (ChatMessages[currentChatMessage - i & 7].Key > 0)
+                    msgs[msgc--] = ChatMessages[currentChatMessage - i & 7].Value;
+			}
+            HagsConsole.Instance.DrawTextAt(10, 100, msgs, true);
+        }
+
         // Prepare and send rendercalls and buffers to Renderer
         public void Render()
         {
             //if (!ShowManager)
             //    return;
+            int ms = (int)Common.Instance.Milliseconds();
+
+            for (int i = 0; i < 8; i++)
+            {
+                if (ChatMessages[currentChatMessage + i & 7].Key > 0 && ms - ChatMessages[currentChatMessage + i & 7].Key > 5000)
+                {
+                    ChatMessages[currentChatMessage + i & 7] = new KeyValuePair<int, string>(-1, null);
+                }
+            }
+            
             // Clear buffers for next frame
             renderCalls.Clear();
             VertexList.Clear();
-
+            
             // sort back to front
             Windows.Sort(new WindowComparerReversed());
             foreach (Window window in Windows)
@@ -275,6 +307,8 @@ namespace CubeHags.client.gui
                 });
                 renderCalls.Add(new KeyValuePair<ulong, RenderDelegate>(key, del));
             }
+
+            RenderChatMessages();
 
             // Send rendercalls to renderer
             if (VertexList.Count > 0)

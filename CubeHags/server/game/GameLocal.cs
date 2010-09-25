@@ -254,6 +254,8 @@ namespace CubeHags.server
 
     	public bool	readyToExit;		// wishes to leave the intermission
 
+        public int clientIndex; // index to server array
+
     	public bool	noclip;
 
     	public int			lastCmdTime;		// level.time of last usercmd_t, for EF_CONNECTION

@@ -326,6 +326,11 @@ namespace CubeHags.common
                     node = nodes[num];
                     plane = node.plane;
 
+                    //Vector3 pl = new Vector3(0.5f, 0.5f, 0);
+                    //Vector3 pos = new Vector3(100, 200, -45);
+                    //float res = Vector3.Dot(pos,pl);
+                    //float sside = res +368;
+
                     if (plane.type < 3)
                     {
                         t1 = p1[plane.type] - plane.dist;
@@ -568,7 +573,10 @@ namespace CubeHags.common
             dleaf_t leaf = leafs[num];
             dbrush_t b;
             // trace line against all brushes in the leaf
-            for (int k = 0; k < leaf.numleafbrushes; k++)
+            int brushnum = leaf.numleafbrushes;
+            if (brushnum == 0)
+                brushnum++;
+            for (int k = 0; k < brushnum; k++)
             {
                 b = brushes[leafbrushes[leaf.firstleafbrush + k]];
 
@@ -576,21 +584,22 @@ namespace CubeHags.common
                     continue;   // already checked this brush in another leaf
                 b.checkcount = checkcount;
 
+                // Assert that the brush contains the needed contents
                 if (((int)b.contents & tw.contents) == 0)
                     continue;
 
-                //if (!BoundsIntersect(tw.bounds[0], tw.bounds[1], b.boundsmin, b.boundsmax))
-                //    continue;
+                // Check bounds of brush
+                if (!BoundsIntersect(tw.bounds[0], tw.bounds[1], b.boundsmin, b.boundsmax))
+                    continue;
 
                 //ClipBoxToBrush(tw, b);
                 TraceThroughBrush(tw, b);
+                // Return now if we were blocked 100%
                 if (tw.trace.fraction == 0.0f)
                     return;
             }
-
             if (tw.trace.fraction == 0.0f)
                 return;
-
             //// Check displacements
             //if (Renderer.Instance.SourceMap != null)
             //{
@@ -636,7 +645,7 @@ namespace CubeHags.common
 
         void TraceThroughBrush(traceWork_t tw, dbrush_t brush)
         {
-            float enterFrac = -1f;
+            float enterFrac = -9999f;
             float leaveFrac = 1f;
             cplane_t clipplane = null;
 
@@ -645,24 +654,35 @@ namespace CubeHags.common
 
             c_brush_traces++;
             bool getout = false;
+            bool getoutTemp = false;
             bool startout = false;
-
+            bool startoutTemp = false;
             dbrushside_t leadside = null;
-
+            cplane_t plane = null;
             //
             // compare the trace against all planes of the brush
             // find the latest time the trace crosses a plane towards the interior
             // and the earliest time the trace crosses a plane towards the exterior
             //
-            for (int i = 0; i < brush.numsides; i++)
+            for (int i = 0; i < brush.numsides; ++i)
             {
                 dbrushside_t side = brushsides[brush.firstside + i];
-                cplane_t plane = side.plane;
+                plane = side.plane;
 
+                // sanity check
                 if (side.plane.normal.X == 0f && side.plane.normal.Y == 0f && side.plane.normal.Z == 0f)
                     continue;
 
-                float dist = plane.dist - Vector3.Dot(tw.offsets[plane.signbits], plane.normal);
+                float dist;
+                if (!tw.isPoint)
+                    dist = plane.dist - Vector3.Dot(tw.offsets[plane.signbits], plane.normal);
+                else // ray
+                {
+                    dist = plane.dist;
+                    // dont trace rays against bevel planes
+                    if (side.bevel > 0)
+                        continue;
+                }
 
                 float d1 = Vector3.Dot(tw.start, plane.normal) - dist;
                 float d2 = Vector3.Dot(tw.end, plane.normal) - dist;
@@ -670,11 +690,13 @@ namespace CubeHags.common
                 // if completely in front of face, no intersection
                 if (d1 > 0.0f)
                 {
-                    startout = true;
 
+                    startout = true;
                     // d1 > 0.f && d2 > 0.f
                     if (d2 > 0.0f)
-                        return;
+                        continue;
+
+                    
                 }
                 else
                 {
@@ -685,6 +707,9 @@ namespace CubeHags.common
                     // d2 > 0.f
                     getout = true;  // endpoint is not in solid
                 }
+
+                //startout = startoutTemp;
+                //getout = getoutTemp;
 
                 // crosses face
                 if (d1 > d2)    // enter
@@ -700,8 +725,10 @@ namespace CubeHags.common
                     if (f > enterFrac)
                     {
                         enterFrac = f;
+                        
                         clipplane = plane;
                         leadside = side;
+
                     }
                 }
                 else // leave
@@ -712,9 +739,28 @@ namespace CubeHags.common
                     if (f < leaveFrac)
                     {
                         leaveFrac = f;
+                        
                     }
                 }
             }
+
+                ////when this happens, we entered the brush *after* leaving the previous brush.
+                //// Therefore, we're still outside!
+
+                //// NOTE: We only do this test against points because fractionleftsolid is
+                //// not possible to compute for brush sweeps without a *lot* more computation
+                //// So, client code will never get fractionleftsolid for box sweeps
+                //if (tw.isPoint && startout)
+                //{
+                //    // Add a little sludge.  The sludge should already be in the fractionleftsolid
+                //    // (for all intents and purposes is a leavefrac value) and enterfrac values.  
+                //    // Both of these values have +/- DIST_EPSILON values calculated in.  Thus, I 
+                //    // think the test should be against "0.0."  If we experience new "left solid"
+                //    // problems you may want to take a closer look here!
+                //    //		if ((trace->fractionleftsolid - enterfrac) > -1e-6)
+                //    if (tw.trace.fractionleftsolid - enterFrac > 0.0f)
+                //        startout = false;
+                //}
 
             //
             // all planes have been checked, and the trace was not
@@ -729,6 +775,7 @@ namespace CubeHags.common
                 if (!getout)
                 {
                     tw.trace.allsolid = true;
+                    //tw.trace.plane = plane;
                     tw.trace.fraction = 0f;
                     //tw.trace.fractionleftsolid = 1.0f;
                 }
@@ -736,14 +783,24 @@ namespace CubeHags.common
                 {
                     // if leavefrac == 1, this means it's never been updated or we're in allsolid
                     // the allsolid case was handled above
+                    //if ((leaveFrac != 1.0f) && (leaveFrac > tw.trace.fractionleftsolid))
+                    //{
+                    //    tw.trace.fractionleftsolid = leaveFrac;
 
+                    //    // This could occur if a previous trace didn't start us in solid
+                    //    if (tw.trace.fraction <= leaveFrac)
+                    //    {
+                    //        tw.trace.fraction = 1.0f;
+                    //    }
+                    //}
                 }
                 return;
             }
 
+            // We haven't hit anything at all until we've left...
             if (enterFrac < leaveFrac)
             {
-                if (enterFrac > -1.0f && enterFrac < tw.trace.fraction)
+                if (enterFrac > -9999.0f && enterFrac < tw.trace.fraction)
                 {
                     if (enterFrac < 0)
                         enterFrac = 0;

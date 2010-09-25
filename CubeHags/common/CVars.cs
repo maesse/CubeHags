@@ -35,10 +35,11 @@ namespace CubeHags.client.common
         public int ModificationCount;
         public float Value;
         public int Integer;
-        public bool Validate;
-        public bool Integral;
-        public float min, max;
-        public bool Bool { get { if (!Integral) return false; return (Integer == 1); } }
+        public bool Validate; // CVar has been changed, and needs to be validated
+        public bool Integral; // True if value is integer
+        public float min, max; // Min/Max range set with CheckRange()
+        // If value is an integer and == 1, return true.
+        public bool Bool { get { if (!Integral) return false; return (Integer == 1); } } 
     }
 
     sealed class CVars
@@ -95,6 +96,18 @@ namespace CubeHags.client.common
             if (var == null)
                 return CVarFlags.NONEXISTANT;
             return var.Flags;
+        }
+
+        // Applies a (permanent until changed) range-check on a cvar.
+        public void CheckRange(CVar var, float min, float max, bool integral)
+        {
+            var.Validate = true;
+            var.min = min;
+            var.max = max;
+            var.Integral = integral;
+
+            // Force initial range check
+            Set(var.Name, var.String);
         }
 
         // Create an infostring with cvars the fulfill the cVarFlags attribute

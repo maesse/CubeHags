@@ -5,6 +5,14 @@ using System.Text;
 
 namespace CubeHags.common
 {
+
+    public enum SayMode : int
+    {
+        ALL = 0,
+        TEAM = 1,
+        TELL = 2
+    }
+
     public enum team_t 
     {
     	TEAM_FREE,

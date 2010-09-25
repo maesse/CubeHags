@@ -155,15 +155,22 @@ namespace CubeHags.client.common
             // Check command delegates
             if (commands.ContainsKey(tokens[0].ToLower()))
             {
-                commands[tokens[0]](tokens);
-                return;
+                if (commands[tokens[0]] != null)
+                {
+                    commands[tokens[0]](tokens);
+                    return;
+                }
             }
 
             // Check cvars
             if (CVars.Instance.HandleFromCommand(tokens))
                 return;
 
-            Common.Instance.WriteLine("command '{0}^7' not found.", tokens[0]);
+
+            // send it as a server command if we are connected
+            // this will usually result in a chat message
+            Client.Instance.CL_ForwardCommandToServer(text, tokens);
+            //Common.Instance.WriteLine("command '{0}^7' not found.", tokens[0]);
         }
 
         public void AddCommand(string name, CommandDelegate function)

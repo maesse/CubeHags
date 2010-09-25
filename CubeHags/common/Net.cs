@@ -64,6 +64,56 @@ namespace CubeHags.common
             
         }
 
+        public static IPEndPoint StringToAddr(string server)
+        {
+            // Split connection string
+            string addr;
+            int portIndex = server.IndexOf(':');
+            int port = 27960;
+            if (portIndex > 0)
+            {
+                int portParse;
+                if (int.TryParse(server.Substring(portIndex + 1), out portParse))
+                {
+                    port = portParse;
+                    addr = server.Substring(0, portIndex);
+                }
+                else
+                    addr = server;
+
+            }
+            else
+                addr = server;
+
+            // Do we need a dns lookup?
+            IPAddress ip;
+            if (!IPAddress.TryParse(addr, out ip))
+            {
+                IPAddress[] ips = Dns.GetHostAddresses(addr);
+                if (ips != null && ips.Length > 0)
+                {
+                    ip = ips[0];
+                }
+                else
+                {
+                    Common.Instance.WriteLine("^1StringToAddr: Could not lookup {0}", addr);
+                    return null;
+                }
+            }
+
+            IPEndPoint ep = new IPEndPoint(ip, port);
+            return ep;
+        }
+
+        // Strips the port number from an server address
+        public static string StripPort(string addr)
+        {
+            int index = addr.IndexOf(':');
+            if (index > 0)
+                return addr.Substring(0, index);
+            return addr;
+        }
+
         public void DiscoverLocalServers(int port) 
         {
             client.DiscoverLocalServers(port);

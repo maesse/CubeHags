@@ -45,6 +45,10 @@ namespace CubeHags.client.gui
         List<string> commandHistory = new List<string>();
         int currentHistory = -1; // Current history-id we are viewing
 
+        // If the latest line added didn't end in '\n', this will be true. 
+        // This allows for text to be appended to the same line in the output.
+        bool lastLineNotEnded = false; 
+
         public string LinePrefix = "$ "; // commandline prefix
         Color4[] ConsoleColors = new Color4[] {
             Color.Black,
@@ -319,8 +323,21 @@ namespace CubeHags.client.gui
 
         public void AddLine(string text)
         {
-            if(lines != null)
+            if (lines == null)
+                return;
+
+            if (lastLineNotEnded)
+            {
+                // Append to latest line
+                lines[lines.Count - 1] += text;
+            } else // add as new line
                 lines.Add(text);
+
+            // Text ends in a lineend
+            if (text[text.Length - 1] == '\n')
+                lastLineNotEnded = false;
+            else
+                lastLineNotEnded = true;
         }
 
         public void ToggleConsole()
@@ -472,5 +489,122 @@ namespace CubeHags.client.gui
             });
             Renderer.Instance.drawCalls.Add(new KeyValuePair<ulong, RenderDelegate>(key, del));
         }
+
+        public void DrawTextAt(float x, float y, string[] str, bool shadow)
+        {
+            if (letters == null)
+                return;
+
+            // LocalServer gives "root" prefix
+
+
+            List<VertexPositionColorTex> verts = new List<VertexPositionColorTex>();
+            //VertexPositionColorTex[] bgverts = MiscRender.GetQuadPoints(new System.Drawing.RectangleF(0, 0, Renderer.Instance.RenderSize.Width, Renderer.Instance.RenderSize.Height), new Color4(0.75f, 0.0f, 0.0f, 0.0f));
+
+            //verts.AddRange(bgverts);
+            // Add background
+            int maxLines = Renderer.Instance.RenderSize.Height / 15;
+            int maxWidth = Renderer.Instance.RenderSize.Width / 9;
+
+            // Build vert list
+            Size screenSize = Renderer.Instance.RenderSize;
+
+            int currH = 0;
+            string text = "";
+            int textLines = 0;
+            Color4 currentColor = Color.White;
+            // Start from newest line, to oldest, or to we get to text that cant be seen
+            for (int line = str.Length-1; line >= 0 && currH <= maxLines; line--)
+            {
+                int internalH = 0, currW = 0;
+                //if (line == lines.Count)
+                //{
+                //    text = LinePrefix + (currentHistory == -1 ? currentText : commandHistory[currentHistory]);
+                //    textLines = 1;
+                //}
+                //else
+                {
+                    currentColor = Color.White;
+                    text = str[line];
+                    if (text == null)
+                        continue;
+                    textLines = NumLinesForString(text) + 1;
+                }
+                currH += textLines;
+
+                // Iterate over chars
+                for (int i = 0; i < text.Length; i++)
+                {
+                    int letter = (int)text[i] - 32; // Dont have the first 32 ascii chars
+                    if (text[i] == '\n')
+                    {
+                        currW = 0;
+                        internalH++;
+                        continue;
+                    }
+                    else if (text[i] == '\r')
+                        continue;
+                    else if (text.Length > i + 1 && text[i] == '^' && text[i + 1] >= '0' && text[i + 1] <= '9') // ^<0-9>
+                    {
+                        // Change color
+                        int colorNumber = int.Parse(text[i + 1].ToString());
+                        if (colorNumber < ConsoleColors.Length)
+                            currentColor = ConsoleColors[colorNumber];
+                        else
+                            currentColor = ConsoleColors[7]; // white
+
+                        // Don't draw "^1" in console output
+                        if (line != str.Length)
+                        {
+                            i++;
+                            continue;
+                        }
+                    }
+
+                    if (letter > letters.Length || letter < 0)
+                    {
+                        //Common.Instance.WriteLine("Letter out of bounds: " + text[i]);
+                        letter = (int)'~' - 31;
+                    }
+
+                    if (shadow)
+                    {
+                        VertexPositionColorTex[] qv2 = MiscRender.GetQuadPoints(new System.Drawing.RectangleF(x + 1 + (currW * 9), Renderer.Instance.RenderSize.Height - y + 1 - (currH * 15) + (internalH * 15), 9, 15), new RectangleF(new PointF(letters[letter].TexCoord.X, letters[letter].TexCoord.Y), new SizeF(9, 15)), font.Size, new Color4(0, 0, 0));
+                        verts.AddRange(qv2);
+                    }
+
+                    VertexPositionColorTex[] qv = MiscRender.GetQuadPoints(new System.Drawing.RectangleF(x+(currW * 9), Renderer.Instance.RenderSize.Height - y - (currH * 15) + (internalH * 15), 9, 15), new RectangleF(new PointF(letters[letter].TexCoord.X, letters[letter].TexCoord.Y), new SizeF(9, 15)), font.Size, currentColor);
+                    verts.AddRange(qv);
+                    
+
+                    // count up the current chars shown
+                    currW++;
+                    if (currW >= maxWidth)
+                    {
+                        currW = 0;
+                        internalH++;
+
+                        if (internalH >= maxLines)
+                            break;
+                    }
+                }
+            }
+            if (verts.Count == 0)
+                return;
+            // Pack it up and send it off to the renderer
+            VertexPositionColorTex[] arr = verts.ToArray();
+            ulong key = SortItem.GenerateBits(SortItem.FSLayer.HUD, SortItem.Viewport.DYNAMIC, SortItem.VPLayer.HUD, SortItem.Translucency.NORMAL, font.MaterialID, 0, 0, 0);
+            int nPrimitives = (verts.Count) / 3;
+            RenderDelegate del = new RenderDelegate((effect, device, setMaterial) =>
+            {
+                device.SetTexture(0, font.Texture);
+                device.DrawUserPrimitives<VertexPositionColorTex>(PrimitiveType.TriangleList, nPrimitives, arr);
+                //device.DrawPrimitives(PrimitiveType.TriangleList, 0, nPrimitives);
+            });
+            WindowManager.Instance.renderCalls.Add(new KeyValuePair<ulong, RenderDelegate>(key, del));
+            //Renderer.Instance.drawCalls.Add(new KeyValuePair<ulong, RenderDelegate>(key, del));
+        }
+        
     }
+    
 }
