@@ -753,8 +753,18 @@ namespace CubeHags.common
             to.viewangles.Y = msg.ReadBoolean() ? msg.ReadFloat() : from.viewangles.Y;
             to.viewangles.Z = msg.ReadBoolean() ? msg.ReadFloat() : from.viewangles.Z;
             to.viewheight = msg.ReadBoolean() ? msg.ReadInt32() : from.viewheight;
+            //if (to.viewheight == 16)
+            //{
+            //    int test = 2;
+            //}
             to.generic1 = msg.ReadBoolean() ? msg.ReadInt32() : from.generic1;
-            
+            to.bobCycle = msg.ReadBoolean() ? msg.ReadInt32() : from.bobCycle;
+
+            to.Ducked = msg.ReadBoolean() ? msg.ReadBoolean() : from.Ducked;
+            to.Ducking = msg.ReadBoolean() ? msg.ReadBoolean() : from.Ducking;
+            to.DuckTime = msg.ReadBoolean() ? msg.ReadInt32() : from.DuckTime;
+            to.OldButtons = msg.ReadBoolean() ? msg.ReadInt32() : from.OldButtons;
+
             // Got diff arrays
 
             int msgMiddle = 99999;
@@ -852,6 +862,12 @@ namespace CubeHags.common
             if (from.viewangles.Z != to.viewangles.Z) { msg.Write(true); msg.Write(to.viewangles.Z); } else { msg.Write(false); }
             if (from.viewheight != to.viewheight) { msg.Write(true); msg.Write(to.viewheight); } else { msg.Write(false); }
             if (from.generic1 != to.generic1) { msg.Write(true); msg.Write(to.generic1); } else { msg.Write(false); }
+            if (from.bobCycle != to.bobCycle) { msg.Write(true); msg.Write(to.bobCycle); } else { msg.Write(false); }
+
+            if (from.Ducked != to.Ducked) { msg.Write(true); msg.Write(to.Ducked); } else { msg.Write(false); }
+            if (from.Ducking != to.Ducking) { msg.Write(true); msg.Write(to.Ducking); } else { msg.Write(false); }
+            if (from.DuckTime != to.DuckTime) { msg.Write(true); msg.Write(to.DuckTime); } else { msg.Write(false); }
+            if (from.OldButtons != to.OldButtons) { msg.Write(true); msg.Write(to.OldButtons); } else { msg.Write(false); }
             
             //
             // send the arrays

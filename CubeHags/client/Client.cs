@@ -13,6 +13,7 @@ using CubeHags.client.render;
 using CubeHags.client.gfx;
 using CubeHags.server;
 using CubeHags.client.gui;
+using CubeHags.client.cgame;
 
 namespace CubeHags.client
 {
@@ -207,6 +208,27 @@ namespace CubeHags.client
             }
 
             Common.Instance.WriteLine("Unknown connectionless packet: {0}" + s);
+        }
+
+        /*
+        =================
+        CL_FlushMemory
+
+        Called by CL_MapLoading, CL_Connect_f, CL_PlayDemo_f, and CL_ParseGamestate the only
+        ways a client gets into a game
+        Also called by Com_Error
+        =================
+        */
+        void CL_FlushMemory()
+        {
+            // Shutdown all client stuff
+            ShutdownAll();
+
+            if (!Common.Instance.sv_running.Bool)
+            {
+                Game.Instance.ShutdownGame(0);
+                ClipMap.Instance.ClearMap();
+            }
         }
 
         internal void Frame(float msec)
@@ -551,10 +573,8 @@ namespace CubeHags.client
         */
         internal void MapLoading()
         {
-            if (Common.Instance.cl_running.Integer == 0)
-            {
+            if (!Common.Instance.cl_running.Bool)
                 return;
-            }
 
             // if we are already connected to the local host, stay connected
             if ((int)state >= (int)ConnectState.CONNECTED && servername.Equals("localhost"))
@@ -680,10 +700,12 @@ namespace CubeHags.client
                 // send a broadcast packet on each server port
                 // we support multiple server ports so a single machine
                 // can nicely run multiple servers
-                for (int j = 0; j < 4; j++)
-                {
-                    Net.Instance.DiscoverLocalServers(27960 + j);
-                }
+            NetBuffer buf = new NetBuffer(string.Format("{0}{0}{0}{0}getinfo xxx", 0x377));
+            Net.Instance.client.SendOutOfBandMessage(buf, new IPEndPoint(IPAddress.Parse("255.255.255.0"), 27960));
+                //for (int j = 0; j < 4; j++)
+                //{
+                //    Net.Instance.DiscoverLocalServers(27960 + j);
+                //}
             //}
         }
 
@@ -729,8 +751,10 @@ namespace CubeHags.client
 
         internal void ShutdownAll()
         {
-            // clear renderer, cgame, ui
-            //throw new NotImplementedException();
+            // Shutdown CGame
+            CGame.Instance.CG_Shutdown();
+            
+            // Shutdown renderer
         }
     }
 }

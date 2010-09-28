@@ -342,7 +342,9 @@ namespace CubeHags.client.map.Source
         CONTENTS_DETAIL       =  0x8000000,   // brushes to be added after vis leafs
         CONTENTS_TRANSLUCENT  =  0x10000000,  // auto set if any surface has trans
         CONTENTS_LADDER       =  0x20000000,
-        CONTENTS_HITBOX = 0x40000000  // use accurate hitboxes on trace
+        CONTENTS_HITBOX = 0x40000000,  // use accurate hitboxes on trace
+        MASK_PLAYERSOLID = (CONTENTS_SOLID | brushflags.CONTENTS_PLAYERCLIP | brushflags.CONTENTS_MONSTER),
+
 
     };
 

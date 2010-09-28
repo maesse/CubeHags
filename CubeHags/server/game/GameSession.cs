@@ -25,10 +25,16 @@ namespace CubeHags.server
 
             string[] tokens = s.Split(' ');
             if (tokens.Length != 7)
+            {
+                Common.Instance.WriteLine("");
                 return;
-
-            client.sess.sessionTeam = (team_t)Enum.Parse(typeof(team_t), tokens[0]);
-            client.sess.spectatorState = (spectatorState_t)Enum.Parse(typeof(spectatorState_t), tokens[2]);
+            }
+            int iteam;
+            if (int.TryParse(tokens[0], out iteam))
+                client.sess.sessionTeam = (team_t)iteam;
+            int ispec;
+            if (int.TryParse(tokens[2], out ispec))
+                client.sess.spectatorState = (spectatorState_t)ispec;
             client.sess.teamLeader = (tokens[6] == "1") ? true : false;
 
         }
@@ -43,9 +49,49 @@ namespace CubeHags.server
         */
         void InitSessionData(gclient_t client, int index, string userinfo)
         {
-            client.sess.sessionTeam = team_t.TEAM_SPECTATOR;
-            client.sess.spectatorState = spectatorState_t.SPECTATOR_FREE;
-            client.sess.spectatorTime = (int)level.time;
+            clientSession_t sess = client.sess;
+
+            if (g_gametype.Integer >= (int)GameType.TEAM)
+            {
+                if (g_teamAutoJoin.Bool)
+                {
+                    sess.sessionTeam = PickTeam(-1);
+                    BroadcastTeamChange(client, team_t.TEAM_NUM_TEAMS);
+                }
+                else // always spawn as spectator in team games
+                    sess.sessionTeam = team_t.TEAM_SPECTATOR;
+            }
+            else
+            {
+                string value = Info.ValueForKey(userinfo, "team");
+                if (value == "s") // A willing spectator
+                    sess.sessionTeam = team_t.TEAM_SPECTATOR;
+                else
+                {
+                    switch ((GameType)g_gametype.Integer)
+                    {
+                        default:
+                        case GameType.FFA:
+                            if (g_maxGameClients.Integer > 0 && level.numNonSpectatorClients >= g_maxGameClients.Integer)
+                                sess.sessionTeam = team_t.TEAM_SPECTATOR;
+                            else
+                                sess.sessionTeam = team_t.TEAM_FREE;
+                            break;
+                        case GameType.TOURNAMENT:
+                            // if the game is full, go into a waiting mode
+                            if (level.numNonSpectatorClients >= 2)
+                                sess.sessionTeam = team_t.TEAM_SPECTATOR;
+                            else
+                                sess.sessionTeam = team_t.TEAM_FREE;
+                            break;
+                    }
+                }
+            }
+
+            sess.spectatorState = spectatorState_t.SPECTATOR_FREE;
+            sess.spectatorTime = (int)level.time;
+
+            client.sess = sess;
 
             WriteClientSessionData(client, index);
         }
@@ -56,6 +102,8 @@ namespace CubeHags.server
 
             for (int i = 0; i < level.maxclients; i++)
             {
+                if (level.clients[i] == null)
+                    continue;
                 if (level.clients[i].pers.connected == clientConnected_t.CON_CONNECTED)
                 {
                     WriteClientSessionData(level.clients[i], i);

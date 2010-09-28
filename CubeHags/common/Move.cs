@@ -12,8 +12,9 @@ namespace CubeHags.common
 {
     public sealed partial class Common
     {
+        public static float BUNNYJUMP_MAX_SPEED_FACTOR = 1.7f;
         pml_t pml;
-        pmove_t pm;
+        pmove_t pm = null;
         trace_t lastTrace;
 
         float pm_maxspeed = 320f;
@@ -44,7 +45,7 @@ namespace CubeHags.common
 
             pm.ps.speed = 320;
             pm.ps.gravity = 800;
-
+            
             pm.ps.pmove_framecount = (pm.ps.pmove_framecount + 1) & ((1 << 6) - 1);
             // chop the move up if it is too long, to prevent framerate
             // dependent behavior
@@ -120,9 +121,10 @@ namespace CubeHags.common
             if (!pml.groundPlane)
                 pml.fallVelocity = -pm.ps.velocity[2];
 
+            Duck();
+
             if (pm.ps.pm_type == PMType.SPECTATOR)
             {
-                //CheckDuck();
                 FlyMove();
                 DropTimers();
                 return;
@@ -167,6 +169,166 @@ namespace CubeHags.common
                 pm.ps.velocity[2] = 0;
 
             CGame.SnapVector(pm.ps.velocity);
+        }
+
+        void Duck()
+        {
+            int buttonsChanged = pm.cmd.buttons ^ pm.ps.OldButtons;
+            int buttonsPressed = buttonsChanged & pm.cmd.buttons;
+            int buttonsReleased = buttonsChanged & pm.ps.OldButtons;
+
+            if ((pm.cmd.buttons & (int)Input.ButtonDef.DUCK) > 0)
+            {
+                pm.ps.OldButtons |= (int)Input.ButtonDef.DUCK;
+            }
+            else
+                pm.ps.OldButtons &= ~(int)Input.ButtonDef.DUCK;
+
+            if ((pm.ps.pm_flags & PMFlags.DUCKED) > 0)
+            {
+                // Crop speed
+                float frac = 0.5f;
+                pm.upmove *= frac;
+                pm.rightmove *= frac;
+                pm.forwardmove *= frac;
+            }
+
+            // Holding duck, in process of ducking or fully ducked?
+            if ((pm.cmd.buttons & (int)Input.ButtonDef.DUCK) > 0 || pm.ps.Ducking || (pm.ps.pm_flags & PMFlags.DUCKED) > 0)
+            {
+                if ((pm.cmd.buttons & (int)Input.ButtonDef.DUCK) > 0) // Holding duck
+                {
+                    //Common.Instance.Write("Holding duck...");
+                    bool alreadyDucked = (pm.ps.pm_flags & PMFlags.DUCKED) > 0;
+
+                    // Just pressed duck, and not fully ducked?
+                    if ((buttonsPressed & (int)Input.ButtonDef.DUCK) > 0 && !alreadyDucked)
+                    {
+                        pm.ps.Ducking = true;
+                        pm.ps.DuckTime = 1000;
+                    }
+
+                    float duckms = Math.Max(0f, 1000f - pm.ps.DuckTime);
+                    float ducks = duckms / 1000f;
+
+
+                    // doing a duck movement? (ie. not fully ducked?)
+                    if (pm.ps.Ducking)
+                    {
+                        // Finish ducking immediately if duck time is over or not on ground
+                        if (ducks > 0.4f || !pml.groundPlane || alreadyDucked)
+                        {
+                            //Common.Instance.WriteLine("Finish ducking!");
+                            FinishDuck();
+                        }
+                        else
+                        {
+                            
+                            // Calc parametric time
+                            float duckFraction = SimpleSpline(ducks / 0.4f);
+                            //Common.Instance.WriteLine("DuckFrac: " + duckFraction + " time:" + duckms);
+                            SetDuckedEyeOffset(duckFraction);
+                        }
+                    }
+                }
+                else
+                {
+                    // Try to unduck unless automovement is not allowed
+                    // NOTE: When not onground, you can always unduck
+                    //if (pm.ps.allowAutoMovement || !pml.groundPlane)
+                    {
+                        if ((buttonsReleased & (int)Input.ButtonDef.DUCK) > 0 && (pm.ps.pm_flags & PMFlags.DUCKED) == PMFlags.DUCKED)
+                        {
+                            pm.ps.DuckTime = 1000;
+                            pm.ps.Ducking = true; // or unducking
+                        }
+                    }
+
+                    float duckms = Math.Max(0f, 1000f - pm.ps.DuckTime);
+                    float ducks = duckms / 1000f;
+
+                    if (CanUnduck())
+                    {
+                        if (pm.ps.Ducked || pm.ps.Ducking)  // or unducking
+                        {
+                            // Finish ducking immediately if duck time is over or not on ground
+                            if (ducks > 0.2f || !pml.groundPlane)
+                                FinishUnduck();
+                            else
+                            {
+                                // Calc parametric time
+                                float duckFraction = SimpleSpline(1.0f - (ducks / 0.2f));
+                                SetDuckedEyeOffset(duckFraction);
+                            }
+                        }
+                    }
+                    else
+                    {
+                        // Still under something where we can't unduck, so make sure we reset this timer so
+                        //  that we'll unduck once we exit the tunnel, etc.
+                        pm.ps.DuckTime = 1000;
+                    }
+                }
+            }
+
+            //pm.ps.viewheight = Common.DEFAULT_VIEWHEIGHT;
+        }
+
+        void FinishUnduck()
+        {
+            pm.ps.Ducked = false;
+            pm.ps.Ducking = false;
+            pm.ps.pm_flags &= ~PMFlags.DUCKED;
+            pm.ps.viewheight = Common.DEFAULT_VIEWHEIGHT;
+
+            CategorizePosition();
+        }
+
+        bool CanUnduck()
+        {
+            return true;
+        }
+
+        bool CanDuck()
+        {
+            return true;
+        }
+
+        // FInish ducking
+        void FinishDuck()
+        {
+            pm.ps.Ducked = true;
+            pm.ps.pm_flags |= PMFlags.DUCKED;
+            pm.ps.Ducking = false;
+            pm.ps.viewheight = Common.CROUCH_VIEWHEIGHT;
+
+            // HACKHACK - Fudge for collision bug - no time to fix this properly
+            if (!pml.groundPlane)
+            {
+                //pm.ps.origin[2] -= Common.DEFAULT_VIEWHEIGHT - Common.CROUCH_VIEWHEIGHT;
+            }
+            else
+            {
+                //pm.ps.origin[2] += Common.DEFAULT_VIEWHEIGHT - Common.CROUCH_VIEWHEIGHT;
+            }
+
+            CategorizePosition();
+        }
+
+        // hermite basis function for smooth interpolation
+        // Similar to Gain() above, but very cheap to call
+        // value should be between 0 & 1 inclusive
+        float SimpleSpline(float val)
+        {
+            float valSq = val * val;
+
+            // Nice little ease-in, ease-out spline-like curve
+            return (3 * valSq - 2 * valSq * val);
+        }
+
+        void SetDuckedEyeOffset(float duckFraction)
+        {
+            pm.ps.viewheight = (int)((Common.CROUCH_VIEWHEIGHT * duckFraction) + (Common.DEFAULT_VIEWHEIGHT * (1f - duckFraction)));
         }
 
         void Friction2()
@@ -536,20 +698,21 @@ namespace CubeHags.common
         void Jump()
         {
 
-            bool tfc = false;
-            bool cansuperjump = false;
+            //bool tfc = false;
+            //bool cansuperjump = false;
 
-            if (pm.cmd.upmove < 10)
+            if (pm.ps.stats[0] <= 0)
             {
-                // not holding jump
+                pm.ps.OldButtons |= (int)Input.ButtonDef.JUMP;
                 return;
             }
 
-            // must wait for jump to be released
-            //if ((pm.ps.pm_flags & PMFlags.JUMP_HELD) == PMFlags.JUMP_HELD)
+            if (pm_maxspeed == 1)
+                return;
+
+            //if (pm.cmd.upmove < 10)
             //{
-            //    // clear upmove so cmdscale doesn't lower running speed
-            //    pm.cmd.upmove = 0;
+            //    // not holding jump
             //    return;
             //}
 
@@ -557,21 +720,53 @@ namespace CubeHags.common
 
             if (!pml.groundPlane)
             {
+                pm.ps.OldButtons |= (int)Input.ButtonDef.JUMP; // wait for release
                 return; // in air, so no effect
             }
 
-
+            if ((pm.ps.OldButtons & (int)Input.ButtonDef.JUMP) > 0)
+            {
+                return; // don't pogo-stick
+            }
 
             // In the air now.
             pml.groundPlane = false;
             pml.walking = false;
-            //PreventMegaBunnyJumping();
+
+            PreventMegaBunnyJumping();
 
             // Acclerate upward
-            pm.ps.velocity[2] = (float)Math.Sqrt(2 * 800 * 45.0);
+            pm.ps.velocity[2] += 295;
 
             // Decay it for simulation
             FixupGravityVelocity();
+
+            pm.ps.OldButtons |= (int)Input.ButtonDef.JUMP;
+        }
+
+        //-----------------------------------------------------------------------------
+        // Purpose: Corrects bunny jumping ( where player initiates a bunny jump before other
+        //  movement logic runs, thus making onground == -1 thus making PM_Friction get skipped and
+        //  running PM_AirMove, which doesn't crop velocity to maxspeed like the ground / other
+        //  movement logic does.
+        //-----------------------------------------------------------------------------
+        void PreventMegaBunnyJumping()
+        {
+            // How fast do we allow?
+            float maxscaledspeed = BUNNYJUMP_MAX_SPEED_FACTOR * pm_maxspeed;
+            if (maxscaledspeed <= 0.0f)
+                return;
+        
+            // current speed
+            float speed = pm.ps.velocity.Length();
+
+            // Speed is slower than max
+            if (speed <= maxscaledspeed)
+                return;
+
+            // We need to limit the speed :(
+            float frac = (maxscaledspeed / speed) * 0.65f;
+            pm.ps.velocity *= frac; // crop it down
         }
 
         void AddCorrectGravity()
@@ -858,12 +1053,12 @@ namespace CubeHags.common
             if ((pm.ps.pm_flags & PMFlags.DUCKED) == PMFlags.DUCKED)
             {
                 pm.maxs[2] = 16;
-                pm.ps.viewheight = 12;
+                pm.ps.viewheight = Common.CROUCH_VIEWHEIGHT;
             }
             else
             {
                 pm.maxs[2] = 32;
-                pm.ps.viewheight = 26;
+                pm.ps.viewheight = Common.DEFAULT_VIEWHEIGHT;
             }
         }
 
@@ -959,6 +1154,12 @@ namespace CubeHags.common
                 }
                 else
                     pm.ps.pm_time -= pml.msec;
+            }
+            if (pm.ps.DuckTime > 0f)
+            {
+                pm.ps.DuckTime -= pml.msec;
+                if (pm.ps.DuckTime < 0)
+                    pm.ps.DuckTime = 0;
             }
         }
 

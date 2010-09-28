@@ -5,7 +5,12 @@ using System.Text;
 
 namespace CubeHags.common
 {
-
+    public enum GameType : int
+    {
+        FFA = 0,
+        TOURNAMENT = 1,
+        TEAM = 2
+    }
     public enum SayMode : int
     {
         ALL = 0,
@@ -15,12 +20,11 @@ namespace CubeHags.common
 
     public enum team_t 
     {
-    	TEAM_FREE,
-    	TEAM_RED,
-    	TEAM_BLUE,
-    	TEAM_SPECTATOR,
-
-    	TEAM_NUM_TEAMS
+    	TEAM_FREE = 0,
+        TEAM_RED = 1,
+    	TEAM_BLUE = 2,
+    	TEAM_SPECTATOR = 3,
+    	TEAM_NUM_TEAMS = 4
     } 
 
     // player_state->persistant[] indexes

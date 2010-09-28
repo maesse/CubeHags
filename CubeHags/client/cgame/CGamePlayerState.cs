@@ -49,6 +49,15 @@ namespace CubeHags.client.cgame
             //s.generic1 = ps.generic1;
         }
 
+        // Respawn happening this snapshot
+        void Respawn()
+        {
+            // no errordecay on player movement
+            cg.thisFrameTeleport = true;
+
+            // Todo: show and select weapon
+        }
+
         void TransitionPlayerState(Common.PlayerState ps, Common.PlayerState ops)
         {
             // check for changing follow mode
@@ -69,7 +78,10 @@ namespace CubeHags.client.cgame
             if (ps.persistant[4] != ops.persistant[4])
             {
                 // Todo: Respawn
+                Respawn();
             }
+
+            
 
             if (cg.snap.ps.pm_type != Common.PMType.INTERMISSION && ps.persistant[3] != 3)
             {

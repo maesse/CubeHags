@@ -56,10 +56,24 @@ namespace CubeHags.client
             public long downtime; // timestamp
             public float deltatime; // msec down this frame if both a down and up happened
             public bool active; // current state
+            public bool wasPressed;
+        }
+
+        public enum ButtonDef :int
+        {
+            ATTACK = (1 << 0),
+            JUMP = (1 << 1),
+            DUCK = (1 << 2),
+            WALK = (1 << 3),
+            RELOAD = (1 << 4),
+            ATTACK2 = (1 << 5),
+            SCORE = (1 << 6),
+            USE = (1 << 7)
         }
 
         Button in_forward = new Button(), in_back = new Button(), in_moveleft = new Button();
         Button in_moveright = new Button(), in_up = new Button(), in_down = new Button();
+        Button[] in_buttons = new Button[16];
 
         // Singleton private instance
         private static readonly Input _instance = new Input();
@@ -130,6 +144,11 @@ namespace CubeHags.client
             SlimDX.RawInput.Device.MouseInput += new EventHandler<MouseInputEventArgs>(RawInputEvent);
             MouseState = client.MouseState.GUI;
             Commands.Instance.ExecuteText(Commands.EXECTYPE.EXEC_NOW, "toggleui");
+
+            for (int i = 0; i < in_buttons.Length; i++)
+            {
+                in_buttons[i] = new Button();
+            }
         }
 
         // Implement +-movement commands
@@ -145,6 +164,10 @@ namespace CubeHags.client
         void IN_ForwardUp(string[] tokens) { IN_KeyUp(tokens, ref in_forward); }
         void IN_BackDown(string[] tokens) { IN_KeyDown(tokens, ref  in_back); }
         void IN_BackUp(string[] tokens) { IN_KeyUp(tokens, ref in_back); }
+        void IN_Button0Down(string[] tokens) { IN_KeyDown(tokens, ref  in_buttons[0]); }
+        void IN_Button0Up(string[] tokens) { IN_KeyUp(tokens, ref in_buttons[0]); }
+        void IN_DuckDown(string[] tokens) { IN_KeyDown(tokens, ref  in_buttons[2]); }
+        void IN_DuckUp(string[] tokens) { IN_KeyUp(tokens, ref in_buttons[2]); }
 
         // Called at the beggining of each frame (only one time pr. frame)
         public void Update()
@@ -476,18 +499,23 @@ namespace CubeHags.client
 
         private void CmdButtons(ref UserCommand cmd)
         {
-            cmd.buttons = buttons;
-            //for (int i = 0; i < 15; i++)
-            //{
-            //    // Check mouse buttons
-                
-            //}
+            //
+            // figure button bits
+            // send a button bit even if the key was pressed and released in
+            // less than a frame
+            //	
+            for (int i = 0; i < 15; i++)
+            {
+                if (in_buttons[i].active || in_buttons[i].wasPressed)
+                    cmd.buttons |= 1 << i;
+                in_buttons[i].wasPressed = false;
+            }
         }
 
         void MouseMove(ref UserCommand cmd)
         {
-            Client.Instance.cl.viewAngles[1] -= mousedx * Client.Instance.sensitivity.Value * 0.05f;
-            Client.Instance.cl.viewAngles[0] += mousedy * Client.Instance.sensitivity.Value * 0.05f;
+            Client.Instance.cl.viewAngles[1] -= mousedx * Client.Instance.sensitivity.Value * 0.01f;
+            Client.Instance.cl.viewAngles[0] += mousedy * Client.Instance.sensitivity.Value * 0.01f;
         }
 
         void KeyMove(ref UserCommand cmd)
@@ -563,6 +591,7 @@ namespace CubeHags.client
             }
 
             b.downtime = long.Parse(tokens[2]);
+            b.wasPressed = true;
             b.active = true;
         }
 
@@ -1011,6 +1040,10 @@ namespace CubeHags.client
             Commands.Instance.AddCommand("-moveright", new CommandDelegate(IN_MoverightUp));
             Commands.Instance.AddCommand("+moveleft", new CommandDelegate(IN_MoveleftDown));
             Commands.Instance.AddCommand("-moveleft", new CommandDelegate(IN_MoveleftUp));
+            Commands.Instance.AddCommand("+duck", new CommandDelegate(IN_DuckDown));
+            Commands.Instance.AddCommand("-duck", new CommandDelegate(IN_DuckUp));
+            Commands.Instance.AddCommand("+attack", new CommandDelegate(IN_Button0Down));
+            Commands.Instance.AddCommand("-attack", new CommandDelegate(IN_Button0Up));
 
             KeyHags.Instance.SetBind(Keys.W, "+forward");
             KeyHags.Instance.SetBind(Keys.S, "+back");

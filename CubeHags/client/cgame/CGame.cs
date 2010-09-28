@@ -25,6 +25,11 @@ namespace CubeHags.client.cgame
         CVar pmove_fixed = CVars.Instance.Get("pmove_fixed", "0", CVarFlags.SYSTEM_INFO);
         CVar pmove_msec = CVars.Instance.Get("pmove_msec", "8", CVarFlags.SYSTEM_INFO);
         CVar cg_errorDecay = CVars.Instance.Get("cg_errorDecay", "100", CVarFlags.TEMP);
+        CVar cg_runpitch = CVars.Instance.Get("cg_runpitch", "0.002", CVarFlags.ARCHIVE);
+        CVar cg_runroll = CVars.Instance.Get("cg_runroll", "0.002", CVarFlags.ARCHIVE);
+        CVar cg_bobpitch = CVars.Instance.Get("cg_bobpitch", "0.002", CVarFlags.ARCHIVE);
+        CVar cg_bobroll = CVars.Instance.Get("cg_bobroll", "0.002", CVarFlags.ARCHIVE);
+        CVar cg_bobup = CVars.Instance.Get("cg_bobroll", "0.004", CVarFlags.CHEAT);
 
         CGame()
         {
@@ -70,6 +75,76 @@ namespace CubeHags.client.cgame
             Client.Instance.lagometer.frameSamples[Client.Instance.lagometer.frameCount++ & Lagometer.LAGBUFFER - 1] = offset;
         }
 
+        void OffsetFirstPersonView()
+        {
+            if (cg.snap.ps.pm_type == Common.PMType.INTERMISSION)
+                return;
+
+            
+            
+
+            // if dead, fix the angle and don't add any kick
+            if (cg.snap.ps.stats[0] <= 0)
+            {
+                cg.refdefViewAngles[2] = 40;
+                cg.refdefViewAngles[0] = -15;
+                cg.refdefViewAngles[1] = cg.snap.ps.stats[4];
+                cg.refdef.vieworg[2] += cg.predictedPlayerState.viewheight;
+                return;
+            }
+
+            Vector3 predVel = cg.predictedPlayerState.velocity;
+
+            // add angles based on velocity
+            float delta = Vector3.Dot(predVel, cg.refdef.viewaxis[0]);
+            cg.refdefViewAngles[0] += delta * cg_runpitch.Value;
+            delta = Vector3.Dot(predVel, cg.refdef.viewaxis[1]);
+            cg.refdefViewAngles[2] += delta * cg_runroll.Value;
+
+            // add angles based on bob
+            // make sure the bob is visible even at low speeds
+            float speed = cg.xyspeed > 200 ? cg.xyspeed : 200;
+            delta = cg.bobfracsin * cg_bobpitch.Value * speed;
+            if ((cg.predictedPlayerState.pm_flags & PMFlags.DUCKED) == PMFlags.DUCKED)
+                delta *= 3; // crouching
+            cg.refdefViewAngles[0] += delta;
+            delta = cg.bobfracsin * cg_bobroll.Value * speed;
+            if ((cg.predictedPlayerState.pm_flags & PMFlags.DUCKED) == PMFlags.DUCKED)
+                delta *= 3; // crouching accentuates roll
+            if ((cg.bobcycle & 1) > 0)
+                delta = -delta;
+            cg.refdefViewAngles[2] += delta;
+
+            // add view height
+            cg.refdef.vieworg[2] += cg.predictedPlayerState.viewheight;
+
+            //// smooth out duck height changes
+            float timeDelta = cg.time - cg.duckTime;
+            if (timeDelta < 100)
+            {
+                cg.refdef.vieworg[2] -= cg.duckChange * (100 - timeDelta) / 100;
+            }
+
+            // add bob height
+            float bob = cg.bobfracsin * cg.xyspeed * cg_bobup.Value;
+            if (bob > 6)
+                bob = 6;
+            cg.refdef.vieworg[2] += bob;
+
+
+            StepOffset();
+        }
+
+        void StepOffset()
+        {
+            //// smooth out stair climbing
+            //int timeDelta = cg.time - cg.stepTime;
+            //if (timeDelta < 200)
+            //{
+            //    cg.refdef.vieworg[2] -= cg.stepChange * (200 - timeDelta) / 200;
+            //}
+        }
+
         ViewParams CalcViewValues()
         {
             ViewParams view = new ViewParams();
@@ -83,11 +158,21 @@ namespace CubeHags.client.cgame
 
             Common.PlayerState ps = cg.predictedPlayerState;
 
+            cg.bobcycle = (ps.bobCycle & 127)>>7; // FIX
+            cg.bobfracsin = (float)Math.Abs(Math.Sin(ps.bobCycle & 127) / 127.0f * Math.PI);
             cg.xyspeed = (float)Math.Sqrt(ps.velocity[0] * ps.velocity[0] + ps.velocity[1] * ps.velocity[1]);
             view.vieworg = ps.origin;
+            cg.refdef = view;
             cg.refdefViewAngles = ps.viewangles;
             view.viewangles = ps.viewangles;
-            // OffsetFirstperonView();
+            //if (cg.renderingThirdPerson)
+            //{
+            //}
+            //else
+            {
+                AnglesToAxis(cg.refdefViewAngles, out view.viewaxis);
+                OffsetFirstPersonView();
+            }
 
             if (cg_errorDecay.Value > 0)
             {
@@ -212,6 +297,19 @@ namespace CubeHags.client.cgame
             }
 
             //BuildSpectatorString();
+        }
+
+        /*
+        =================
+        CG_Shutdown
+
+        Called before every level change or subsystem restart
+        =================
+        */
+        public void CG_Shutdown()
+        {
+            // some mods may need to do cleanup work here,
+            // like closing files or archiving session data
         }
 
         public string CG_ConfigString(int index)

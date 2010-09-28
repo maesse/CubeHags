@@ -152,6 +152,10 @@ namespace CubeHags.server
 
         void UpdateUserInfo(client_t cl, string[] tokens)
         {
+            if (tokens.Length < 0)
+            {
+                SendServerCommand(cl, "print \"Userinfo not changed: needs argument\"\n");
+            }
             cl.userinfo = tokens[1];
             UserInfoChanged(cl);
             Game.Instance.ClientUserInfoChanged(cl.id);

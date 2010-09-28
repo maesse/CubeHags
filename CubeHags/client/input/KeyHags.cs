@@ -225,6 +225,8 @@ namespace CubeHags.client.input
                     return Keys.D9;
                 case "TILDE":
                     return Keys.Oem5;
+                case "CTRL":
+                    return Keys.ControlKey;
                 default:
                     {
                         Keys key;
@@ -282,6 +284,8 @@ namespace CubeHags.client.input
                     return "9";
                 case Keys.Oem5:
                     return "TILDE";
+                case Keys.ControlKey:
+                    return "CTRL";
                 default:
                     if (returnInteger)
                         return key.ToString() + " : " + (int)key;

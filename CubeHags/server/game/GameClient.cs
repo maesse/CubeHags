@@ -5,6 +5,7 @@ using SlimDX;
 using CubeHags.common;
 using CubeHags.client;
 using CubeHags.client.cgame;
+using CubeHags.client.map.Source;
 
 namespace CubeHags.server
 {
@@ -13,6 +14,104 @@ namespace CubeHags.server
         void respawn(gentity_t ent)
         {
             ClientSpawn(ent);
+        }
+
+        team_t PickTeam(int ignoreClientNum)
+        {
+            int red = TeamCount(ignoreClientNum, team_t.TEAM_RED);
+            int blue = TeamCount(ignoreClientNum, team_t.TEAM_BLUE);
+
+            if (red > blue)
+                return team_t.TEAM_BLUE;
+            if (blue > red)
+                return team_t.TEAM_RED;
+            // Same playercount, pick the team with least points
+            if (level.teamScores[(int)team_t.TEAM_RED] > level.teamScores[(int)team_t.TEAM_BLUE])
+                return team_t.TEAM_BLUE;
+            return team_t.TEAM_RED;
+        }
+
+        int TeamCount(int ignoreClientNum, team_t team)
+        {
+            int count = 0;
+            for (int i = 0; i < level.maxclients; i++)
+            {
+                if (i == ignoreClientNum)
+                    continue;
+                if (level.clients[i].pers.connected == clientConnected_t.CON_DISCONNECTED)
+                    continue;
+                if (level.clients[i].sess.sessionTeam == team)
+                    count++;
+            }
+            return count;
+        }
+
+        /*
+        ===========
+        ClientUserInfoChanged
+
+        Called from ClientConnect when the player first connects and
+        directly by the server system when the player updates a userinfo variable.
+
+        The game can override any of the settings and call trap_SetUserinfo
+        if desired.
+        ============
+        */
+        public void ClientUserInfoChanged(int clientNum)
+        {
+            gclient_t client = g_entities[clientNum].client;
+            string info = GetUserInfo(clientNum);
+
+            if (!Info.Validate(info))
+            {
+                info = "\\name\\badinfo";
+            }
+
+            // check for local client
+            string s = Info.ValueForKey(info, "ip");
+            if (s.Equals("localhost"))
+                client.pers.localClient = true;
+
+            // set name
+            string oldname = client.pers.netname;
+            s = Info.ValueForKey(info, "name");
+            client.pers.netname = ClientCleanName(s);
+
+            if (client.sess.sessionTeam == team_t.TEAM_SPECTATOR)
+            {
+                if (client.sess.spectatorState == spectatorState_t.SPECTATOR_SCOREBOARD)
+                    client.pers.netname = "scoreboard";
+            }
+
+            if (client.pers.connected == clientConnected_t.CON_CONNECTED)
+            {
+                if (!client.pers.netname.Equals(oldname))
+                {
+                    Server.Instance.SendServerCommand(null, string.Format("print \"{0} renamed to {1}\n\"", oldname, client.pers.netname));
+                }
+            }
+
+            // Handicap
+            string handi = Info.ValueForKey(info, "handicap");
+            int hand;
+            if (handi == null || handi.Length == 0)
+                client.pers.maxHealth = 100;
+            else if(int.TryParse(handi, out hand))
+            {
+                if (hand < 1 || hand > 100)
+                    hand = 100;
+                client.pers.maxHealth = hand;
+            }
+            client.ps.stats[6] = client.pers.maxHealth;
+
+            string model = Info.ValueForKey(info, "model");
+            team_t team = client.sess.sessionTeam;
+
+            s = string.Format("n\\{0}\\t\\{1}\\hmodel\\{2}\\hc\\{3}\\w\\{4}\\l\\{5}", client.pers.netname, (int)client.sess.sessionTeam, model, client.pers.maxHealth, client.sess.wins, client.sess.losses);
+            Server.Instance.SetConfigString((int)ConfigString.CS_PLAYERS + clientNum, s);
+
+            // this is not the userinfo, more like the configstring actually
+            //Common.Instance.WriteLine("ClientUserInfoChanged: {0} {1}", clientNum, s);
         }
 
         /*
@@ -24,8 +123,7 @@ namespace CubeHags.server
        Initializes all non-persistant parts of playerState
        ============
        */
-        static Vector3 playerMins = new Vector3(-16, -16, -36);
-        static Vector3 playerMaxs = new Vector3(16, 16, 36);
+        
         void ClientSpawn(gentity_t ent)
         {
             int index = ent.s.clientNum;
@@ -97,7 +195,20 @@ namespace CubeHags.server
 
             string userinfo = GetUserInfo(index);
             // set max health
-            client.pers.maxHealth = 100;
+            string val = Info.ValueForKey(userinfo, "handicap");
+            if (val != null && val.Length > 0)
+            {
+                int ival;
+                if (int.TryParse(val, out ival))
+                {
+                    if (ival <= 0 || ival > 100)
+                        client.pers.maxHealth = 100;
+                    else
+                        client.pers.maxHealth = ival;
+                }
+            } else 
+                client.pers.maxHealth = 100;
+
             // clear entity values
             client.ps.stats[6] = client.pers.maxHealth;
             client.ps.eFlags = flags;
@@ -107,13 +218,14 @@ namespace CubeHags.server
             ent.takedamage = true;
             ent.inuse = true;
             ent.classname = "player";
-            ent.r.contents = 0x2000000;
-            ent.clipmask = 0x2000000;
+            ent.r.contents = (int)brushflags.CONTENTS_MONSTER;
+            ent.clipmask = (int)brushflags.MASK_PLAYERSOLID;
             ent.waterlevel = 0;
+            // FIX: Add ent.die = player_die
             ent.flags = 0;
             ent.watertype = 0;
-            ent.r.mins = playerMins;
-            ent.r.maxs = playerMaxs;
+            ent.r.mins = Common.playerMins;
+            ent.r.maxs = Common.playerMaxs;
 
             client.ps.clientNum = index;
             client.ps.stats[2] = 1 << 2;

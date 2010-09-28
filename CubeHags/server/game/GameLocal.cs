@@ -368,11 +368,11 @@ namespace CubeHags.server
         public bool teamLeader;			// true when this client is a team leader
     }
 
-    public enum spectatorState_t
+    public enum spectatorState_t : int
     {
-    	SPECTATOR_NOT,
-    	SPECTATOR_FREE,
-    	SPECTATOR_FOLLOW,
-    	SPECTATOR_SCOREBOARD
+    	SPECTATOR_NOT = 0,
+    	SPECTATOR_FREE = 1,
+    	SPECTATOR_FOLLOW = 2,
+    	SPECTATOR_SCOREBOARD = 3
     } 
 }

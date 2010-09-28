@@ -142,8 +142,8 @@ namespace CubeHags.client.cgame
             //pmove.ps = cg.predictedPlayerState;
             //pmove.tracemask = 1;
 
-            pmove.mins = new Vector3( -16, -16, -36 );
-            pmove.maxs = new Vector3(16, 16, 36);
+            pmove.mins = Common.playerMins;
+            pmove.maxs = Common.playerMaxs;
             int nPredict = 0;
             // run cmds
             bool moved = false;

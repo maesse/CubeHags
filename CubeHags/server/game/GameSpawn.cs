@@ -14,7 +14,7 @@ namespace CubeHags.server
         {
             FindIntermissionPoint();
             origin = level.intermission_origin;
-            origin[2] += 36;
+            //origin[2] += 36;
             angles = level.intermission_angle;
             return null;
         }
@@ -46,8 +46,8 @@ namespace CubeHags.server
         gentity_t SelectInitialSpawnPoint(ref Vector3 origin, ref Vector3 angles)
         {
             gentity_t spot = null;
-            int sc = 0;
-            while ((spot = Find(sc++, "classname", "info_player_start")) != null)
+            int sc = -1;
+            while ((spot = Find(ref sc, "classname", "info_player_start")) != null)
             {
                 if((spot.spawnflags & 0x01) == 0x01) 
                 {
@@ -59,7 +59,7 @@ namespace CubeHags.server
                 return SelectRandomFurthestSpawnPoint(Vector3.Zero, ref origin, ref angles);
 
             origin = spot.s.origin;
-            origin[2] += 9;
+            origin[2] += 9-Common.playerMins[2];
             angles = spot.s.angles;
 
             return spot;
@@ -75,12 +75,14 @@ namespace CubeHags.server
         void FindIntermissionPoint()
         {
             // find the intermission spot
-            gentity_t ent = Find(0, "classname", "info_player_start");
+            int i = -1;
+            gentity_t ent = Find(ref i, "classname", "info_player_start");
             if (ent == null)    // the map creator forgot to put in an intermission point...
                 SelectRandomFurthestSpawnPoint(Vector3.Zero, ref level.intermission_origin, ref  level.intermission_angle);
             else
             {   
                 level.intermission_origin = ent.s.origin;
+                level.intermission_origin[2] += 9 - Common.playerMins[2];
                 level.intermission_angle = ent.s.angles;
                 // if it has a target, look towards it
                 if (ent.target != null)
@@ -111,59 +113,68 @@ namespace CubeHags.server
             float dist;
             float[] list_dist = new float[128];
             gentity_t[] list_spot = new gentity_t[128];
-            while ((spot = Find(i++, "classname", "info_player_terrorist")) != null)
+            string[] names = new string[] { "info_player_terrorist", "info_player_counterterrorist", "info_player_start" };
+            for (int nid = 0; nid < names.Length; nid++)
             {
-                //if (SpotWouldTelefrag())
-                //    continue;
-
-                delta = Vector3.Subtract(spot.s.origin, avoid);
-                dist = delta.Length();
-
-                for (j = 0; j < numspots; j++)
+                string name = names[nid];
+                i = -1;
+                while ((spot = Find(ref i, "classname", name)) != null)
                 {
-                    if (dist > list_dist[j])
+                    //if (SpotWouldTelefrag())
+                    //    continue;
+
+                    delta = Vector3.Subtract(spot.s.origin, avoid);
+                    dist = delta.Length();
+
+                    for (j = 0; j < numspots; j++)
                     {
-                        if (numspots >= 128)
-                            numspots = 128 - 1;
-
-                        for (int h = numspots; h >j; h--)
+                        if (dist > list_dist[j])
                         {
-                            list_dist[h] = list_dist[h - 1];
-                            list_spot[h] = list_spot[h - 1];
+                            if (numspots >= 128)
+                                numspots = 128 - 1;
+
+                            for (int h = numspots; h >j; h--)
+                            {
+                                list_dist[h] = list_dist[h - 1];
+                                list_spot[h] = list_spot[h - 1];
+                            }
+
+                            list_dist[j] = dist;
+                            list_spot[j] = spot;
+
+                            numspots++;
+                            break;
                         }
-
-                        list_dist[j] = dist;
-                        list_spot[j] = spot;
-
-                        numspots++;
-                        break;
                     }
-                }
 
-                if (j >= numspots && numspots < 128)
-                {
-                    list_dist[numspots] = dist;
-                    list_spot[numspots] = spot;
-                    numspots++;
+                    if (j >= numspots && numspots < 128)
+                    {
+                        list_dist[numspots] = dist;
+                        list_spot[numspots] = spot;
+                        numspots++;
+                    }
                 }
             }
 
             if (numspots == 0)
             {
-                spot = Find(0, "classname", "info_player_terrorist");
+                int starti = -1;
+                spot = Find(ref starti, "classname", "info_player_terrorist");
 
                 if (spot == null)
                     Common.Instance.Error("Couldn't find a spawn point");
 
                 origin = spot.s.origin;
-                origin[2] += 9;
+                origin[2] += 9 - Common.playerMins[2];
                 angles = spot.s.angles;
                 return spot;
             }
+            
 
             // select a random spot from the spawn points furthest away
-            int random = ((Common.Rand.Next() & 0x7fff)/ 0x7fff) * (numspots / 2);
+            int random = Common.Rand.Next(0,numspots);
             origin = list_spot[random].s.origin;
+            origin[2] += 9 - Common.playerMins[2];
             angles = list_spot[random].s.angles;
 
             return list_spot[random];
@@ -272,11 +283,11 @@ namespace CubeHags.server
             }
 
             gentity_t ent;
-            int i = 0, numchoices = 0;
+            int i = -1, numchoices = 0;
             gentity_t[] choice = new gentity_t[MAXCHOICES];
             while (true)
             {
-                ent = Find(i++, "targetname", name);
+                ent = Find(ref i, "targetname", name);
                 if (ent == null)
                     break;
                 choice[numchoices++] = ent;
@@ -347,9 +358,11 @@ namespace CubeHags.server
 
         =============
         */
-        gentity_t Find(int from, string field, string match)
+        gentity_t Find(ref int from, string field, string match)
         {
-            if (from != 0)
+            if (from == -1)
+                from = 0;
+            else
                 from++;
 
             gentity_t ent;

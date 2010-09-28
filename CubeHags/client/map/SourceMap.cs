@@ -73,7 +73,7 @@ namespace CubeHags.client.map.Source
                 case "1":
                     Vector3 start = new Vector3(-250, 302, -45);
                     Vector3 end = new Vector3(-250, 306, -45);
-                    trace_t trace = ClipMap.Instance.Box_Trace(start, end, new Vector3(-16, -16, -36), new Vector3(16, 16, 36), 0, (int)(brushflags.CONTENTS_SOLID | brushflags.CONTENTS_MOVEABLE | brushflags.CONTENTS_SLIME | brushflags.CONTENTS_OPAQUE));
+                    trace_t trace = ClipMap.Instance.Box_Trace(start, end, Common.playerMins, Common.playerMaxs, 0, (int)(brushflags.CONTENTS_SOLID | brushflags.CONTENTS_MOVEABLE | brushflags.CONTENTS_SLIME | brushflags.CONTENTS_OPAQUE));
                     if (trace.fraction != 1.0f)
                     {
                         Common.Instance.WriteLine("Collision");
@@ -82,7 +82,7 @@ namespace CubeHags.client.map.Source
                 case "2":
                     start = new Vector3(-351, 170, -45);
                     end = new Vector3(-353, 170, -45);
-                    trace = ClipMap.Instance.Box_Trace(start, end, new Vector3(-16, -16, -36), new Vector3(16, 16, 36), 0, (int)(brushflags.CONTENTS_SOLID | brushflags.CONTENTS_MOVEABLE | brushflags.CONTENTS_SLIME | brushflags.CONTENTS_OPAQUE));
+                    trace = ClipMap.Instance.Box_Trace(start, end, Common.playerMins, Common.playerMaxs, 0, (int)(brushflags.CONTENTS_SOLID | brushflags.CONTENTS_MOVEABLE | brushflags.CONTENTS_SLIME | brushflags.CONTENTS_OPAQUE));
                     if (trace.fraction != 1.0f)
                     {
                         Common.Instance.WriteLine("Collision");
@@ -91,7 +91,7 @@ namespace CubeHags.client.map.Source
                 case "3":
                     start = new Vector3(495,2177,-27);
                     end = new Vector3(497, 2177, -27);
-                    trace = ClipMap.Instance.Box_Trace(start, end, new Vector3(-16, -16, -36), new Vector3(16, 16, 36), 0, (int)(brushflags.CONTENTS_SOLID | brushflags.CONTENTS_MOVEABLE | brushflags.CONTENTS_SLIME | brushflags.CONTENTS_OPAQUE));
+                    trace = ClipMap.Instance.Box_Trace(start, end, Common.playerMins, Common.playerMaxs, 0, (int)(brushflags.CONTENTS_SOLID | brushflags.CONTENTS_MOVEABLE | brushflags.CONTENTS_SLIME | brushflags.CONTENTS_OPAQUE));
                     if (trace.fraction != 1.0f)
                     {
                         Common.Instance.WriteLine("Collision");
@@ -100,7 +100,7 @@ namespace CubeHags.client.map.Source
                 case "4":
                     start = new Vector3(30, 490, 40);
                     end = new Vector3(30, 512, 40);
-                    trace = ClipMap.Instance.Box_Trace(start, end, new Vector3(-16, -16, -36), new Vector3(16, 16, 36), 0, (int)(brushflags.CONTENTS_SOLID | brushflags.CONTENTS_MOVEABLE | brushflags.CONTENTS_SLIME | brushflags.CONTENTS_OPAQUE));
+                    trace = ClipMap.Instance.Box_Trace(start, end, Common.playerMins, Common.playerMaxs, 0, (int)(brushflags.CONTENTS_SOLID | brushflags.CONTENTS_MOVEABLE | brushflags.CONTENTS_SLIME | brushflags.CONTENTS_OPAQUE));
                     if (trace.fraction != 1.0f)
                     {
                         Common.Instance.WriteLine("Collision");

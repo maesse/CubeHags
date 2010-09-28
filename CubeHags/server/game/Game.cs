@@ -22,7 +22,9 @@ namespace CubeHags.server
         CVar g_synchrounousClients;
         CVar g_smoothClients;
         CVar g_cheats;
-
+        CVar g_gametype;
+        CVar g_teamAutoJoin; // force team when client joins
+        CVar g_maxGameClients; // Max non-spec clients
 
         public level_locals_t level;
         public gentity_t[] g_entities;
@@ -35,6 +37,9 @@ namespace CubeHags.server
             sv_speed = CVars.Instance.Get("sv_speed", "400", CVarFlags.SERVER_INFO);
             g_synchrounousClients = CVars.Instance.Get("g_synchrounousClients", "0", CVarFlags.SERVER_INFO);
             g_smoothClients = CVars.Instance.Get("g_smoothClients", "0", CVarFlags.SERVER_INFO);
+            g_gametype = CVars.Instance.Get("g_gametype", "0", CVarFlags.SERVER_INFO | CVarFlags.LATCH | CVarFlags.USER_INFO);
+            g_teamAutoJoin = CVars.Instance.Get("g_teamAutoJoin", "0", CVarFlags.ARCHIVE);
+            g_maxGameClients = CVars.Instance.Get("g_maxGameClients", "0", CVarFlags.SERVER_INFO | CVarFlags.ARCHIVE | CVarFlags.LATCH);
         }
 
         public void LogPrintf(string fmt, params object[] data)
@@ -428,63 +433,7 @@ namespace CubeHags.server
         }
 
 
-        /*
-        ===========
-        ClientUserInfoChanged
-
-        Called from ClientConnect when the player first connects and
-        directly by the server system when the player updates a userinfo variable.
-
-        The game can override any of the settings and call trap_SetUserinfo
-        if desired.
-        ============
-        */
-        public void ClientUserInfoChanged(int clientNum)
-        {
-            gclient_t client = g_entities[clientNum].client;
-            string info = GetUserInfo(clientNum);
-
-            if (!Info.Validate(info))
-            {
-                info = "\\name\\badinfo";
-            }
-
-            // check for local client
-            string s = Info.ValueForKey(info, "ip");
-            if (s.Equals("localhost"))
-                client.pers.localClient = true;
-
-            // set name
-            string oldname = client.pers.netname;
-            s = Info.ValueForKey(info, "name");
-            client.pers.netname = ClientCleanName(s);
-
-            if (client.sess.sessionTeam == team_t.TEAM_SPECTATOR)
-            {
-                if (client.sess.spectatorState == spectatorState_t.SPECTATOR_SCOREBOARD)
-                    client.pers.netname = "scoreboard";
-            }
-
-            if (client.pers.connected == clientConnected_t.CON_CONNECTED)
-            {
-                if (!client.pers.netname.Equals(oldname))
-                {
-                    Server.Instance.SendServerCommand(null, string.Format("print \"{0} renamed to {1}\n\"", oldname, client.pers.netname));
-                }
-            }
-
-            string model = Info.ValueForKey(info, "model");
-
-            client.pers.maxHealth = 100;
-            client.ps.stats[6] = client.pers.maxHealth;
-
-            s = string.Format("n\\{0}\\t\\{1}\\hmodel\\{2}\\hc\\{3}", client.pers.netname, (int)client.sess.sessionTeam, model, client.pers.maxHealth);
-
-            Server.Instance.SetConfigString((int)ConfigString.CS_PLAYERS + clientNum, s);
-
-            // this is not the userinfo, more like the configstring actually
-            Common.Instance.WriteLine("ClientUserInfoChanged: {0} {1}", clientNum, s);
-        }
+        
 
         string ClientCleanName(string s)
         {
@@ -493,11 +442,6 @@ namespace CubeHags.server
                 res = "UnnamedPlayer";
 
             return res;
-        }
-
-        public void Shutdown()
-        {
-
         }
 
         /*
@@ -664,8 +608,8 @@ namespace CubeHags.server
             pm.pmove_fixed = ((CVars.Instance.FindVar("pmove_fixed").Integer==1?true:false) | client.pers.pmoveFixed)?1:0;
             pm.pmove_msec = pmove_msec.Integer;
             client.oldOrigin = client.ps.origin;
-            pm.mins = new Vector3(-16, -16, -36);
-            pm.maxs = new Vector3(16, 16, 36);
+            pm.mins = Common.playerMins;
+            pm.maxs = Common.playerMaxs;
             Common.Instance.Pmove(pm);
 
 
@@ -755,8 +699,8 @@ namespace CubeHags.server
                 pm.pmove_msec = CVars.Instance.VariableIntegerValue("pmove_msec");
                 //pm.Trace += new TraceDelegate(Server.Instance.Trace);
                 //pm.PointContents += new TraceContentsDelegate(Server.Instance.PointContents);
-                pm.mins = new Vector3(-16, -16, -36);
-                pm.maxs = new Vector3(16, 16, 36);
+                pm.mins = Common.playerMins;
+                pm.maxs = Common.playerMaxs;
                 // perform a pmove
                 Common.Instance.Pmove(pm);
                 //if(!pm.ps.velocity.Equals(Vector3.Zero))
@@ -817,7 +761,7 @@ namespace CubeHags.server
                 Server.Instance.SendServerCommand(null, string.Format("print \"{0} entered the game\n\"", client.pers.netname));
             }
 
-            Common.Instance.WriteLine("Client_Begin {0}", clientNum);
+            //Common.Instance.WriteLine("Client_Begin {0}", clientNum);
         }
 
 
@@ -843,8 +787,8 @@ namespace CubeHags.server
                 return;
 
             gentity_t t = null;
-            int tc = 0;
-            while ((t = Find(tc++, "targetname", ent.target)) != null)
+            int tc = -1;
+            while ((t = Find(ref tc, "targetname", ent.target)) != null)
             {
                 if (t == ent)
                 {
@@ -1000,6 +944,14 @@ namespace CubeHags.server
             SpawnEntitiesFromString();
 
             FindTeams();
+        }
+
+        public void ShutdownGame(int restart)
+        {
+            LogPrintf("==== ShutdownGame ====\n");
+
+            // Write session data, so we can get it back
+            WriteSessionData();
         }
 
         void FindTeams() 

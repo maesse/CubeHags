@@ -332,6 +332,9 @@ namespace CubeHags.client
 
     	// view rendering
         public float xyspeed;
+        public float bobfracsin;
+        public int bobcycle;
+
         public ViewParams refdef;
         public Vector3 refdefViewAngles;
     	//refdef_t	refdef;

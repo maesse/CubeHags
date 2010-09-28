@@ -186,10 +186,10 @@ namespace CubeHags.client
             if (formIsResizing)
                 return false;
 
-            // Only draw ~10fps when not in focus
+            // Only draw ~30fps when not in focus
             if (!form.Focused && !r_fs.Bool)
             {
-                Thread.Sleep(100);
+                Thread.Sleep(30);
                 return true;
             }
 

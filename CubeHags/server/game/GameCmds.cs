@@ -111,7 +111,7 @@ namespace CubeHags.server
 
             string obit = Enum.GetName(typeof(MeansOfDeath), mod);
 
-            LogPrintf("Kill: {0} {1}: {3} killed {4} by {5}\n", killer, self.s.number, killerName, self.client.pers.netname, obit);
+            LogPrintf("Kill: {0} {1}: {2} killed {3} by {4}\n", killer, self.s.number, killerName, self.client.pers.netname, obit);
 
             self.enemy = attacker;
 
@@ -248,15 +248,33 @@ namespace CubeHags.server
         {
             if (tokens.Length != 2)
             {
-                //TODO: Print current team to client
+                team_t oldteam = ent.client.sess.sessionTeam;
+                switch (oldteam)
+                {
+                    case team_t.TEAM_BLUE:
+                        Server.Instance.SendServerCommand(Server.Instance.clients[ent.client.clientIndex], "print \"Blue team\n\"");
+                        break;
+                    case team_t.TEAM_RED:
+                        Server.Instance.SendServerCommand(Server.Instance.clients[ent.client.clientIndex], "print \"Red team\n\"");
+                        break;
+                    case team_t.TEAM_FREE:
+                        Server.Instance.SendServerCommand(Server.Instance.clients[ent.client.clientIndex], "print \"Free team\n\"");
+                        break;
+                    case team_t.TEAM_SPECTATOR:
+                        Server.Instance.SendServerCommand(Server.Instance.clients[ent.client.clientIndex], "print \"Spectator team\n\"");
+                        break;
+                }
                 return;
             }
 
             if (ent.client.switchTeamTime > (int)level.time)
             {
-                ///Server.Instance.SendServerCommand(ent.client, "print \"May not switch teams more than once per 5 seconds\n\"");
+                Server.Instance.SendServerCommand(Server.Instance.clients[ent.client.clientIndex], "print \"May not switch teams more than once per 5 seconds\n\"");
                 return;
             }
+
+            if (g_gametype.Integer == (int)GameType.TOURNAMENT && ent.client.sess.sessionTeam == team_t.TEAM_FREE)
+                ent.client.sess.losses++;
 
             SetTeam(ent, entNum, tokens[1]);
             ent.client.switchTeamTime = (int)level.time + 5000;
@@ -269,25 +287,66 @@ namespace CubeHags.server
             //
             gclient_t client = ent.client;
             team_t team = team_t.TEAM_FREE;
-            team_t oldTeam = client.sess.sessionTeam;
+            spectatorState_t specState = spectatorState_t.SPECTATOR_NOT;
+            
             s = s.ToLower();
-            switch (s)
+            if (s.Equals("s") || s.Equals("spectator"))
             {
-                case "spectator":
-                    team = team_t.TEAM_SPECTATOR;
-                    break;
-                case "red":
-                    team = team_t.TEAM_RED;
-                    break;
-                case "blue":
-                    team = team_t.TEAM_BLUE;
-                    break;
+                team = team_t.TEAM_SPECTATOR;
+                specState = spectatorState_t.SPECTATOR_FREE;
             }
+            else if (g_gametype.Integer >= (int)GameType.TEAM)
+            {
+                specState = spectatorState_t.SPECTATOR_NOT;
+                switch (s)
+                {
+                    case "red":
+                    case "r":
+                        team = team_t.TEAM_RED;
+                        break;
+                    case "blue":
+                    case "b":
+                        team = team_t.TEAM_BLUE;
+                        break;
+                    default:
+                        team = PickTeam(ent.client.clientIndex);
+                        break;
+                }
+            }
+            else
+                team = team_t.TEAM_FREE;
+
+            // override decision if limiting the players
+            if (g_gametype.Integer == (int)GameType.TOURNAMENT && level.numNonSpectatorClients >= 2)
+                team = team_t.TEAM_SPECTATOR;
+            else if (g_maxGameClients.Integer > 0 && level.numNonSpectatorClients >= g_maxGameClients.Integer)
+                team = team_t.TEAM_SPECTATOR;
+
+            team_t oldTeam = client.sess.sessionTeam;
+            if (team == oldTeam && team != team_t.TEAM_SPECTATOR)
+                return;
 
             //
             // execute the team change
             //
+
+            client.pers.teamState.state = playerTeamStateState_t.TEAM_BEGIN;
+            if (oldTeam != team_t.TEAM_SPECTATOR)
+            {
+                // kill the player
+                ent.flags &= ~gentityFlags.FL_GODMODE;
+                ent.client.ps.stats[0] = ent.health = 0;
+                player_die(ent, ent, ent, 100000, MeansOfDeath.SUICIDE);
+            }
+
+            // they go to the end of the line for tournements
+            if (team == team_t.TEAM_SPECTATOR)
+                client.sess.spectatorTime = (int)level.time;
+
+
             client.sess.sessionTeam = team;
+            client.sess.spectatorState = specState;
+            client.sess.teamLeader = false;
 
             BroadcastTeamChange(client, oldTeam);
 
@@ -302,16 +361,16 @@ namespace CubeHags.server
             switch (client.sess.sessionTeam)
             {
                 case team_t.TEAM_FREE:
-                    Server.Instance.SendServerCommand(null, string.Format("print \"{0} joined the battle.\n\"", client.pers.netname));
+                    Server.Instance.SendServerCommand(null, string.Format("print \"{0}^7 joined the battle.\n\"", client.pers.netname));
                     break;
                 case team_t.TEAM_SPECTATOR:
-                    Server.Instance.SendServerCommand(null, string.Format("print \"{0} joined the spectators.\n\"", client.pers.netname));
+                    Server.Instance.SendServerCommand(null, string.Format("print \"{0}^7 joined the spectators.\n\"", client.pers.netname));
                     break;
                 case team_t.TEAM_RED:
-                    Server.Instance.SendServerCommand(null, string.Format("print \"{0} joined the red team.\n\"", client.pers.netname));
+                    Server.Instance.SendServerCommand(null, string.Format("print \"{0}^7 joined the ^1red^7 team.\n\"", client.pers.netname));
                     break;
                 case team_t.TEAM_BLUE:
-                    Server.Instance.SendServerCommand(null, string.Format("print \"{0} joined the blue team.\n\"", client.pers.netname));
+                    Server.Instance.SendServerCommand(null, string.Format("print \"{0}^7 joined the ^2blue^7 team.\n\"", client.pers.netname));
                     break;
             }
         }

@@ -18,9 +18,15 @@ namespace CubeHags.common
 {
     public sealed partial class Common
     {
+       public static Vector3 playerMins = new Vector3(-13, -13, -36);
+        public static Vector3 playerMaxs = new Vector3(13, 13, 36);
+
         private static readonly Common _Instance = new Common();
         public static Common Instance { get { return _Instance; } }
         private const string CONFIG_NAME = "cubehags.cfg";
+
+        public const int DEFAULT_VIEWHEIGHT =24;
+        public const int CROUCH_VIEWHEIGHT = 0;
 
         private StreamWriter logWriter;
         public CVar maxfps;
@@ -466,6 +472,8 @@ namespace CubeHags.common
             return sides;
         }
 
+        
+
         // entity->svFlags
         // the server does not know how to interpret most of the values
         // in entityStates (level eType), so the game must explicitly flag
@@ -544,6 +552,7 @@ namespace CubeHags.common
             {
                 PlayerState s = new PlayerState();
                 s.commandTime = commandTime;
+                s.bobCycle = bobCycle;
                 s.pm_flags = pm_flags;
                 s.pm_time = pm_time;
                 s.origin = origin;
@@ -558,11 +567,15 @@ namespace CubeHags.common
                 s.viewangles = viewangles;
                 s.viewheight = viewheight;
                 s.weaponTime = weaponTime;
+                s.Ducked = Ducked;
+                s.Ducking = Ducking;
+                s.DuckTime = DuckTime;
+                s.OldButtons = OldButtons;
                 return s;
             }
             public int commandTime;	// cmd->serverTime of last executed command
             public PMType pm_type;
-            //public int bobCycle;		// for view bobbing and footstep generation
+            public int bobCycle;		// for view bobbing and footstep generation
             public PMFlags pm_flags;		// ducked, jump_held, etc
             public int pm_time;
 
@@ -581,6 +594,11 @@ namespace CubeHags.common
 
             //public int torsoTimer;		// don't change low priority animations until this runs out
             //public int torsoAnim;		// mask off ANIM_TOGGLEBIT
+            public bool Ducked;
+            public bool Ducking;
+            public int DuckTime;
+            public int OldButtons;
+
 
             public int movementDir;	// a number 0 to 7 that represents the reletive angle
             // of movement to the view angle (axial and diagonals)

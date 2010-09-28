@@ -21,7 +21,8 @@ namespace CubeHags.client.common
         NONEXISTANT = 128,
         SERVER_INFO = 256,
         TEMP = 512,
-        USER_INFO = 1024
+        USER_INFO = 1024,
+        CHEAT = 2048
     }
 
     public class CVar

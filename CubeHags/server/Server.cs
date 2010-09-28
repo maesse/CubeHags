@@ -399,6 +399,15 @@ namespace CubeHags.server
                 
             }
 
+            val = Info.ValueForKey(cl.userinfo, "handicap");
+            if (val != null && val.Length > 0)
+            {
+                int handi;
+                if (int.TryParse(val, out handi) && handi <= 0 && handi > 100)
+                    cl.userinfo = Info.SetValueForKey(cl.userinfo, "handicap", "100");
+            }
+
+
             // snaps command
             val = Info.ValueForKey(cl.userinfo, "cl_updaterate");
             if (val != null && val.Length > 0)
@@ -485,13 +494,22 @@ namespace CubeHags.server
             Net.Instance.OutOfBandMessage(Net.NetSource.SERVER, challeng.adr, string.Format("challengeResponse {0} {1}", challeng.challenge, clientChallenge));
         }
 
+        /*
+        ================
+        SV_SpawnServer
+
+        Change the server to a new map, taking all connected
+        clients along with it.
+        This is NOT called for map_restart
+        ================
+        */
         public void SpawnServer(string server)
         {
             Common.Instance.WriteLine("------ Server initialization --------");
             Common.Instance.WriteLine("Server: {0}", server);
 
             // shut down the existing game if it is running
-            Game.Instance.Shutdown();
+            Game.Instance.ShutdownGame(0);
 
             // if not running a dedicated server CL_MapLoading will connect the client to the server
             // also print some status stuff
@@ -500,26 +518,19 @@ namespace CubeHags.server
             // make sure all the client stuff is unloaded
             Client.Instance.ShutdownAll();
 
+            Game.Instance.ShutdownGame(0);
+
             // clear collision map data
             ClipMap.Instance.ClearMap();
 
             // init client structures and numSnapshotEntities 
             if (CVars.Instance.VariableValue("sv_running") == 0f)
-            {
                 Startup();
-            }
-            else
-            {
-                if (sv_maxclients.Modified)
-                {
-                    ChangeMaxClients();
-                }
-            }
+            else if (sv_maxclients.Modified)
+                ChangeMaxClients();
 
             Net.Instance.SetAllowDiscovery(true);
-
-            // FileCache clear pak ref
-
+                
             // allocate the snapshot entities on the hunk
             snapshotEntities = new Common.entityState_t[numSnapshotEntities];
             nextSnapshotEntities = 0;
@@ -527,7 +538,6 @@ namespace CubeHags.server
             // toggle the server bit so clients can detect that a
             // server has changed
             snapFlagServerBit ^= 4;
-
 
             foreach (client_t client in clients)
             {
@@ -562,6 +572,11 @@ namespace CubeHags.server
             sv.state = serverState_t.SS_LOADING;
 
             // load and spawn all other entities
+            sv.entityParsePoint = 0;
+            for (int i = 0; i < clients.Count; i++)
+            {
+                clients[i].gentity = null;
+            }
             Game.Instance.Init(sv.time, (int)Common.Instance.Milliseconds(), 0);
 
             // run a few frames to allow everything to settle
@@ -593,7 +608,7 @@ namespace CubeHags.server
                     {
                         // when we get the next packet from a connected client,
                         // the new gamestate will be sent
-                        client.state = clientState_t.CS_CONNECTED;
+                        client.state = clientState_t.CS_ACTIVE;
                         sharedEntity ent = sv.gentities[i];
                         ent.s.number = i;
                         client.gentity = ent;

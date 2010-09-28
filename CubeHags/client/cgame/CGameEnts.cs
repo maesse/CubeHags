@@ -166,7 +166,7 @@ namespace CubeHags.client.cgame
             if (clientNum == Client.Instance.cl.snap.ps.clientNum)
                 return;
 
-            VertexPositionColor[] vecs = MiscRender.CreateBox(new Vector3(-15, -15, -24), new Vector3(15, 15, 32), new Color4(System.Drawing.Color.Red) { Alpha = 0.5f });
+            VertexPositionColor[] vecs = MiscRender.CreateBox(Common.playerMins, Common.playerMaxs, new Color4(System.Drawing.Color.Red) { Alpha = 0.5f });
             float pitch, roll, yaw;
             pitch = ent.lerpAngles.Z * (float)(Math.PI / 180f);
             roll = ent.lerpAngles.Y * (float)(Math.PI / 180f);
