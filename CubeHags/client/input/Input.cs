@@ -32,6 +32,7 @@ namespace CubeHags.client
     {
         GAME,
         GUI,
+        CONSOLE,
         UNFOCUSED
     }
     public sealed class Input
@@ -45,7 +46,7 @@ namespace CubeHags.client
             public int anglez;
             public int buttons;
             public byte weapon;
-            public sbyte forwardmove, rightmove, upmove; // keyboard movement
+            public short forwardmove, rightmove, upmove; // keyboard movement
             public int DX, DY;
         }
 
@@ -99,7 +100,7 @@ namespace CubeHags.client
         public int MouseY { get { return mouseY; } }
         public int MouseDX { get { return mousedx; } }
         public int MouseDY { get { return mousedy; } }
-        public MouseState MouseState { get { return _mouseState; } set { lastMouseState = _mouseState; _mouseState = value; ApplyMouseState(value, lastMouseState); } }
+        public MouseState MouseState { get { return _mouseState; } set { if(_mouseState != client.MouseState.CONSOLE)lastMouseState = _mouseState; _mouseState = value; ApplyMouseState(value, lastMouseState); } }
         private MouseState lastMouseState;
         public bool MouseRawInput = true;
 
@@ -111,7 +112,7 @@ namespace CubeHags.client
         private MouseEvent CurrentMouseEvent; // Current mouseevent = lastmouseargs delta currentargs
         private MouseInputEventArgs CurrentRawMouse;
         private MouseInputEventArgs NextRawMouse;
-        private List<MouseInputEventArgs> NextRawMouseList = new List<MouseInputEventArgs>();
+        private List<KeyValuePair<MouseInputEventArgs, long>> NextRawMouseList = new List<KeyValuePair<MouseInputEventArgs, long>>();
 
         private List<System.Windows.Forms.MouseEventArgs> compatLastMouseArgs = new List<System.Windows.Forms.MouseEventArgs>(); // MouseArgs used last frame
         private List<System.Windows.Forms.MouseEventArgs> compatCurrentMouseArgs = new List<System.Windows.Forms.MouseEventArgs>(); // Mouseargs for use this frame
@@ -134,7 +135,6 @@ namespace CubeHags.client
         public UserCommand UserCmd = new UserCommand();
         float frame_msec;
         private float oldFrameTime;
-        private int buttons;
 
         List<char> keysPressed = new List<char>();
 
@@ -166,6 +166,8 @@ namespace CubeHags.client
         void IN_BackUp(string[] tokens) { IN_KeyUp(tokens, ref in_back); }
         void IN_Button0Down(string[] tokens) { IN_KeyDown(tokens, ref  in_buttons[0]); }
         void IN_Button0Up(string[] tokens) { IN_KeyUp(tokens, ref in_buttons[0]); }
+        void IN_JumpDown(string[] tokens) { IN_KeyDown(tokens, ref in_buttons[1]); }
+        void IN_JumpUp(string[] tokens) { IN_KeyUp(tokens, ref in_buttons[1]); }
         void IN_DuckDown(string[] tokens) { IN_KeyDown(tokens, ref  in_buttons[2]); }
         void IN_DuckUp(string[] tokens) { IN_KeyUp(tokens, ref in_buttons[2]); }
 
@@ -322,9 +324,9 @@ namespace CubeHags.client
             MSG_WriteDeltaKey(msg, (uint)from.anglex, (uint)to.anglex, 16);
             MSG_WriteDeltaKey(msg, (uint)from.angley, (uint)to.angley, 16);
             MSG_WriteDeltaKey(msg, (uint)from.anglez, (uint)to.anglez, 16);
-            MSG_WriteDeltaKey(msg,  from.forwardmove, to.forwardmove, 8);
-            MSG_WriteDeltaKey(msg,  from.rightmove, to.rightmove, 8);
-            MSG_WriteDeltaKey(msg,  from.upmove, to.upmove, 8);
+            MSG_WriteDeltaKey(msg,  from.forwardmove, to.forwardmove, 16);
+            MSG_WriteDeltaKey(msg,  from.rightmove, to.rightmove, 16);
+            MSG_WriteDeltaKey(msg,  from.upmove, to.upmove, 16);
             MSG_WriteDeltaKey(msg,from.buttons, to.buttons, 16);
             MSG_WriteDeltaKey(msg, from.weapon, to.weapon, 8);
 
@@ -342,9 +344,9 @@ namespace CubeHags.client
                 to.anglex = (int)MSG_ReadDeltaKey(msg, (uint)from.anglex, 16);
                 to.angley = (int)MSG_ReadDeltaKey(msg, (uint)from.angley, 16);
                 to.anglez = (int)MSG_ReadDeltaKey(msg, (uint)from.anglez, 16);
-                to.forwardmove = (sbyte)MSG_ReadDeltaKey(msg,  from.forwardmove, 8);
-                to.rightmove = (sbyte)MSG_ReadDeltaKey(msg, from.rightmove, 8);
-                to.upmove = (sbyte)MSG_ReadDeltaKey(msg, from.upmove, 8);
+                to.forwardmove = (short)MSG_ReadDeltaKey(msg, from.forwardmove, 16);
+                to.rightmove = (short)MSG_ReadDeltaKey(msg, from.rightmove, 16);
+                to.upmove = (short)MSG_ReadDeltaKey(msg, from.upmove, 16);
                 to.buttons = MSG_ReadDeltaKey(msg,  from.buttons, 16);
                 to.weapon = (byte)MSG_ReadDeltaKey(msg, from.weapon, 8);
             }
@@ -521,7 +523,7 @@ namespace CubeHags.client
         void KeyMove(ref UserCommand cmd)
         {
             int forward = 0, side = 0, up = 0;
-            int movespeed = 127;
+            int movespeed = 320;
 
             side += (int)(movespeed * KeyState(ref in_moveright));
             side -= (int)(movespeed * KeyState(ref in_moveleft));
@@ -532,9 +534,9 @@ namespace CubeHags.client
             forward += (int)(movespeed * KeyState(ref in_forward));
             forward -= (int)(movespeed * KeyState(ref in_back));
 
-            cmd.forwardmove = ClampSByte(forward);
-            cmd.rightmove = ClampSByte(side);
-            cmd.upmove = ClampSByte(up);
+            cmd.forwardmove = ClampShort(forward);
+            cmd.rightmove = ClampShort(side);
+            cmd.upmove = ClampShort(up);
             //if(cmd.forwardmove != 0 || cmd.rightmove != 0)
             //    System.Console.WriteLine("{0} {1} {2}", cmd.forwardmove, cmd.rightmove, cmd.upmove);
         }
@@ -672,6 +674,16 @@ namespace CubeHags.client
                 MouseHidden = true;
                 MouseCentered = false;
             }
+            else if (value == client.MouseState.CONSOLE)
+            {
+                if (lastValue == client.MouseState.GAME)
+                {
+                    if (HiddenMousePosition.X != 0 && HiddenMousePosition.Y != 0)
+                        System.Windows.Forms.Cursor.Position = HiddenMousePosition;
+                }
+                MouseHidden = false;
+                MouseCentered = false;
+            }
             else if (value == client.MouseState.UNFOCUSED)
             {
                 MouseHidden = false;
@@ -719,13 +731,16 @@ namespace CubeHags.client
                 MouseState = client.MouseState.GUI;
             else if (MouseState == client.MouseState.GUI)
                 MouseState = client.MouseState.GAME;
+            else
+                return;
             WindowManager.Instance.ToggleUI(null);
         }
 
         // RawInput
         void RawInputEvent(object sender, MouseInputEventArgs e)
         {
-            NextRawMouseList.Add(e);
+            KeyValuePair<MouseInputEventArgs, long> kv = new KeyValuePair<MouseInputEventArgs, long>(e, HighResolutionTimer.Ticks);
+            NextRawMouseList.Add(kv);
             NextRawMouse = e;
         }
 
@@ -796,7 +811,6 @@ namespace CubeHags.client
             foreach (KeyEventPacked evt in compatNewKeyEvents)
             {
                 bool doAdd = true;
-                //System.Console.WriteLine(KeyCodeToKey((System.Windows.Forms.Keys)evt.Args.KeyValue));
                 // Update internal pressedKeyList
                 if (evt.Pressed)
                 {
@@ -829,27 +843,31 @@ namespace CubeHags.client
                             Renderer.Instance._sizeChanged = true;
                             return;
                         }
-                        else if (key == Keys.Oem5)
+                        if (KeyHags.Instance.GetCubeKey((int)key) == '~')
                         {
                             HagsConsole.Instance.ToggleConsole();
+                            continue;
                         }
 
-                        // Handle binds
-                        if (HagsConsole.Instance.IsVisible)
+                        switch (MouseState)
                         {
-                            
-                        }
+                            case client.MouseState.GAME:
+                                KeyHags.Instance.ParseBinding(key, evt.Pressed, evt.time);
+                                break;
+                            case client.MouseState.GUI:
+                            case client.MouseState.UNFOCUSED:
+                                break;
+                            case client.MouseState.CONSOLE:
+                                break;
 
-                        // Let game handle key
-                        if (!HagsConsole.Instance.IsVisible && MouseState == client.MouseState.GAME)
-                            KeyHags.Instance.ParseBinding(key, evt.Pressed, evt.time);
+                        }
                     }
                     else
                         doAdd = false; // Dont add to events, because key is already pressed
                 }
                 else
                 {
-                    // Handle binds
+                    // Always process keyreleases
                     KeyHags.Instance.ParseBinding(evt.Args.KeyCode, evt.Pressed, evt.time);
                     pressedKeys.Remove(evt.Args.KeyCode);
                 }
@@ -894,18 +912,53 @@ namespace CubeHags.client
                     // Use raw input
                     for (int i = 0; i < NextRawMouseList.Count; i++)
                     {
-                        deltaX += NextRawMouseList[i].X;
-                        deltaY += NextRawMouseList[i].Y;
-                        if ((NextRawMouseList[i].ButtonFlags & MouseButtonFlags.LeftDown) == MouseButtonFlags.LeftDown)
-                            buttons = 1;
-                        
-                        if ((NextRawMouseList[i].ButtonFlags & MouseButtonFlags.LeftUp) == MouseButtonFlags.LeftUp)
-                            buttons = 0;
+                        MouseInputEventArgs e = NextRawMouseList[i].Key;
+                        long ticks = NextRawMouseList[i].Value;
+                        deltaX += e.X;
+                        deltaY += e.Y;
 
-                        if ((NextRawMouseList[i].ButtonFlags & MouseButtonFlags.MouseWheel) == MouseButtonFlags.MouseWheel)
+                        if ((e.ButtonFlags & MouseButtonFlags.LeftDown) == MouseButtonFlags.LeftDown)
+                            KeyHags.Instance.ParseBinding((int)KeyHags.CubeKeys.K_MOUSE1, true, ticks);
+                        if ((e.ButtonFlags & MouseButtonFlags.LeftUp) == MouseButtonFlags.LeftUp)
+                            KeyHags.Instance.ParseBinding((int)KeyHags.CubeKeys.K_MOUSE1, false, ticks);
+                        if ((e.ButtonFlags & MouseButtonFlags.RightDown) == MouseButtonFlags.RightDown)
+                            KeyHags.Instance.ParseBinding((int)KeyHags.CubeKeys.K_MOUSE2, true, ticks);
+                        if ((e.ButtonFlags & MouseButtonFlags.RightUp) == MouseButtonFlags.RightUp)
+                            KeyHags.Instance.ParseBinding((int)KeyHags.CubeKeys.K_MOUSE2, false, ticks);
+                        if ((e.ButtonFlags & MouseButtonFlags.MiddleDown) == MouseButtonFlags.MiddleDown)
+                            KeyHags.Instance.ParseBinding((int)KeyHags.CubeKeys.K_MOUSE3, true, ticks);
+                        if ((e.ButtonFlags & MouseButtonFlags.MiddleUp) == MouseButtonFlags.MiddleUp)
+                            KeyHags.Instance.ParseBinding((int)KeyHags.CubeKeys.K_MOUSE3, false, ticks);
+                        if ((e.ButtonFlags & MouseButtonFlags.Button4Down) == MouseButtonFlags.Button4Down)
+                            KeyHags.Instance.ParseBinding((int)KeyHags.CubeKeys.K_MOUSE4, true, ticks);
+                        if ((e.ButtonFlags & MouseButtonFlags.Button4Up) == MouseButtonFlags.Button4Up)
+                            KeyHags.Instance.ParseBinding((int)KeyHags.CubeKeys.K_MOUSE4, false, ticks);
+                        if ((e.ButtonFlags & MouseButtonFlags.Button5Down) == MouseButtonFlags.Button5Down)
+                            KeyHags.Instance.ParseBinding((int)KeyHags.CubeKeys.K_MOUSE5, true, ticks);
+                        if ((e.ButtonFlags & MouseButtonFlags.Button5Up) == MouseButtonFlags.Button5Up)
+                            KeyHags.Instance.ParseBinding((int)KeyHags.CubeKeys.K_MOUSE5, false, ticks);
+
+                        if ((e.ButtonFlags & MouseButtonFlags.MouseWheel) == MouseButtonFlags.MouseWheel)
                         {
                             if (NextRawMouse.WheelDelta != 0)
                             {
+                                if (NextRawMouse.WheelDelta == -120)
+                                {
+                                    // Scroll down
+                                        KeyHags.Instance.ParseBinding((int)KeyHags.CubeKeys.K_MWHEELDOWN, true, ticks);
+                                        KeyHags.Instance.ParseBinding((int)KeyHags.CubeKeys.K_MWHEELDOWN, false, ticks + 1);
+                                }
+                                else if (NextRawMouse.WheelDelta == 120)
+                                {
+                                    // Scroll up
+                                    KeyHags.Instance.ParseBinding((int)KeyHags.CubeKeys.K_MWHEELUP, true, ticks);
+                                    KeyHags.Instance.ParseBinding((int)KeyHags.CubeKeys.K_MWHEELUP, false, ticks + 10);
+                                }
+                                else
+                                {
+                                    Common.Instance.WriteLine("MouseWheel: Fix me! Value: " + NextRawMouse.WheelDelta);
+                                }
+                                Common.Instance.WriteLine(""+NextRawMouse.WheelDelta);
                                 //if (Common.Instance.PlanetGame != null)
                                 //    Common.Instance.PlanetGame.HandleScroll(NextRawMouse.WheelDelta);
                             }
@@ -917,8 +970,17 @@ namespace CubeHags.client
                     NextRawMouse = null;
                 }
             }
+            else if (MouseState == client.MouseState.CONSOLE)
+            {
+                NextRawMouseList.Clear();
+            }
             if (compatNextMouseArgs.Count > 0)
             {
+                if (MouseState == client.MouseState.CONSOLE)
+                {
+                    compatNextMouseArgs.Clear();
+                    return;
+                }
                 compatLastMouseArgs = compatCurrentMouseArgs;
                 compatCurrentMouseArgs = compatNextMouseArgs;
                 compatLastMouseArgs.Clear();
@@ -1044,13 +1106,16 @@ namespace CubeHags.client
             Commands.Instance.AddCommand("-duck", new CommandDelegate(IN_DuckUp));
             Commands.Instance.AddCommand("+attack", new CommandDelegate(IN_Button0Down));
             Commands.Instance.AddCommand("-attack", new CommandDelegate(IN_Button0Up));
+            Commands.Instance.AddCommand("+jump", new CommandDelegate(IN_JumpDown));
+            Commands.Instance.AddCommand("-jump", new CommandDelegate(IN_JumpUp));
 
-            KeyHags.Instance.SetBind(Keys.W, "+forward");
-            KeyHags.Instance.SetBind(Keys.S, "+back");
-            KeyHags.Instance.SetBind(Keys.A, "+moveleft");
-            KeyHags.Instance.SetBind(Keys.D, "+moveright");
+            KeyHags.Instance.SetBind("W", "+forward");
+            KeyHags.Instance.SetBind("S", "+back");
+            KeyHags.Instance.SetBind("A", "+moveleft");
+            KeyHags.Instance.SetBind("D", "+moveright");
             //KeyHags.Instance.SetBind(Keys.C, "+movedown");
-            KeyHags.Instance.SetBind(Keys.Space, "+moveup");
+            KeyHags.Instance.SetBind("SPACE", "+jump");
+            KeyHags.Instance.SetBind("CTRL", "+duck");
             HiddenMousePosition = new Point(Renderer.Instance.form.DesktopLocation.X + (Renderer.Instance.form.DesktopBounds.Width / 2), Renderer.Instance.form.DesktopLocation.Y + (Renderer.Instance.form.DesktopBounds.Height / 2));
         }
 
@@ -1084,13 +1149,13 @@ namespace CubeHags.client
                 return false;
         }
 
-        private static sbyte ClampSByte(int i)
+        private static short ClampShort(int i)
         {
-            if (i < -128)
-                return (sbyte)-128;
-            if (i > 127)
-                return (sbyte)127;
-            return (sbyte)i;
+            if (i < -32768)
+                return (short)-32768;
+            if (i > 32767)
+                return (short)32767;
+            return (short)i;
         }
 
         private CubeHags.client.KeyEvent.Modifiers getModifiers(System.Windows.Forms.KeyEventArgs args)

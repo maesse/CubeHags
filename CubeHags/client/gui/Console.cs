@@ -11,6 +11,7 @@ using CubeHags.client.render.Formats;
 using SlimDX.Direct3D9;
 using System.Windows.Forms;
 using CubeHags.client.common;
+using CubeHags.client.input;
 
 namespace CubeHags.client.gui
 {
@@ -47,7 +48,9 @@ namespace CubeHags.client.gui
 
         // If the latest line added didn't end in '\n', this will be true. 
         // This allows for text to be appended to the same line in the output.
-        bool lastLineNotEnded = false; 
+        bool lastLineNotEnded = false;
+
+        MouseState rememberLastState = MouseState.GUI;
 
         public string LinePrefix = "$ "; // commandline prefix
         Color4[] ConsoleColors = new Color4[] {
@@ -106,6 +109,9 @@ namespace CubeHags.client.gui
                 Common.Instance.WriteLine("Warning: Couldn't load all letters for console");
 
             Input.Instance.Event += new InputHandler(GotKeyEvent);
+
+            Commands.Instance.AddCommand("toggleconsole", new CommandDelegate(ToggleConsole));
+            KeyHags.Instance.SetBind("~", "toggleconsole");
         }
 
         void GotKeyEvent(object sender, InputArgs e) 
@@ -340,9 +346,24 @@ namespace CubeHags.client.gui
                 lastLineNotEnded = true;
         }
 
+        void ToggleConsole(string[] tokens)
+        {
+            ToggleConsole();
+        }
+
         public void ToggleConsole()
         {
-            Visible = !Visible;
+            if (Input.Instance.MouseState != MouseState.CONSOLE)
+            {
+                rememberLastState = Input.Instance.MouseState;
+                Input.Instance.MouseState = MouseState.CONSOLE;
+                Visible = true;
+            }
+            else
+            {
+                Input.Instance.MouseState = rememberLastState;
+                Visible = false;
+            }
         }
 
         // Returns number of lines this string will be breaked up into, on the screen

@@ -25,6 +25,8 @@ namespace CubeHags.server
         CVar g_gametype;
         CVar g_teamAutoJoin; // force team when client joins
         CVar g_maxGameClients; // Max non-spec clients
+        CVar g_forcerespawn;
+        CVar g_edgefriction;
 
         public level_locals_t level;
         public gentity_t[] g_entities;
@@ -36,10 +38,12 @@ namespace CubeHags.server
             sv_gravity = CVars.Instance.Get("sv_gravity", "800", CVarFlags.SERVER_INFO);
             sv_speed = CVars.Instance.Get("sv_speed", "400", CVarFlags.SERVER_INFO);
             g_synchrounousClients = CVars.Instance.Get("g_synchrounousClients", "0", CVarFlags.SERVER_INFO);
+            g_forcerespawn = CVars.Instance.Get("g_forcerespawn", "20", CVarFlags.NONE);
             g_smoothClients = CVars.Instance.Get("g_smoothClients", "0", CVarFlags.SERVER_INFO);
             g_gametype = CVars.Instance.Get("g_gametype", "0", CVarFlags.SERVER_INFO | CVarFlags.LATCH | CVarFlags.USER_INFO);
             g_teamAutoJoin = CVars.Instance.Get("g_teamAutoJoin", "0", CVarFlags.ARCHIVE);
             g_maxGameClients = CVars.Instance.Get("g_maxGameClients", "0", CVarFlags.SERVER_INFO | CVarFlags.ARCHIVE | CVarFlags.LATCH);
+            g_edgefriction = CVars.Instance.Get("g_edgefriction", "2", CVarFlags.SERVER_CREATED);
         }
 
         public void LogPrintf(string fmt, params object[] data)
@@ -529,23 +533,26 @@ namespace CubeHags.server
             if (client.pers.connected != clientConnected_t.CON_CONNECTED)
                 return;
 
-            
+            Input.UserCommand ucmd = ent.client.pers.cmd;
+            // sanity check the command time to prevent speedup cheating
+            if(ucmd.serverTime > level.time + 200)
+                ucmd.serverTime = (int)level.time + 200;
+            if (ucmd.serverTime < level.time - 1000)
+                ucmd.serverTime = (int)level.time - 1000;
+
             // mark the time we got info, so we can display the
             //ent.client.pers.cmd = Server.Instance.GetUsercmd(ent.s.clientNum);
 
             // phone jack if they don't get any for a while
             ent.client.lastCmdTime = (int)level.time;
 
-            Input.UserCommand ucmd = ent.client.pers.cmd;
-
             int msec = ucmd.serverTime - ent.client.ps.commandTime;
             // following others may result in bad times, but we still want
             // to check for follow toggles
-            if (msec < 1 && ent.client.sess.sessionTeam == team_t.TEAM_SPECTATOR)
+            if (msec < 1 && ent.client.sess.spectatorState != spectatorState_t.SPECTATOR_FOLLOW)
                 return;
             if (msec > 200)
                 msec = 200;
-
 
             CVar pmove_msec = CVars.Instance.FindVar("pmove_msec");
             if (pmove_msec.Integer < 8)
@@ -553,7 +560,7 @@ namespace CubeHags.server
             else if (pmove_msec.Integer > 33)
                 CVars.Instance.Set("pmove_msec", "33");
 
-            if (CVars.Instance.FindVar("pmove_fixed").Integer == 1 || client.pers.pmoveFixed)
+            if (CVars.Instance.FindVar("pmove_fixed").Bool || client.pers.pmoveFixed)
             {
                 ucmd.serverTime = ((ucmd.serverTime + pmove_msec.Integer - 1) / pmove_msec.Integer) * pmove_msec.Integer;
             }
@@ -572,10 +579,14 @@ namespace CubeHags.server
             {
                 if (client.sess.spectatorState == spectatorState_t.SPECTATOR_SCOREBOARD)
                     return;
-                client.ps.speed = sv_speed.Integer;
+                //client.ps.speed = sv_speed.Integer;
                 SpectatorThink(ent, ucmd);
                 return;
             }
+
+            // check for inactivity timer, but never drop the local client of a non-dedicated server
+            //if (!ClientInactivityTimer(ent.client))
+            //    return;
 
             if (client.noclip)
                 client.ps.pm_type = Common.PMType.NOCLIP;
@@ -602,14 +613,14 @@ namespace CubeHags.server
             pm.ps = client.ps;
             pm.cmd = ucmd;
             if (pm.ps.pm_type == Common.PMType.DEAD)
-                pm.tracemask = (1 | 0x10000);
+                pm.tracemask = (int)brushflags.MASK_PLAYERSOLID & ~(int)brushflags.CONTENTS_MONSTER;
             else
-                pm.tracemask = (int)(brushflags.CONTENTS_SOLID | brushflags.CONTENTS_MOVEABLE | brushflags.CONTENTS_SLIME | brushflags.CONTENTS_OPAQUE);
-            pm.pmove_fixed = ((CVars.Instance.FindVar("pmove_fixed").Integer==1?true:false) | client.pers.pmoveFixed)?1:0;
+                pm.tracemask = (int)brushflags.MASK_PLAYERSOLID;
+            pm.pmove_fixed = ((CVars.Instance.FindVar("pmove_fixed").Bool) | client.pers.pmoveFixed)?1:0;
             pm.pmove_msec = pmove_msec.Integer;
             client.oldOrigin = client.ps.origin;
-            pm.mins = Common.playerMins;
-            pm.maxs = Common.playerMaxs;
+            //pm.mins = Common.playerMins;
+            //pm.maxs = Common.playerMaxs;
             Common.Instance.Pmove(pm);
 
 
@@ -670,7 +681,15 @@ namespace CubeHags.server
                 // wait for the attack button to be pressed
                 if (level.time > client.respawnTime)
                 {
-                    if ((ucmd.buttons & (1 | 4)) > 0)
+                    // forcerespawn is to prevent users from waiting out powerups
+                    if (g_forcerespawn.Integer > 0 && level.time - client.respawnTime > g_forcerespawn.Integer * 1000)
+                    {
+                        respawn(ent);
+                        return;
+                    }
+
+                    // pressing attack or use is the normal respawn method
+                    if ((ucmd.buttons & ((int)Input.ButtonDef.ATTACK | (int)Input.ButtonDef.USE)) > 0)
                         respawn(ent);
 
                     
@@ -678,7 +697,25 @@ namespace CubeHags.server
                 return;
             }
 
-            //ClientTimerActions(ent, msec);
+            ClientTimerActions(ent, msec);
+        }
+
+        void ClientTimerActions(gentity_t ent, int msec)
+        {
+            gclient_t client = ent.client;
+            client.timeResidual += msec;
+
+            while (client.timeResidual >= 1000)
+            {
+                client.timeResidual -= 1000;
+
+                // count down health when over max
+                if (ent.health > client.ps.stats[6])
+                    ent.health--;
+                // count down armor when over max
+                if (client.ps.stats[3] > client.ps.stats[6])
+                    client.ps.stats[3]--;
+            }
         }
 
         void SpectatorThink(gentity_t ent, Input.UserCommand ucmd)

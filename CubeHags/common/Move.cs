@@ -7,6 +7,7 @@ using SlimDX;
 using CubeHags.client.render;
 using CubeHags.client.cgame;
 using CubeHags.client.map.Source;
+using CubeHags.client.common;
 
 namespace CubeHags.common
 {
@@ -15,15 +16,18 @@ namespace CubeHags.common
         public static float BUNNYJUMP_MAX_SPEED_FACTOR = 1.7f;
         pml_t pml;
         pmove_t pm = null;
-        trace_t lastTrace;
+        //trace_t lastTrace;
 
-        float pm_maxspeed = 320f;
+        float pm_maxspeed = 4000f;
+        float pm_maxvelocity = 2000f;
         float pm_stopspeed = 100.0f;
         float pm_accelerate = 10f;
-        float pm_airaccelerate = 50f;
+        float pm_airaccelerate = 10f;
         float pm_friction = 4f;
-        float pm_duckScale = 0.25f;
-        int c_pmove = 0;
+
+        bool speedCropped = false;
+        //float pm_duckScale = 0.25f;
+        //int c_pmove = 0;
 
         /*
         ================
@@ -35,6 +39,7 @@ namespace CubeHags.common
         public void Pmove(pmove_t pm)
         {
             //this.pm = pm;
+            speedCropped = false;
             int finalTime = pm.cmd.serverTime;
 
             if (finalTime < pm.ps.commandTime)
@@ -43,8 +48,8 @@ namespace CubeHags.common
             if (finalTime > pm.ps.commandTime + 1000)
                 pm.ps.commandTime = finalTime - 1000;
 
-            pm.ps.speed = 320;
-            pm.ps.gravity = 800;
+            //pm.ps.speed = (int)pm_maxspeed;
+            pm.ps.gravity = CVars.Instance.VariableIntegerValue("sv_gravity");
             
             pm.ps.pmove_framecount = (pm.ps.pmove_framecount + 1) & ((1 << 6) - 1);
             // chop the move up if it is too long, to prevent framerate
@@ -62,17 +67,18 @@ namespace CubeHags.common
                 }
                 else
                 {
-                    if (msec > 66)
-                        msec = 66;
+                    if (msec > 50)
+                        msec = 50;
                 }
                 pm.cmd.serverTime = pm.ps.commandTime + msec;
+                pm.maxSpeed = pm_maxspeed;
                 PlayerMoveSingle(pm);
                 //PmoveSingle(pm);
 
-                if ((pm.ps.pm_flags & PMFlags.JUMP_HELD) == PMFlags.JUMP_HELD)
-                    pm.cmd.upmove = 20;
+                //if ((pm.ps.pm_flags & PMFlags.JUMP_HELD) == PMFlags.JUMP_HELD)
+                //    pm.cmd.upmove = 20;
             }
-
+            //pm.ps.OldButtons = pm.cmd.buttons;
         }
 
         void PlayerMoveSingle(pmove_t pmove)
@@ -84,6 +90,9 @@ namespace CubeHags.common
             pml.forward = Vector3.Zero;
             pml.up = Vector3.Zero;
             pml.right = Vector3.Zero;
+            pm.upmove = pm.cmd.upmove;
+            pm.rightmove = pm.cmd.rightmove;
+            pm.forwardmove = pm.cmd.forwardmove;
 
             // determine the time
             pml.msec = pm.cmd.serverTime - pm.ps.commandTime;
@@ -91,9 +100,7 @@ namespace CubeHags.common
                 pml.msec = 1;
             else if (pml.msec > 200)
                 pml.msec = 200;
-            UpdateViewAngles(ref pm.ps, pm.cmd);
             pm.ps.commandTime = pm.cmd.serverTime;
-
             // save old org in case we get stuck
             pml.previous_origin = pm.ps.origin;
 
@@ -101,18 +108,22 @@ namespace CubeHags.common
             pml.previous_velocity = pm.ps.velocity;
 
             pml.frametime = pml.msec * 0.001f;
-           
+
+            UpdateViewAngles(ref pm.ps, pm.cmd);
+            // Convert view angles to vectors
+            AngleVectors(pm.ps.viewangles, ref pml.forward, ref pml.right, ref pml.up);
 
             // Adjust speeds etc.
-            float scale = CheckParameters();
+            CheckParameters();
 
             // Assume we don't touch anything
             pm.numtouch = 0;
 
             DropTimers();
 
-            // Convert view angles to vectors
-            AngleVectors(pm.ps.viewangles, ref pml.forward, ref pml.right, ref pml.up);
+            
+
+            // UnStuck
 
             // Now that we are "unstuck", see where we are ( waterlevel and type, pmove->onground ).
             CategorizePosition();
@@ -121,26 +132,39 @@ namespace CubeHags.common
             if (!pml.groundPlane)
                 pml.fallVelocity = -pm.ps.velocity[2];
 
+
             Duck();
+
+            // LadderMove();
+
+            //if (pml.groundPlane && (pm.cmd.buttons & (int)Input.ButtonDef.USE) > 0 && !speedCropped)
+            //{
+            //    float frac = 1f / 3.0f;
+            //    pm.rightmove *= frac;
+            //    pm.upmove *= frac;
+            //    pm.forwardmove *= frac;
+            //    speedCropped = true;
+            //}
 
             if (pm.ps.pm_type == PMType.SPECTATOR)
             {
-                FlyMove();
+                FlyMove2();
                 DropTimers();
                 return;
             }
 
             // Walk
-            AddCorrectGravity();
+            StartGravity();
 
             // Jump pressed
-            if (pm.cmd.upmove > 10)
+            if ((pm.cmd.buttons & (int)Input.ButtonDef.JUMP) > 0)
             {
                 //pm.ps.pm_flags |= PMFlags.JUMP_HELD;
                 Jump();
             }
             else
-                pm.ps.pm_flags &= ~PMFlags.JUMP_HELD;
+                //pm.ps.pm_flags &= ~PMFlags.JUMP_HELD;
+                pm.ps.OldButtons &= ~(int)Input.ButtonDef.JUMP;
 
             // Fricion is handled before we add in any base velocity. That way, if we are on a conveyor, 
             //  we don't slow when standing still, relative to the conveyor.
@@ -151,7 +175,7 @@ namespace CubeHags.common
             }
 
             // Make sure velocity is valid.
-            // TODO
+            CheckVelocity();
 
             if (pml.groundPlane)
                 WalkMove2();
@@ -161,8 +185,10 @@ namespace CubeHags.common
             // Set final flags.
             CategorizePosition();
 
+            CheckVelocity();
+
             // Add any remaining gravitational component.
-            FixupGravityVelocity();
+            FinishGravity();
 
             // If we are on ground, no downward velocity.
             if (pml.groundPlane)
@@ -171,8 +197,46 @@ namespace CubeHags.common
             CGame.SnapVector(pm.ps.velocity);
         }
 
+        // Just make sure the velocity don't go absolutely bonkers
+        void CheckVelocity()
+        {
+            for (int i = 0; i < 3; i++)    
+            {
+                if (float.IsNaN(pm.ps.velocity[i]))
+                {
+                    Common.Instance.WriteLine("PM  Got a NaN velocity {0}", i);
+                    pm.ps.velocity[i] = 0;
+                }
+                if (float.IsNaN(pm.ps.origin[i]))
+                {
+                    Common.Instance.WriteLine("PM  Got a NaN origin {0}", i);
+                    pm.ps.origin[i] = 0;
+                }
+
+                // Bound it
+                if (pm.ps.velocity[i] > pm_maxvelocity)
+                {
+                    Common.Instance.WriteLine("PM Got crazy velocity");
+                    pm.ps.velocity[i] = pm_maxvelocity;
+                }
+                if (pm.ps.velocity[i] < -pm_maxvelocity)
+                {
+                    Common.Instance.WriteLine("PM Got crazy velocity");
+                    pm.ps.velocity[i] = -pm_maxvelocity;
+                }
+            }
+        }
+
+        trace_t TracePlayerBBox(Vector3 start, Vector3 end, int mask)
+        {
+            return ClipMap.Instance.Box_Trace(start, end, pm.ps.Ducked ? Common.playerDuckedMins : Common.playerMins, pm.ps.Ducked ? Common.playerDuckedMaxs : Common.playerMaxs, 0, mask);
+        }
+
         void Duck()
         {
+            pm.mins = Common.playerMins;
+            pm.maxs = Common.playerMaxs;
+
             int buttonsChanged = pm.cmd.buttons ^ pm.ps.OldButtons;
             int buttonsPressed = buttonsChanged & pm.cmd.buttons;
             int buttonsReleased = buttonsChanged & pm.ps.OldButtons;
@@ -184,13 +248,14 @@ namespace CubeHags.common
             else
                 pm.ps.OldButtons &= ~(int)Input.ButtonDef.DUCK;
 
-            if ((pm.ps.pm_flags & PMFlags.DUCKED) > 0)
+            if ((pm.ps.pm_flags & PMFlags.DUCKED) > 0 && !speedCropped)
             {
                 // Crop speed
                 float frac = 0.5f;
                 pm.upmove *= frac;
                 pm.rightmove *= frac;
                 pm.forwardmove *= frac;
+                speedCropped = true;
             }
 
             // Holding duck, in process of ducking or fully ducked?
@@ -276,40 +341,80 @@ namespace CubeHags.common
 
         void FinishUnduck()
         {
+            Vector3 newOrg = pm.ps.origin;
+            if (pml.groundPlane)
+                newOrg += Common.playerDuckedMins - Common.playerMins;
+            else
+            {
+                // If in air an letting go of croush, make sure we can offset origin to make
+                //  up for uncrouching
+                Vector3 hullSizeNormal = Common.playerMaxs - Common.playerMins;
+                Vector3 hullSizeDucked = Common.playerDuckedMaxs - Common.playerDuckedMins;
+
+                Vector3 viewDelta = -0.5f * (hullSizeNormal - hullSizeDucked);
+                newOrg += viewDelta;
+            }
+
             pm.ps.Ducked = false;
             pm.ps.Ducking = false;
             pm.ps.pm_flags &= ~PMFlags.DUCKED;
-            pm.ps.viewheight = Common.DEFAULT_VIEWHEIGHT;
+            pm.ps.viewheight = (int)Common.playerView.Z;
 
+            pm.ps.origin = newOrg;
+
+            // Recategorize position since ducking can change origin
             CategorizePosition();
         }
 
         bool CanUnduck()
         {
-            return true;
+            Vector3 newOrg = pm.ps.origin;
+            if (pml.groundPlane)
+                newOrg += Common.playerDuckedMins - Common.playerMins;
+            else
+            {
+                // If in air an letting go of croush, make sure we can offset origin to make
+                //  up for uncrouching
+                Vector3 hullSizeNormal = Common.playerMaxs - Common.playerMins;
+                Vector3 hullSizeDucked = Common.playerDuckedMaxs - Common.playerDuckedMins;
+
+                Vector3 viewDelta = -0.5f * (hullSizeNormal - hullSizeDucked);
+                newOrg += viewDelta;
+            }
+
+            bool saveDucked = pm.ps.Ducked;
+            pm.ps.Ducked = false;
+            trace_t trace = TracePlayerBBox(newOrg, newOrg, (int)brushflags.MASK_PLAYERSOLID);
+            pm.ps.Ducked = true;
+            if (!trace.startsolid)
+                return true;
+
+            return false;
         }
 
-        bool CanDuck()
-        {
-            return true;
-        }
+
 
         // FInish ducking
         void FinishDuck()
         {
+            Vector3 hullSizeNormal = Common.playerMaxs - Common.playerMins;
+            Vector3 hullSizeDucked = Common.playerDuckedMaxs - Common.playerDuckedMins;
+
+            Vector3 viewDelta = -0.5f * (hullSizeNormal - hullSizeDucked);
+
             pm.ps.Ducked = true;
             pm.ps.pm_flags |= PMFlags.DUCKED;
             pm.ps.Ducking = false;
-            pm.ps.viewheight = Common.CROUCH_VIEWHEIGHT;
+            pm.ps.viewheight = (int)Common.playerDuckedView.Z;
 
             // HACKHACK - Fudge for collision bug - no time to fix this properly
             if (!pml.groundPlane)
             {
-                //pm.ps.origin[2] -= Common.DEFAULT_VIEWHEIGHT - Common.CROUCH_VIEWHEIGHT;
+                pm.ps.origin -= Common.playerDuckedMins - Common.playerMins;
             }
             else
             {
-                //pm.ps.origin[2] += Common.DEFAULT_VIEWHEIGHT - Common.CROUCH_VIEWHEIGHT;
+                pm.ps.origin += viewDelta;
             }
 
             CategorizePosition();
@@ -328,40 +433,69 @@ namespace CubeHags.common
 
         void SetDuckedEyeOffset(float duckFraction)
         {
-            pm.ps.viewheight = (int)((Common.CROUCH_VIEWHEIGHT * duckFraction) + (Common.DEFAULT_VIEWHEIGHT * (1f - duckFraction)));
+            float fmore = Common.playerDuckedMins.Z - Common.playerMins.Z;
+
+            Vector3 duckedView = Common.playerDuckedView;
+            Vector3 standingView = Common.playerView;
+            
+            pm.ps.viewheight = (int)(((Common.playerDuckedView.Z -fmore) * duckFraction) + (Common.playerView.Z * (1f - duckFraction)));
         }
 
         void Friction2()
         {
-            float speed = (float)Math.Sqrt(pm.ps.velocity[0] * pm.ps.velocity[0] + pm.ps.velocity[1] * pm.ps.velocity[1] + pm.ps.velocity[2] * pm.ps.velocity[2]);
-
+            float speed = pm.ps.velocity.Length();
             if (speed < 0.1f)
                 return;
 
             float drop = 0;
             float friction = pm_friction;
-            if (pml.groundPlane)
+            if (pml.groundPlane) // On an entity that is the ground
             {
+                //
+                // NOTE: added a "1.0f" to the player minimum (bbox) value so that the 
+                //       trace starts just inside of the bounding box, this make sure
+                //       that we don't get any collision epsilon (on surface) errors.
+                //		 The significance of the 16 below is this is how many units out front we are checking
+                //		 to see if the player box would fall.  The 49 is the number of units down that is required
+                //		 to be considered a fall.  49 is derived from 1 (added 1 from above) + 48 the max fall 
+                //		 distance a player can fall and still jump back up.
+                //
+                //		 UNDONE: In some cases there are still problems here.  Specifically, no collision check is
+                //		 done so 16 units in front of the player could be inside a volume or past a collision point.
                 Vector3 start = Vector3.Zero, stop = Vector3.Zero;
-                start[0] = stop[0] = pm.ps.origin[0] + pm.ps.velocity[0] / speed * 16;
-                start[1] = stop[1] = pm.ps.origin[1] + pm.ps.velocity[1] / speed * 16;
-                start[2] = pm.ps.origin[2] + pm.mins[2];
-                stop[2] = start[2] - 34;
+                start[0] = stop[0] = pm.ps.origin[0] + (pm.ps.velocity[0] / speed) * 16;
+                start[1] = stop[1] = pm.ps.origin[1] + (pm.ps.velocity[1] / speed) * 16;
+                start[2] = pm.ps.origin[2] + ((pm.ps.Ducked)?Common.playerDuckedMins[2]:Common.playerMins[2]) + 1f; // FIX FOR DUCK
+                stop[2] = start[2] - 49;
 
-                trace_t trace = ClipMap.Instance.Box_Trace(start, stop, pm.mins, pm.maxs, 0, pm.tracemask);
-                //if (trace.fraction == 1.0f)
-                //    friction *= 2f;
+                // This should *not* be a raytrace, it should be a box trace such that we can determine if the
+                // player's box would fall off the ledge.  Ray tracing has problems associated with walking on rails
+                // or on planks where a single ray would have the code believe the player is going to fall when in fact
+                // they wouldn't.  The by product of this not working properly is that when a player gets to what
+                // the code believes is an edge, the friction is bumped way up thus slowing the player down.
+                // If not done properly, this kicks in way too often and forces big unintentional slowdowns.
+                trace_t trace = TracePlayerBBox(start, stop, (int)brushflags.MASK_PLAYERSOLID);
 
+                if (trace.fraction == 1.0f)
+                    friction *= CVars.Instance.VariableValue("g_edgefriction");
+
+                // Bleed off some speed, but if we have less than the bleed
+                //  threshhold, bleed the theshold amount.
                 float control = (speed < pm_stopspeed ? pm_stopspeed : speed);
+
+                // Add the amount to the drop amount.
                 drop += control * friction * pml.frametime;
             }
 
+            // scale the velocity
             float newspeed = speed - drop;
             if (newspeed < 0)
                 newspeed = 0;
 
+            // Determine proportion of old speed we are using.
             newspeed /= speed;
 
+            // Adjust velocity according to proportion.
             pm.ps.velocity *= newspeed;
         }
 
@@ -739,7 +873,7 @@ namespace CubeHags.common
             pm.ps.velocity[2] += 295;
 
             // Decay it for simulation
-            FixupGravityVelocity();
+            FinishGravity();
 
             pm.ps.OldButtons |= (int)Input.ButtonDef.JUMP;
         }
@@ -769,7 +903,7 @@ namespace CubeHags.common
             pm.ps.velocity *= frac; // crop it down
         }
 
-        void AddCorrectGravity()
+        void StartGravity()
         {
             float ent_gravity;
             if (pm.ps.gravity > 0)
@@ -779,12 +913,22 @@ namespace CubeHags.common
 
             // Add gravity so they'll be in the correct position during movement
             // yes, this 0.5 looks wrong, but it's not.  
-            pm.ps.velocity[2] -= (ent_gravity * 0.5f * pml.frametime);
+            pm.ps.velocity[2] -= (ent_gravity  * 0.5f * pml.frametime);
+
+            CheckVelocity();
         }
 
-        void FixupGravityVelocity()
+        void FinishGravity()
         {
-            pm.ps.velocity[2] -= (pm.ps.gravity * pml.frametime * 0.5f);
+            float ent_gravity;
+            if (pm.ps.gravity > 0)
+                ent_gravity = pm.ps.gravity;
+            else
+                ent_gravity = 1f;
+
+            pm.ps.velocity[2] -= (ent_gravity * pml.frametime * 0.5f);
+
+            CheckVelocity();
         }
 
         void CategorizePosition()
@@ -824,55 +968,57 @@ namespace CubeHags.common
                     if (!tr.startsolid && !tr.allsolid)
                         pm.ps.origin = tr.endpos;
                 }
-
-
             }
         }
 
-
-
         float CheckParameters()
         {
-            float speed = (pm.cmd.forwardmove * pm.cmd.forwardmove) +
-                          (pm.cmd.rightmove * pm.cmd.rightmove) +
-                          (pm.cmd.upmove * pm.cmd.upmove);
-            speed = (float)Math.Sqrt(speed) * 6;
+            float speed = (pm.forwardmove * pm.forwardmove) +
+                          (pm.rightmove * pm.rightmove) +
+                          (pm.upmove * pm.upmove);
+            speed = (float)Math.Sqrt(speed);
 
             float maxspeed = pm.ps.speed;
+            if (maxspeed != 0f)
+                pm.maxSpeed = Math.Min(maxspeed, pm.maxSpeed);
 
             float ratio = 1.0f;
             if ((speed != 0.0f) && (speed > maxspeed))
             {
                 ratio = maxspeed / speed;
-                pm.forwardmove = (pm.cmd.forwardmove) * ratio * 6;
-                pm.rightmove = (pm.cmd.rightmove) * ratio * 6;
-                pm.upmove = (pm.cmd.upmove) * ratio * 6;
+                pm.forwardmove *= ratio;
+                pm.rightmove *= ratio;
+                pm.upmove *= ratio;
             }
-            else
-            {
-                pm.forwardmove = (pm.cmd.forwardmove) * 6;
-                pm.rightmove = (pm.cmd.rightmove) * 6;
-                pm.upmove = (pm.cmd.upmove) * 6;
-            }
+            //else
+            //{
+            //    pm.forwardmove = (pm.cmd.forwardmove) * 6;
+            //    pm.rightmove = (pm.cmd.rightmove) * 6;
+            //    pm.upmove = (pm.cmd.upmove) * 6;
+            //}
+
+            //if (!speedCropped && (pm.cmd.buttons & (int)Input.ButtonDef.WALK) > 0 && (pm.cmd.buttons & (int)Input.ButtonDef.DUCK) == 0)
+            //{
+            //    float frac = 0.47f;
+
+            //    pm.rightmove *= frac;
+            //    pm.upmove *= frac;
+            //    pm.forwardmove *= frac;
+            //    speedCropped = true;
+            //}
 
             // dead
             if (pm.ps.stats[0] <= 0)
             {
-                pm.cmd.forwardmove = pm.cmd.rightmove = pm.cmd.upmove = 0;
+                pm.forwardmove = pm.rightmove = pm.upmove = 0;
+                pm.ps.viewheight = (int)Common.playerDeadView[2];
             }
 
-            //pm.punchangle = DropPunchAngle(pm.punchangle);
-
-            // Take angles from command.
-            //Vector3 angle = pm.ps.viewangles;
-            //angle += pm.punchangle;
-
-           // pm.angles = new Vector3(0f, angle[1], angle[2]);
-
-            // FIX
+            // Adjust client view angles to match values used on server.
+            if (pm.ps.viewangles[1] > 180f)
+                pm.ps.viewangles[1] -= 360f;
 
             return ratio;
-
         }
 
         Vector3 DropPunchAngle(Vector3 punchangle)
@@ -884,260 +1030,260 @@ namespace CubeHags.common
             return punchangle * len;
         }
 
-        void PmoveSingle(pmove_t pmove)
-        {
-            pm = pmove;
-            // this counter lets us debug movement problems with a journal
-            // by setting a conditional breakpoint fot the previous frame
-            c_pmove++;
+        //void PmoveSingle(pmove_t pmove)
+        //{
+        //    pm = pmove;
+        //    // this counter lets us debug movement problems with a journal
+        //    // by setting a conditional breakpoint fot the previous frame
+        //    c_pmove++;
             
-            // clear results
-            pm.numtouch = 0;
+        //    // clear results
+        //    pm.numtouch = 0;
 
-            if (pm.ps.stats[0] <= 0)
-            {
-                pm.tracemask &= ~0x2000000;
-            }
+        //    if (pm.ps.stats[0] <= 0)
+        //    {
+        //        pm.tracemask &= ~0x2000000;
+        //    }
 
-            // make sure walking button is clear if they are running, to avoid
-            // proxy no-footsteps cheats
-            if (Math.Abs(pm.cmd.forwardmove) > 64 || Math.Abs(pm.cmd.rightmove) > 64)
-            {
-                pm.cmd.buttons &= ~16;
-            }
+        //    // make sure walking button is clear if they are running, to avoid
+        //    // proxy no-footsteps cheats
+        //    if (Math.Abs(pm.cmd.forwardmove) > 64 || Math.Abs(pm.cmd.rightmove) > 64)
+        //    {
+        //        pm.cmd.buttons &= ~16;
+        //    }
 
-            //// set the firing flag for continuous beam weapons
-            //if ((pm.ps.pm_flags & PMFlags.RESPAWNED) != PMFlags.RESPAWNED && pm.ps.pm_type != PMType.INTERMISSION
-            //    && (pm.cmd.buttons & 1) == 1 && pm.ps.ammo[pm.ps.weapon] > 0)
-            //{
-            //    pm.ps.eFlags |= EntityFlags.EF_FIRING;
-            //}
-            //else
-            //    pm.ps.eFlags &= ~EntityFlags.EF_FIRING;
+        //    //// set the firing flag for continuous beam weapons
+        //    //if ((pm.ps.pm_flags & PMFlags.RESPAWNED) != PMFlags.RESPAWNED && pm.ps.pm_type != PMType.INTERMISSION
+        //    //    && (pm.cmd.buttons & 1) == 1 && pm.ps.ammo[pm.ps.weapon] > 0)
+        //    //{
+        //    //    pm.ps.eFlags |= EntityFlags.EF_FIRING;
+        //    //}
+        //    //else
+        //    //    pm.ps.eFlags &= ~EntityFlags.EF_FIRING;
 
-            // clear the respawned flag if attack and use are cleared
-            if(pm.ps.stats[0] > 0 && (pm.cmd.buttons & (1|4)) == 0)
-                pm.ps.pm_flags &= ~PMFlags.RESPAWNED;
+        //    // clear the respawned flag if attack and use are cleared
+        //    if(pm.ps.stats[0] > 0 && (pm.cmd.buttons & (1|4)) == 0)
+        //        pm.ps.pm_flags &= ~PMFlags.RESPAWNED;
 
-            // clear all pmove local vars
-            pml = new pml_t();
-            pml.forward = Vector3.Zero;
-            pml.up = Vector3.Zero;
-            pml.right = Vector3.Zero;
+        //    // clear all pmove local vars
+        //    pml = new pml_t();
+        //    pml.forward = Vector3.Zero;
+        //    pml.up = Vector3.Zero;
+        //    pml.right = Vector3.Zero;
 
-            // determine the time
-            pml.msec = pm.cmd.serverTime - pm.ps.commandTime;
-            if (pml.msec < 1)
-                pml.msec = 1;
-            else if (pml.msec > 200)
-                pml.msec = 200;
+        //    // determine the time
+        //    pml.msec = pm.cmd.serverTime - pm.ps.commandTime;
+        //    if (pml.msec < 1)
+        //        pml.msec = 1;
+        //    else if (pml.msec > 200)
+        //        pml.msec = 200;
 
-            pm.ps.commandTime = pm.cmd.serverTime;
+        //    pm.ps.commandTime = pm.cmd.serverTime;
 
-            // save old org in case we get stuck
-            pml.previous_origin = pm.ps.origin;
+        //    // save old org in case we get stuck
+        //    pml.previous_origin = pm.ps.origin;
 
-            // save old velocity for crashlanding
-            pml.previous_velocity = pm.ps.velocity;
+        //    // save old velocity for crashlanding
+        //    pml.previous_velocity = pm.ps.velocity;
 
-            pml.frametime = pml.msec * 0.001f;
+        //    pml.frametime = pml.msec * 0.001f;
 
-            // update the viewangles
-            UpdateViewAngles(ref pm.ps, pm.cmd);
+        //    // update the viewangles
+        //    UpdateViewAngles(ref pm.ps, pm.cmd);
 
-            AngleVectors(pm.ps.viewangles, ref pml.forward, ref pml.right, ref pml.up);
+        //    AngleVectors(pm.ps.viewangles, ref pml.forward, ref pml.right, ref pml.up);
 
-            if (pm.cmd.upmove < 10)
-                // not holding jump
-                pm.ps.pm_flags &= ~PMFlags.JUMP_HELD;
+        //    if (pm.cmd.upmove < 10)
+        //        // not holding jump
+        //        pm.ps.pm_flags &= ~PMFlags.JUMP_HELD;
 
-            // decide if backpedaling animations should be used
-            if (pm.cmd.forwardmove < 0)
-                pm.ps.pm_flags |= PMFlags.BACKWARDS_RUN;
-            else if (pm.cmd.forwardmove > 0 || (pm.cmd.forwardmove == 0 && pm.cmd.rightmove > 0))
-                pm.ps.pm_flags &= ~PMFlags.BACKWARDS_RUN;
+        //    // decide if backpedaling animations should be used
+        //    if (pm.cmd.forwardmove < 0)
+        //        pm.ps.pm_flags |= PMFlags.BACKWARDS_RUN;
+        //    else if (pm.cmd.forwardmove > 0 || (pm.cmd.forwardmove == 0 && pm.cmd.rightmove > 0))
+        //        pm.ps.pm_flags &= ~PMFlags.BACKWARDS_RUN;
 
-            if (pm.ps.pm_type == PMType.DEAD)
-            {
-                pm.cmd.forwardmove = 0;
-                pm.cmd.rightmove = 0;
-                pm.cmd.upmove = 0;
-            }
+        //    if (pm.ps.pm_type == PMType.DEAD)
+        //    {
+        //        pm.cmd.forwardmove = 0;
+        //        pm.cmd.rightmove = 0;
+        //        pm.cmd.upmove = 0;
+        //    }
 
-            if (pm.ps.pm_type == PMType.SPECTATOR)
-            {
-                CheckDuck();
-                FlyMove();
-                DropTimers();
-                return;
-            }
+        //    if (pm.ps.pm_type == PMType.SPECTATOR)
+        //    {
+        //        CheckDuck();
+        //        FlyMove();
+        //        DropTimers();
+        //        return;
+        //    }
 
-            if (pm.ps.pm_type == PMType.NOCLIP)
-            {
-                //NoclipMove();
-                DropTimers();
-                return;
-            }
+        //    if (pm.ps.pm_type == PMType.NOCLIP)
+        //    {
+        //        //NoclipMove();
+        //        DropTimers();
+        //        return;
+        //    }
 
-            if (pm.ps.pm_type == PMType.FREEZE)
-                return; // no movement at all
+        //    if (pm.ps.pm_type == PMType.FREEZE)
+        //        return; // no movement at all
 
-            if (pm.ps.pm_type == PMType.INTERMISSION || pm.ps.pm_type == PMType.SPINTERMISSION)
-                return; // no movement at all
+        //    if (pm.ps.pm_type == PMType.INTERMISSION || pm.ps.pm_type == PMType.SPINTERMISSION)
+        //        return; // no movement at all
 
-            // set mins, maxs, and viewheight
-            CheckDuck();
+        //    // set mins, maxs, and viewheight
+        //    CheckDuck();
 
-            // set groundentity
-            GroundTrace();
+        //    // set groundentity
+        //    GroundTrace();
 
-            if (pm.ps.pm_type == PMType.DEAD)
-            {
-                //DeadMove();
-            }
+        //    if (pm.ps.pm_type == PMType.DEAD)
+        //    {
+        //        //DeadMove();
+        //    }
 
-            DropTimers();
+        //    DropTimers();
 
-            if (pml.walking)
-            {
-                // walking on ground
-                WalkMove();
-            }
-            else
-            {
-                // airborne
-                AirMove();
-            }
+        //    if (pml.walking)
+        //    {
+        //        // walking on ground
+        //        WalkMove();
+        //    }
+        //    else
+        //    {
+        //        // airborne
+        //        AirMove();
+        //    }
 
-            // set groundentity, watertype, and waterlevel
-            GroundTrace();
+        //    // set groundentity, watertype, and waterlevel
+        //    GroundTrace();
 
-            // snap some parts of playerstate to save network bandwidth
-            CGame.SnapVector(pm.ps.velocity);
-        }
+        //    // snap some parts of playerstate to save network bandwidth
+        //    CGame.SnapVector(pm.ps.velocity);
+        //}
 
-        void CheckDuck()
-        {
-            pm.mins[0] = -15;
-            pm.mins[1] = -15;
+        //void CheckDuck()
+        //{
+        //    pm.mins[0] = -15;
+        //    pm.mins[1] = -15;
 
-            pm.maxs[0] = 15;
-            pm.maxs[1] = 15;
+        //    pm.maxs[0] = 15;
+        //    pm.maxs[1] = 15;
 
-            pm.mins[2] = -24;
+        //    pm.mins[2] = -24;
 
-            if (pm.ps.pm_type == PMType.DEAD)
-            {
-                pm.maxs[2] = -8;
-                pm.ps.viewheight = -16;
-                return;
-            }
+        //    if (pm.ps.pm_type == PMType.DEAD)
+        //    {
+        //        pm.maxs[2] = -8;
+        //        pm.ps.viewheight = -16;
+        //        return;
+        //    }
 
-            if (pm.cmd.upmove < 0)
-            {
-                pm.ps.pm_flags |= PMFlags.DUCKED;
-            }
-            else
-            {
-                // stand up if possible
-                if ((pm.ps.pm_flags & PMFlags.DUCKED) == PMFlags.DUCKED)
-                {
-                    // try to stand up
-                    pm.maxs[2] = 32;
-                    trace_t trace = pm.DoTrace(pm.ps.origin, pm.ps.origin, pm.mins, pm.maxs, pm.ps.clientNum, pm.tracemask);
-                    if (!trace.allsolid)
-                        pm.ps.pm_flags &= ~PMFlags.DUCKED;
-                }
-            }
+        //    if (pm.cmd.upmove < 0)
+        //    {
+        //        pm.ps.pm_flags |= PMFlags.DUCKED;
+        //    }
+        //    else
+        //    {
+        //        // stand up if possible
+        //        if ((pm.ps.pm_flags & PMFlags.DUCKED) == PMFlags.DUCKED)
+        //        {
+        //            // try to stand up
+        //            pm.maxs[2] = 32;
+        //            trace_t trace = pm.DoTrace(pm.ps.origin, pm.ps.origin, pm.mins, pm.maxs, pm.ps.clientNum, pm.tracemask);
+        //            if (!trace.allsolid)
+        //                pm.ps.pm_flags &= ~PMFlags.DUCKED;
+        //        }
+        //    }
 
-            if ((pm.ps.pm_flags & PMFlags.DUCKED) == PMFlags.DUCKED)
-            {
-                pm.maxs[2] = 16;
-                pm.ps.viewheight = Common.CROUCH_VIEWHEIGHT;
-            }
-            else
-            {
-                pm.maxs[2] = 32;
-                pm.ps.viewheight = Common.DEFAULT_VIEWHEIGHT;
-            }
-        }
+        //    if ((pm.ps.pm_flags & PMFlags.DUCKED) == PMFlags.DUCKED)
+        //    {
+        //        pm.maxs[2] = 16;
+        //        pm.ps.viewheight = Common.CROUCH_VIEWHEIGHT;
+        //    }
+        //    else
+        //    {
+        //        pm.maxs[2] = 32;
+        //        pm.ps.viewheight = Common.DEFAULT_VIEWHEIGHT;
+        //    }
+        //}
 
-        bool CheckJump()
-        {
-            if ((pm.ps.pm_flags & PMFlags.RESPAWNED) == PMFlags.RESPAWNED)
-            {
-                return false;   // don't allow jump until all buttons are up
-            }
+        //bool CheckJump()
+        //{
+        //    if ((pm.ps.pm_flags & PMFlags.RESPAWNED) == PMFlags.RESPAWNED)
+        //    {
+        //        return false;   // don't allow jump until all buttons are up
+        //    }
 
-            if (pm.cmd.upmove < 10)
-            {
-                // not holding jump
-                return false;
-            }
+        //    if (pm.cmd.upmove < 10)
+        //    {
+        //        // not holding jump
+        //        return false;
+        //    }
 
-            // must wait for jump to be released
-            if ((pm.ps.pm_flags & PMFlags.JUMP_HELD) == PMFlags.JUMP_HELD)
-            {
-                // clear upmove so cmdscale doesn't lower running speed
-                pm.cmd.upmove = 0;
-                return false;
-            }
+        //    // must wait for jump to be released
+        //    if ((pm.ps.pm_flags & PMFlags.JUMP_HELD) == PMFlags.JUMP_HELD)
+        //    {
+        //        // clear upmove so cmdscale doesn't lower running speed
+        //        pm.cmd.upmove = 0;
+        //        return false;
+        //    }
 
-            pml.groundPlane = false;    // jumping away
-            pml.walking = false;
-            pm.ps.pm_flags |= PMFlags.JUMP_HELD;
-            pm.ps.groundEntityNum = 1023;
-            pm.ps.velocity[2] = 270;
+        //    pml.groundPlane = false;    // jumping away
+        //    pml.walking = false;
+        //    pm.ps.pm_flags |= PMFlags.JUMP_HELD;
+        //    pm.ps.groundEntityNum = 1023;
+        //    pm.ps.velocity[2] = 270;
 
-            if (pm.cmd.forwardmove >= 0)
-            {
-                pm.ps.pm_flags &= ~PMFlags.BACKWARDS_JUMP;
-            }
-            else
-            {
-                pm.ps.pm_flags |= PMFlags.BACKWARDS_JUMP;
-            }
+        //    if (pm.cmd.forwardmove >= 0)
+        //    {
+        //        pm.ps.pm_flags &= ~PMFlags.BACKWARDS_JUMP;
+        //    }
+        //    else
+        //    {
+        //        pm.ps.pm_flags |= PMFlags.BACKWARDS_JUMP;
+        //    }
 
-            return true;
-        }
+        //    return true;
+        //}
 
-        void AirMove()
-        {
-            Friction();
+        //void AirMove()
+        //{
+        //    Friction();
 
-            float fmove = pm.cmd.forwardmove;
-            float smove = pm.cmd.rightmove;
+        //    float fmove = pm.cmd.forwardmove;
+        //    float smove = pm.cmd.rightmove;
 
-            Input.UserCommand cmd = pm.cmd;
-            float scale = CommandScale(cmd);
+        //    Input.UserCommand cmd = pm.cmd;
+        //    float scale = CommandScale(cmd);
 
-            // project moves down to flat plane
-            pml.forward[2] = 0;
-            pml.right[2] = 0;
-            pml.forward.Normalize();
-            pml.right.Normalize();
+        //    // project moves down to flat plane
+        //    pml.forward[2] = 0;
+        //    pml.right[2] = 0;
+        //    pml.forward.Normalize();
+        //    pml.right.Normalize();
 
-            Vector3 wishvel = (pml.forward * fmove) + (pml.right * smove);
-            wishvel[2] = 0;
+        //    Vector3 wishvel = (pml.forward * fmove) + (pml.right * smove);
+        //    wishvel[2] = 0;
 
-            Vector3 wishdir = wishvel;
-            float wishspeed = wishdir.Length();
-            wishdir.Normalize();
-            wishspeed *= scale;
+        //    Vector3 wishdir = wishvel;
+        //    float wishspeed = wishdir.Length();
+        //    wishdir.Normalize();
+        //    wishspeed *= scale;
 
-            // not on ground, so little effect on velocity
-            AirAccelerate(wishdir, wishspeed, pm_airaccelerate);
+        //    // not on ground, so little effect on velocity
+        //    AirAccelerate(wishdir, wishspeed, pm_airaccelerate);
 
-            // we may have a ground plane that is very steep, even
-            // though we don't have a groundentity
-            // slide along the steep plane
-            if (pml.groundPlane)
-            {
-                ClipVelocity(pm.ps.velocity, pml.groundTrace.plane.normal, ref pm.ps.velocity, 1.001f);
-            }
+        //    // we may have a ground plane that is very steep, even
+        //    // though we don't have a groundentity
+        //    // slide along the steep plane
+        //    if (pml.groundPlane)
+        //    {
+        //        ClipVelocity(pm.ps.velocity, pml.groundTrace.plane.normal, ref pm.ps.velocity, 1.001f);
+        //    }
 
-            StepSlideMove(true);
-        }
+        //    StepSlideMove(true);
+        //}
 
         
 
@@ -1163,259 +1309,259 @@ namespace CubeHags.common
             }
         }
 
-        void WalkMove()
-        {
-            if (CheckJump())
-            {
-                // jumped away
-                AirMove();
-                return;
-            }
+        //void WalkMove()
+        //{
+        //    if (CheckJump())
+        //    {
+        //        // jumped away
+        //        AirMove();
+        //        return;
+        //    }
 
-            Friction();
+        //    Friction();
 
-            float fmove = pm.cmd.forwardmove;
-            float smove = pm.cmd.rightmove;
-            Input.UserCommand cmd = pm.cmd;
-            float scale = CommandScale(cmd);
+        //    float fmove = pm.cmd.forwardmove;
+        //    float smove = pm.cmd.rightmove;
+        //    Input.UserCommand cmd = pm.cmd;
+        //    float scale = CommandScale(cmd);
 
-            // set the movementDir so clients can rotate the legs for strafing
-            //SetMovementDir();
+        //    // set the movementDir so clients can rotate the legs for strafing
+        //    //SetMovementDir();
 
-            // project moves down to flat plane
-            pml.forward[2] = 0;
-            pml.right[2] = 0;
+        //    // project moves down to flat plane
+        //    pml.forward[2] = 0;
+        //    pml.right[2] = 0;
 
-            // project the forward and right directions onto the ground plane
-            ClipVelocity(pml.forward, pml.groundTrace.plane.normal, ref pml.forward, 1.001f);
-            ClipVelocity(pml.right, pml.groundTrace.plane.normal, ref pml.right, 1.001f);
-            pml.forward.Normalize();
-            pml.right.Normalize();
+        //    // project the forward and right directions onto the ground plane
+        //    ClipVelocity(pml.forward, pml.groundTrace.plane.normal, ref pml.forward, 1.001f);
+        //    ClipVelocity(pml.right, pml.groundTrace.plane.normal, ref pml.right, 1.001f);
+        //    pml.forward.Normalize();
+        //    pml.right.Normalize();
 
-            Vector3 wishvel = (pml.forward * fmove) + (pml.right * smove);
-            Vector3 wishdir = wishvel;
-            float wishpeed = wishdir.Length();
-            wishdir.Normalize();
-            wishpeed *= scale;
+        //    Vector3 wishvel = (pml.forward * fmove) + (pml.right * smove);
+        //    Vector3 wishdir = wishvel;
+        //    float wishpeed = wishdir.Length();
+        //    wishdir.Normalize();
+        //    wishpeed *= scale;
 
-            // clamp the speed lower if ducking
-            if ((pm.ps.pm_flags & PMFlags.DUCKED) == PMFlags.DUCKED)
-            {
-                if (wishpeed > pm.ps.speed * pm_duckScale)
-                {
-                    wishpeed = pm.ps.speed * pm_duckScale;
-                }
-            }
+        //    // clamp the speed lower if ducking
+        //    if ((pm.ps.pm_flags & PMFlags.DUCKED) == PMFlags.DUCKED)
+        //    {
+        //        if (wishpeed > pm.ps.speed * pm_duckScale)
+        //        {
+        //            wishpeed = pm.ps.speed * pm_duckScale;
+        //        }
+        //    }
 
-            // when a player gets hit, they temporarily lose
-            // full control, which allows them to be moved a bit
-            float accelerate;
-            if ((pml.groundTrace.surfaceFlags & (int)SurfFlags.SURF_SLICK) > 0 || (pm.ps.pm_flags & PMFlags.TIME_KNOCKBACK) == PMFlags.TIME_KNOCKBACK)
-            {
-                accelerate = pm_airaccelerate;
-            }
-            else
-                accelerate = pm_accelerate;
+        //    // when a player gets hit, they temporarily lose
+        //    // full control, which allows them to be moved a bit
+        //    float accelerate;
+        //    if ((pml.groundTrace.surfaceFlags & (int)SurfFlags.SURF_SLICK) > 0 || (pm.ps.pm_flags & PMFlags.TIME_KNOCKBACK) == PMFlags.TIME_KNOCKBACK)
+        //    {
+        //        accelerate = pm_airaccelerate;
+        //    }
+        //    else
+        //        accelerate = pm_accelerate;
 
-            Accelerate(wishdir, wishpeed, accelerate);
+        //    Accelerate(wishdir, wishpeed, accelerate);
 
-            if ((pml.groundTrace.surfaceFlags & (int)SurfFlags.SURF_SLICK) > 0 || (pm.ps.pm_flags & PMFlags.TIME_KNOCKBACK) == PMFlags.TIME_KNOCKBACK)
-            {
-                pm.ps.velocity[2] -= pm.ps.gravity * pml.frametime;
-            }
+        //    if ((pml.groundTrace.surfaceFlags & (int)SurfFlags.SURF_SLICK) > 0 || (pm.ps.pm_flags & PMFlags.TIME_KNOCKBACK) == PMFlags.TIME_KNOCKBACK)
+        //    {
+        //        pm.ps.velocity[2] -= pm.ps.gravity * pml.frametime;
+        //    }
 
-            float vel = pm.ps.velocity.Length();
-            // slide along the ground plane
-            ClipVelocity(pm.ps.velocity, pml.groundTrace.plane.normal, ref pm.ps.velocity, 1.001f);
+        //    float vel = pm.ps.velocity.Length();
+        //    // slide along the ground plane
+        //    ClipVelocity(pm.ps.velocity, pml.groundTrace.plane.normal, ref pm.ps.velocity, 1.001f);
 
-            // don't decrease velocity when going up or down a slope
-            pm.ps.velocity.Normalize();
-            pm.ps.velocity = Vector3.Multiply(pm.ps.velocity, vel);
+        //    // don't decrease velocity when going up or down a slope
+        //    pm.ps.velocity.Normalize();
+        //    pm.ps.velocity = Vector3.Multiply(pm.ps.velocity, vel);
 
-            // don't do anything if standing still
-            if (pm.ps.velocity[0] == 0 && pm.ps.velocity[1] == 0)
-                return;
+        //    // don't do anything if standing still
+        //    if (pm.ps.velocity[0] == 0 && pm.ps.velocity[1] == 0)
+        //        return;
 
-            StepSlideMove(false);
+        //    StepSlideMove(false);
 
-            if (pm.ps.groundEntityNum != 1023)
-                pm.ps.velocity[2] = 0;
-        }
+        //    if (pm.ps.groundEntityNum != 1023)
+        //        pm.ps.velocity[2] = 0;
+        //}
 
-        void GroundTrace()
-        {
-            Vector3 point = pm.ps.origin;
-            point[2] -= 0.25f;
-            trace_t trace = pm.DoTrace(pm.ps.origin, point, pm.mins, pm.maxs, pm.ps.clientNum, pm.tracemask);
-            pml.groundTrace = trace;
+        //void GroundTrace()
+        //{
+        //    Vector3 point = pm.ps.origin;
+        //    point[2] -= 0.25f;
+        //    trace_t trace = pm.DoTrace(pm.ps.origin, point, pm.mins, pm.maxs, pm.ps.clientNum, pm.tracemask);
+        //    pml.groundTrace = trace;
 
-            // do something corrective if the trace starts in a solid...
-            if (trace.allsolid)
-            {
-                if (!CorrectAllSolid(trace))
-                    return;
-            }
+        //    // do something corrective if the trace starts in a solid...
+        //    if (trace.allsolid)
+        //    {
+        //        if (!CorrectAllSolid(trace))
+        //            return;
+        //    }
 
-            // if the trace didn't hit anything, we are in free fall
-            if (trace.fraction == 1.0f)
-            {
-                GroundTraceMissed();
-                pml.groundPlane = false;
-                pml.walking = false;
-                return;
-            }
+        //    // if the trace didn't hit anything, we are in free fall
+        //    if (trace.fraction == 1.0f)
+        //    {
+        //        GroundTraceMissed();
+        //        pml.groundPlane = false;
+        //        pml.walking = false;
+        //        return;
+        //    }
 
-            // check if getting thrown off the ground
-            if (pm.ps.velocity[2] > 0 && Vector3.Dot(pm.ps.velocity, trace.plane.normal) > 10f)
-            {
-                //Common.Instance.WriteLine("kickoff");
-                pm.ps.groundEntityNum = 1023;
-                pml.groundPlane = false;
-                pml.walking = false;
-                return;
-            }
+        //    // check if getting thrown off the ground
+        //    if (pm.ps.velocity[2] > 0 && Vector3.Dot(pm.ps.velocity, trace.plane.normal) > 10f)
+        //    {
+        //        //Common.Instance.WriteLine("kickoff");
+        //        pm.ps.groundEntityNum = 1023;
+        //        pml.groundPlane = false;
+        //        pml.walking = false;
+        //        return;
+        //    }
 
-            // slopes that are too steep will not be considered onground
-            if (trace.plane.normal[2] < 0.7f)
-            {
-                //Common.Instance.WriteLine("steep");
-                // FIXME: if they can't slide down the slope, let them
-                // walk (sharp crevices)
-                pm.ps.groundEntityNum = 1023;
-                pml.groundPlane = true;
-                pml.walking = false;
-                return;
-            }
+        //    // slopes that are too steep will not be considered onground
+        //    if (trace.plane.normal[2] < 0.7f)
+        //    {
+        //        //Common.Instance.WriteLine("steep");
+        //        // FIXME: if they can't slide down the slope, let them
+        //        // walk (sharp crevices)
+        //        pm.ps.groundEntityNum = 1023;
+        //        pml.groundPlane = true;
+        //        pml.walking = false;
+        //        return;
+        //    }
 
-            pml.groundPlane = true;
-            pml.walking = true;
+        //    pml.groundPlane = true;
+        //    pml.walking = true;
 
-            if (pm.ps.groundEntityNum == 1023)
-            {
-                //Common.Instance.WriteLine("land");
-                // just hit the ground
-                //CrashLand();
+        //    if (pm.ps.groundEntityNum == 1023)
+        //    {
+        //        //Common.Instance.WriteLine("land");
+        //        // just hit the ground
+        //        //CrashLand();
 
-                // don't do landing time if we were just going down a slope
-                if (pml.previous_velocity[2] < -200)
-                {
-                    // don't allow another jump for a little while
-                    pm.ps.pm_flags |= PMFlags.TIME_LAND;
-                    pm.ps.pm_time = 250;
-                }
-            }
+        //        // don't do landing time if we were just going down a slope
+        //        if (pml.previous_velocity[2] < -200)
+        //        {
+        //            // don't allow another jump for a little while
+        //            pm.ps.pm_flags |= PMFlags.TIME_LAND;
+        //            pm.ps.pm_time = 250;
+        //        }
+        //    }
 
-            pm.ps.groundEntityNum = trace.entityNum;
-            //AddTouchEnt(trace.entityNum);
-        }
+        //    pm.ps.groundEntityNum = trace.entityNum;
+        //    //AddTouchEnt(trace.entityNum);
+        //}
 
-        /*
-        =============
-        PM_GroundTraceMissed
+        ///*
+        //=============
+        //PM_GroundTraceMissed
 
-        The ground trace didn't hit a surface, so we are in freefall
-        =============
-        */
-        void GroundTraceMissed()
-        {
-            if (pm.ps.groundEntityNum != 1023)
-            {
-                // we just transitioned into freefall
+        //The ground trace didn't hit a surface, so we are in freefall
+        //=============
+        //*/
+        //void GroundTraceMissed()
+        //{
+        //    if (pm.ps.groundEntityNum != 1023)
+        //    {
+        //        // we just transitioned into freefall
 
-                // if they aren't in a jumping animation and the ground is a ways away, force into it
-                // if we didn't do the trace, the player would be backflipping down staircases
-                Vector3 point = pm.ps.origin;
-                point[2] -= 0.25f;
+        //        // if they aren't in a jumping animation and the ground is a ways away, force into it
+        //        // if we didn't do the trace, the player would be backflipping down staircases
+        //        Vector3 point = pm.ps.origin;
+        //        point[2] -= 0.25f;
 
-                trace_t trace = pm.DoTrace(pm.ps.origin, point, pm.mins, pm.maxs, pm.ps.clientNum, pm.tracemask);
-                if (trace.fraction == 1.0f)
-                {
-                    if(pm.cmd.forwardmove >= 0)
-                        pm.ps.pm_flags &= ~PMFlags.BACKWARDS_JUMP;
-                    else
-                    {
-                        pm.ps.pm_flags |= PMFlags.BACKWARDS_JUMP;
-                    }
-                }
+        //        trace_t trace = pm.DoTrace(pm.ps.origin, point, pm.mins, pm.maxs, pm.ps.clientNum, pm.tracemask);
+        //        if (trace.fraction == 1.0f)
+        //        {
+        //            if(pm.cmd.forwardmove >= 0)
+        //                pm.ps.pm_flags &= ~PMFlags.BACKWARDS_JUMP;
+        //            else
+        //            {
+        //                pm.ps.pm_flags |= PMFlags.BACKWARDS_JUMP;
+        //            }
+        //        }
                 
-            }
+        //    }
 
-            pm.ps.groundEntityNum = 1023;
-            pml.groundPlane = false;
-            pml.walking = false;
-        }
+        //    pm.ps.groundEntityNum = 1023;
+        //    pml.groundPlane = false;
+        //    pml.walking = false;
+        //}
 
-        bool CorrectAllSolid(trace_t trace)
-        {
-            Vector3 point;
+        //bool CorrectAllSolid(trace_t trace)
+        //{
+        //    Vector3 point;
 
-            // jitter around
-            for (int i = -1; i <= 1; i++)
-            {
-                for (int j = -1; j <= 1; j++)
-                {
-                    for (int k = -1; k <= 1; k++)
-                    {
-                        point = pm.ps.origin;
-                        point[0] += (float)i;
-                        point[1] += (float)j;
-                        point[2] += (float)k;
-                        trace = pm.DoTrace(point, point, pm.mins, pm.maxs, pm.ps.clientNum, pm.tracemask);
-                        if (!trace.allsolid)
-                        {
-                            point = pm.ps.origin;
-                            point[2] -= 0.25f;
+        //    // jitter around
+        //    for (int i = -1; i <= 1; i++)
+        //    {
+        //        for (int j = -1; j <= 1; j++)
+        //        {
+        //            for (int k = -1; k <= 1; k++)
+        //            {
+        //                point = pm.ps.origin;
+        //                point[0] += (float)i;
+        //                point[1] += (float)j;
+        //                point[2] += (float)k;
+        //                trace = pm.DoTrace(point, point, pm.mins, pm.maxs, pm.ps.clientNum, pm.tracemask);
+        //                if (!trace.allsolid)
+        //                {
+        //                    point = pm.ps.origin;
+        //                    point[2] -= 0.25f;
 
-                            trace = pm.DoTrace(pm.ps.origin, point, pm.mins, pm.maxs, pm.ps.clientNum, pm.tracemask);
-                            pml.groundTrace = trace;
-                            return true;
-                        }
-                    }
-                }
-            }
+        //                    trace = pm.DoTrace(pm.ps.origin, point, pm.mins, pm.maxs, pm.ps.clientNum, pm.tracemask);
+        //                    pml.groundTrace = trace;
+        //                    return true;
+        //                }
+        //            }
+        //        }
+        //    }
 
-            pm.ps.groundEntityNum = 1023;
-            pml.groundPlane = false;
-            pml.walking = false;
+        //    pm.ps.groundEntityNum = 1023;
+        //    pml.groundPlane = false;
+        //    pml.walking = false;
 
-            return false;
-        }
+        //    return false;
+        //}
 
-        void FlyMove()
-        {
-            // normal slowdown
-            Friction();
-            float scale = CommandScale(pm.cmd);
+        //void FlyMove()
+        //{
+        //    // normal slowdown
+        //    Friction();
+        //    float scale = CommandScale(pm.cmd);
 
-            //
-            // user intentions
-            //
-            Vector3 wishvel = Vector3.Zero;
-            if (scale != 0f)
-            {
-                for (int i = 0; i < 3; i++)
-                {
-                    wishvel[i] = (scale * pml.forward[i] * pm.cmd.forwardmove) + (scale * pml.right[i] * pm.cmd.rightmove);
-                }
-                wishvel[2] += scale * pm.cmd.upmove;
-            }
+        //    //
+        //    // user intentions
+        //    //
+        //    Vector3 wishvel = Vector3.Zero;
+        //    if (scale != 0f)
+        //    {
+        //        for (int i = 0; i < 3; i++)
+        //        {
+        //            wishvel[i] = (scale * pml.forward[i] * pm.cmd.forwardmove) + (scale * pml.right[i] * pm.cmd.rightmove);
+        //        }
+        //        wishvel[2] += scale * pm.cmd.upmove;
+        //    }
 
-            Vector3 wishdir = new Vector3(wishvel.X, wishvel.Y, wishvel.Z);
-            float wishspeed = wishdir.Length();
-            wishdir.Normalize();
+        //    Vector3 wishdir = new Vector3(wishvel.X, wishvel.Y, wishvel.Z);
+        //    float wishspeed = wishdir.Length();
+        //    wishdir.Normalize();
 
-            // Cap speed
-            if (wishspeed > pm_maxspeed)
-            {
-                wishspeed = pm_maxspeed;
-            }
+        //    // Cap speed
+        //    if (wishspeed > pm_maxspeed)
+        //    {
+        //        wishspeed = pm_maxspeed;
+        //    }
 
-            // Apply acceleration
-            Accelerate(wishdir, wishspeed, pm_accelerate);
+        //    // Apply acceleration
+        //    Accelerate(wishdir, wishspeed, pm_accelerate);
 
-            //SlideMove(false);
-            StepSlideMove(false);
-        }
+        //    //SlideMove(false);
+        //    StepSlideMove(false);
+        //}
 
         private void AirAccelerate(Vector3 wishdir, float wishspeed, float accel)
         {
@@ -1449,266 +1595,267 @@ namespace CubeHags.common
 
             // Adjust pmove vel.
             pm.ps.velocity += accelspeed * wishdir;
-        }
-
-        private void StepSlideMove(bool gravity)
-        {
-            Vector3 start_o = pm.ps.origin;
-            Vector3 start_v = pm.ps.velocity;
-
-            if (!SlideMove(gravity))
-            {
-                return; // we got exactly where we wanted to go first try	
-            }
             
-            Vector3 down = start_o;
-            down[2] -= 18;
-            trace_t trace = pm.DoTrace(start_o, down, pm.mins, pm.maxs, pm.ps.clientNum, pm.tracemask);
-            Vector3 up = new Vector3(0f, 0f, 1f);
-            // never step up when you still have up velocity
-            float dotUp = Vector3.Dot(trace.plane.normal, up);
-            if (pm.ps.velocity[2] > 0f && (trace.fraction == 1.0f || dotUp < 0.7f))
-            {
-                return;
-            }
+        }
 
-            Vector3 down_o = pm.ps.origin;
-            Vector3 down_v = pm.ps.velocity;
-            up = start_o;
-            up[2] += 18;
+        //private void StepSlideMove(bool gravity)
+        //{
+        //    Vector3 start_o = pm.ps.origin;
+        //    Vector3 start_v = pm.ps.velocity;
 
-            // test the player position if they were a stepheight higher
-            trace = pm.DoTrace(start_o, up, pm.mins, pm.maxs, pm.ps.clientNum, pm.tracemask);
-            if (trace.allsolid)
-            {
-                return; // can't step up
-            }
-
-            float stepSize = trace.endpos[2] - start_o[2];
+        //    if (!SlideMove(gravity))
+        //    {
+        //        return; // we got exactly where we wanted to go first try	
+        //    }
             
-            // try slidemove from this position
-            pm.ps.origin = trace.endpos;
-            pm.ps.velocity = start_v;
+        //    Vector3 down = start_o;
+        //    down[2] -= 18;
+        //    trace_t trace = pm.DoTrace(start_o, down, pm.mins, pm.maxs, pm.ps.clientNum, pm.tracemask);
+        //    Vector3 up = new Vector3(0f, 0f, 1f);
+        //    // never step up when you still have up velocity
+        //    float dotUp = Vector3.Dot(trace.plane.normal, up);
+        //    if (pm.ps.velocity[2] > 0f && (trace.fraction == 1.0f || dotUp < 0.7f))
+        //    {
+        //        return;
+        //    }
 
-            SlideMove(gravity);
-            // push down the final amount
-            down = pm.ps.origin;
-            down[2] -= 18;
-            trace = pm.DoTrace(pm.ps.origin, down, pm.mins, pm.maxs, pm.ps.clientNum, pm.tracemask);
-            if (!trace.allsolid)
-                pm.ps.origin = trace.endpos;
-            if (trace.fraction < 1.0f)
-                ClipVelocity(pm.ps.velocity, trace.plane.normal, ref pm.ps.velocity, 1.001f);
+        //    Vector3 down_o = pm.ps.origin;
+        //    Vector3 down_v = pm.ps.velocity;
+        //    up = start_o;
+        //    up[2] += 18;
 
-            float delta = pm.ps.origin[2] - start_o[2];
-            if (delta > 2)
-            {
-                if (delta < 7)
-                {
-                    //PM_AddEvent(EV_STEP_4);
-                }
-                else if (delta < 11)
-                {
-                    //PM_AddEvent(EV_STEP_8);
-                }
-                else if (delta < 15)
-                {
-                    //PM_AddEvent(EV_STEP_12);
-                }
-                else
-                {
-                    //PM_AddEvent(EV_STEP_16);
-                }
-            }
-           //Common.Instance.WriteLine("stepped");
+        //    // test the player position if they were a stepheight higher
+        //    trace = pm.DoTrace(start_o, up, pm.mins, pm.maxs, pm.ps.clientNum, pm.tracemask);
+        //    if (trace.allsolid)
+        //    {
+        //        return; // can't step up
+        //    }
 
-        }
+        //    float stepSize = trace.endpos[2] - start_o[2];
+            
+        //    // try slidemove from this position
+        //    pm.ps.origin = trace.endpos;
+        //    pm.ps.velocity = start_v;
 
-        /*
-        ==================
-        PM_SlideMove
+        //    SlideMove(gravity);
+        //    // push down the final amount
+        //    down = pm.ps.origin;
+        //    down[2] -= 18;
+        //    trace = pm.DoTrace(pm.ps.origin, down, pm.mins, pm.maxs, pm.ps.clientNum, pm.tracemask);
+        //    if (!trace.allsolid)
+        //        pm.ps.origin = trace.endpos;
+        //    if (trace.fraction < 1.0f)
+        //        ClipVelocity(pm.ps.velocity, trace.plane.normal, ref pm.ps.velocity, 1.001f);
 
-        Returns qtrue if the velocity was clipped in some way
-        ==================
-        */
-        private bool SlideMove(bool gravity)
-        {
-            int numbumps = 4;
+        //    float delta = pm.ps.origin[2] - start_o[2];
+        //    if (delta > 2)
+        //    {
+        //        if (delta < 7)
+        //        {
+        //            //PM_AddEvent(EV_STEP_4);
+        //        }
+        //        else if (delta < 11)
+        //        {
+        //            //PM_AddEvent(EV_STEP_8);
+        //        }
+        //        else if (delta < 15)
+        //        {
+        //            //PM_AddEvent(EV_STEP_12);
+        //        }
+        //        else
+        //        {
+        //            //PM_AddEvent(EV_STEP_16);
+        //        }
+        //    }
+        //   //Common.Instance.WriteLine("stepped");
 
-            Vector3 primal_velocity = pm.ps.velocity;
-            Vector3 endVelocity = Vector3.Zero;
-            if (gravity)
-            {
-                endVelocity = pm.ps.velocity;
-                endVelocity[2] -= 800f * pml.frametime;
-                pm.ps.velocity[2] = (pm.ps.velocity[2] + endVelocity[2]) * 0.5f;
-                primal_velocity[2] = endVelocity[2];
-                if (pml.groundPlane)
-                {
-                    // slide along the ground plane
-                    ClipVelocity(pm.ps.velocity, pml.groundTrace.plane.normal, ref pm.ps.velocity, 1.001f);
-                }
-            }
+        //}
 
-            float time_left = pml.frametime;
+        ///*
+        //==================
+        //PM_SlideMove
 
-            // never turn against the ground plane
-            int numplanes;
-            Vector3[] planes = new Vector3[5];
-            if (pml.groundPlane)
-            {
-                numplanes = 1;
-                planes[0] = pml.groundTrace.plane.normal;
-            }
-            else
-                numplanes = 0;
+        //Returns qtrue if the velocity was clipped in some way
+        //==================
+        //*/
+        //private bool SlideMove(bool gravity)
+        //{
+        //    int numbumps = 4;
 
-            // never turn against original velocity
-            planes[numplanes] = Vector3.Zero;
-            VectorNormalize2(pm.ps.velocity, ref planes[numplanes]);
-            numplanes++;
-            int bumpcount;
-            for (bumpcount = 0; bumpcount < numbumps; bumpcount++)
-            {
-                // calculate position we are trying to move to
-                Vector3 end = ViewParams.VectorMA(pm.ps.origin, time_left, pm.ps.velocity);
+        //    Vector3 primal_velocity = pm.ps.velocity;
+        //    Vector3 endVelocity = Vector3.Zero;
+        //    if (gravity)
+        //    {
+        //        endVelocity = pm.ps.velocity;
+        //        endVelocity[2] -= 800f * pml.frametime;
+        //        pm.ps.velocity[2] = (pm.ps.velocity[2] + endVelocity[2]) * 0.5f;
+        //        primal_velocity[2] = endVelocity[2];
+        //        if (pml.groundPlane)
+        //        {
+        //            // slide along the ground plane
+        //            ClipVelocity(pm.ps.velocity, pml.groundTrace.plane.normal, ref pm.ps.velocity, 1.001f);
+        //        }
+        //    }
 
-                // see if we can make it there
-                trace_t trace = pm.DoTrace(pm.ps.origin, end, pm.mins, pm.maxs, pm.ps.clientNum, pm.tracemask);
+        //    float time_left = pml.frametime;
+
+        //    // never turn against the ground plane
+        //    int numplanes;
+        //    Vector3[] planes = new Vector3[5];
+        //    if (pml.groundPlane)
+        //    {
+        //        numplanes = 1;
+        //        planes[0] = pml.groundTrace.plane.normal;
+        //    }
+        //    else
+        //        numplanes = 0;
+
+        //    // never turn against original velocity
+        //    planes[numplanes] = Vector3.Zero;
+        //    VectorNormalize2(pm.ps.velocity, ref planes[numplanes]);
+        //    numplanes++;
+        //    int bumpcount;
+        //    for (bumpcount = 0; bumpcount < numbumps; bumpcount++)
+        //    {
+        //        // calculate position we are trying to move to
+        //        Vector3 end = ViewParams.VectorMA(pm.ps.origin, time_left, pm.ps.velocity);
+
+        //        // see if we can make it there
+        //        trace_t trace = pm.DoTrace(pm.ps.origin, end, pm.mins, pm.maxs, pm.ps.clientNum, pm.tracemask);
                 
-                if (trace.allsolid)
-                {
-                    // entity is completely trapped in another solid
-                    pm.ps.velocity[2] = 0;  // don't build up falling damage, but allow sideways acceleration
-                    return true;
-                }
+        //        if (trace.allsolid)
+        //        {
+        //            // entity is completely trapped in another solid
+        //            pm.ps.velocity[2] = 0;  // don't build up falling damage, but allow sideways acceleration
+        //            return true;
+        //        }
 
-                if (trace.fraction > 0f)
-                {
-                    // actually covered some distance
-                    Vector3 save = trace.endpos;
-                    pm.ps.origin = save;
-                }
+        //        if (trace.fraction > 0f)
+        //        {
+        //            // actually covered some distance
+        //            Vector3 save = trace.endpos;
+        //            pm.ps.origin = save;
+        //        }
 
-                if (trace.fraction == 1.0f)
-                    break;  // moved the entire distance
+        //        if (trace.fraction == 1.0f)
+        //            break;  // moved the entire distance
 
-                //lastTrace = trace;
+        //        //lastTrace = trace;
 
-                // save entity for contact
-                //AddTouchEnt(trace.entityNum);
+        //        // save entity for contact
+        //        //AddTouchEnt(trace.entityNum);
 
-                time_left -= time_left * trace.fraction;
+        //        time_left -= time_left * trace.fraction;
 
-                if (numplanes >= 5)
-                {
-                    // this shouldn't really happen
-                    pm.ps.velocity = Vector3.Zero;
-                    return true;
-                }
+        //        if (numplanes >= 5)
+        //        {
+        //            // this shouldn't really happen
+        //            pm.ps.velocity = Vector3.Zero;
+        //            return true;
+        //        }
 
-                //
-                // if this is the same plane we hit before, nudge velocity
-                // out along it, which fixes some epsilon issues with
-                // non-axial planes
-                //
-                int i;
-                for (i = 0; i < numplanes; i++)
-                {
-                    if (Vector3.Dot(trace.plane.normal, planes[i]) > 0.99f)
-                    {
-                        pm.ps.velocity = trace.plane.normal + pm.ps.velocity;
-                        break;
-                    }
-                }
+        //        //
+        //        // if this is the same plane we hit before, nudge velocity
+        //        // out along it, which fixes some epsilon issues with
+        //        // non-axial planes
+        //        //
+        //        int i;
+        //        for (i = 0; i < numplanes; i++)
+        //        {
+        //            if (Vector3.Dot(trace.plane.normal, planes[i]) > 0.99f)
+        //            {
+        //                pm.ps.velocity = trace.plane.normal + pm.ps.velocity;
+        //                break;
+        //            }
+        //        }
 
-                if (i < numplanes)
-                    continue;
+        //        if (i < numplanes)
+        //            continue;
 
-                planes[numplanes] = trace.plane.normal;
-                numplanes++;
+        //        planes[numplanes] = trace.plane.normal;
+        //        numplanes++;
                 
-                //
-                // modify velocity so it parallels all of the clip planes
-                //
-                // find a plane that it enters
-                for (i = 0; i < numplanes; i++)
-                {
-                    float into = Vector3.Dot(pm.ps.velocity, planes[i]);
-                    if (into >= 0.1f)
-                        continue;   // move doesn't interact with the plane
+        //        //
+        //        // modify velocity so it parallels all of the clip planes
+        //        //
+        //        // find a plane that it enters
+        //        for (i = 0; i < numplanes; i++)
+        //        {
+        //            float into = Vector3.Dot(pm.ps.velocity, planes[i]);
+        //            if (into >= 0.1f)
+        //                continue;   // move doesn't interact with the plane
 
-                    // see how hard we are hitting things
-                    if (-into > pml.impactSpeed)
-                        pml.impactSpeed = -into;
+        //            // see how hard we are hitting things
+        //            if (-into > pml.impactSpeed)
+        //                pml.impactSpeed = -into;
 
-                    // slide along the plane
-                    Vector3 clipVelocity = Vector3.Zero;
-                    ClipVelocity(pm.ps.velocity, planes[i], ref clipVelocity, 1.001f);
+        //            // slide along the plane
+        //            Vector3 clipVelocity = Vector3.Zero;
+        //            ClipVelocity(pm.ps.velocity, planes[i], ref clipVelocity, 1.001f);
 
-                    // slide along the plane
-                    Vector3 endClipVelocity = Vector3.Zero;
-                    ClipVelocity(endVelocity, planes[i], ref endClipVelocity, 1.001f);
+        //            // slide along the plane
+        //            Vector3 endClipVelocity = Vector3.Zero;
+        //            ClipVelocity(endVelocity, planes[i], ref endClipVelocity, 1.001f);
 
-                    // see if there is a second plane that the new move enters
-                    for (int j = 0; j < numplanes; j++)
-                    {
-                        if (j == i)
-                            continue;
+        //            // see if there is a second plane that the new move enters
+        //            for (int j = 0; j < numplanes; j++)
+        //            {
+        //                if (j == i)
+        //                    continue;
 
-                        if (Vector3.Dot(clipVelocity, planes[j]) >= 0.1f)
-                            continue;   // move doesn't interact with the plane
+        //                if (Vector3.Dot(clipVelocity, planes[j]) >= 0.1f)
+        //                    continue;   // move doesn't interact with the plane
 
-                        // try clipping the move to the plane
-                        ClipVelocity(clipVelocity, planes[j], ref clipVelocity, 1.001f);
-                        ClipVelocity(endClipVelocity, planes[j], ref endClipVelocity, 1.001f);
+        //                // try clipping the move to the plane
+        //                ClipVelocity(clipVelocity, planes[j], ref clipVelocity, 1.001f);
+        //                ClipVelocity(endClipVelocity, planes[j], ref endClipVelocity, 1.001f);
 
-                        // see if it goes back into the first clip plane
-                        if (Vector3.Dot(clipVelocity, planes[i]) >= 0f)
-                            continue;
+        //                // see if it goes back into the first clip plane
+        //                if (Vector3.Dot(clipVelocity, planes[i]) >= 0f)
+        //                    continue;
 
-                        // slide the original velocity along the crease
-                        Vector3 dir = Vector3.Cross(planes[i], planes[j]);
-                        dir.Normalize();
-                        float d = Vector3.Dot(dir, pm.ps.velocity);
-                        clipVelocity = Vector3.Multiply(dir, d);
+        //                // slide the original velocity along the crease
+        //                Vector3 dir = Vector3.Cross(planes[i], planes[j]);
+        //                dir.Normalize();
+        //                float d = Vector3.Dot(dir, pm.ps.velocity);
+        //                clipVelocity = Vector3.Multiply(dir, d);
 
-                        dir = Vector3.Cross(planes[i], planes[j]);
-                        dir.Normalize();
-                        d = Vector3.Dot(dir, endVelocity);
-                        endClipVelocity = Vector3.Multiply(dir, d);
+        //                dir = Vector3.Cross(planes[i], planes[j]);
+        //                dir.Normalize();
+        //                d = Vector3.Dot(dir, endVelocity);
+        //                endClipVelocity = Vector3.Multiply(dir, d);
 
-                        // see if there is a third plane the the new move enters
-                        for (int k = 0; k < numplanes; k++)
-                        {
-                            if (k == i || k == j)
-                                continue;
+        //                // see if there is a third plane the the new move enters
+        //                for (int k = 0; k < numplanes; k++)
+        //                {
+        //                    if (k == i || k == j)
+        //                        continue;
 
-                            if (Vector3.Dot(clipVelocity, planes[k]) >= 0.1f)
-                                continue;   // move doesn't interact with the plane
+        //                    if (Vector3.Dot(clipVelocity, planes[k]) >= 0.1f)
+        //                        continue;   // move doesn't interact with the plane
 
-                            // stop dead at a tripple plane interaction
-                            pm.ps.velocity = Vector3.Zero;
-                            return true;
-                        }
-                    }
+        //                    // stop dead at a tripple plane interaction
+        //                    pm.ps.velocity = Vector3.Zero;
+        //                    return true;
+        //                }
+        //            }
 
-                    // if we have fixed all interactions, try another move
-                    pm.ps.velocity = clipVelocity;
-                    endVelocity = endClipVelocity;
-                    break;
-                }
-            }
+        //            // if we have fixed all interactions, try another move
+        //            pm.ps.velocity = clipVelocity;
+        //            endVelocity = endClipVelocity;
+        //            break;
+        //        }
+        //    }
 
-            if (gravity)
-                pm.ps.velocity = endVelocity;
+        //    if (gravity)
+        //        pm.ps.velocity = endVelocity;
 
-            // don't change velocity if in a timer (FIXME: is this correct?)
-            if (pm.ps.pm_time > 0)
-                pm.ps.velocity = primal_velocity;
+        //    // don't change velocity if in a timer (FIXME: is this correct?)
+        //    if (pm.ps.pm_time > 0)
+        //        pm.ps.velocity = primal_velocity;
 
-            return (bumpcount != 0);
-        }
+        //    return (bumpcount != 0);
+        //}
 
         /*
         ==================
@@ -1729,12 +1876,14 @@ namespace CubeHags.common
             if (normal.Z.Equals(0f))
                 blocked |= 2; // Wall or step
 
+            // Determine how far along plane to slide based on incoming direction.
             float backoff = Vector3.Dot(inv, normal) * overbounce;
 
             for (int i = 0; i < 3; i++)
             {
                 float change = normal[i] * backoff;
                 outv[i] = inv[i] - change;
+                // If out velocity is too small, zero it out.
                 if (outv[i] > -0.1f && outv[i] < 0.1f)
                     outv[i] = 0;
             }
@@ -1742,96 +1891,96 @@ namespace CubeHags.common
             return blocked;
         }
 
-        float VectorNormalize2(  Vector3 v, ref Vector3 outv) 
-        {
-        	float	length, ilength;
+        //float VectorNormalize2(  Vector3 v, ref Vector3 outv) 
+        //{
+        //    float	length, ilength;
 
-        	length = v[0]*v[0] + v[1]*v[1] + v[2]*v[2];
-        	length = (float)Math.Sqrt (length);
+        //    length = v[0]*v[0] + v[1]*v[1] + v[2]*v[2];
+        //    length = (float)Math.Sqrt (length);
 
-        	if (length > 0f)
-        	{
-        		ilength = 1/length;
-        		outv[0] = v[0]*ilength;
-        		outv[1] = v[1]*ilength;
-        		outv[2] = v[2]*ilength;
-        	} else {
-                outv = Vector3.Zero;
-        	}
+        //    if (length > 0f)
+        //    {
+        //        ilength = 1/length;
+        //        outv[0] = v[0]*ilength;
+        //        outv[1] = v[1]*ilength;
+        //        outv[2] = v[2]*ilength;
+        //    } else {
+        //        outv = Vector3.Zero;
+        //    }
         		
-        	return length;
-        }
+        //    return length;
+        //}
 
-        private float CommandScale(CubeHags.client.Input.UserCommand cmd)
-        {
-            int max = Math.Abs((int)cmd.forwardmove);
-            if (Math.Abs((int)cmd.rightmove) > max)
-            {
-                max = Math.Abs((int)cmd.rightmove);
-            }
-            if (Math.Abs((int)cmd.upmove) > max)
-                max = Math.Abs((int)cmd.upmove);
+        //private float CommandScale(CubeHags.client.Input.UserCommand cmd)
+        //{
+        //    int max = Math.Abs((int)cmd.forwardmove);
+        //    if (Math.Abs((int)cmd.rightmove) > max)
+        //    {
+        //        max = Math.Abs((int)cmd.rightmove);
+        //    }
+        //    if (Math.Abs((int)cmd.upmove) > max)
+        //        max = Math.Abs((int)cmd.upmove);
 
-            if (max == 0)
-                return 0f;
+        //    if (max == 0)
+        //        return 0f;
 
-            float total = (float)Math.Sqrt(cmd.forwardmove * cmd.forwardmove + cmd.rightmove * cmd.rightmove + cmd.upmove * cmd.upmove);
-            float scale = (float)pm.ps.speed * max / (127f * total);
-            return scale;
-        }
+        //    float total = (float)Math.Sqrt(cmd.forwardmove * cmd.forwardmove + cmd.rightmove * cmd.rightmove + cmd.upmove * cmd.upmove);
+        //    float scale = (float)pm.ps.speed * max / (127f * total);
+        //    return scale;
+        //}
 
-        // Handles ground and water friction
-        private void Friction()
-        {
-            Vector3 velocity = pm.ps.velocity;
+        //// Handles ground and water friction
+        //private void Friction()
+        //{
+        //    Vector3 velocity = pm.ps.velocity;
 
-            Vector3 vec = velocity;
-            if (pml.walking)
-            {
-                vec[2] = 0;
-            }
+        //    Vector3 vec = velocity;
+        //    if (pml.walking)
+        //    {
+        //        vec[2] = 0;
+        //    }
 
-            float speed = vec.Length();
-            if (speed < 1f)
-            {
-                velocity[0] = 0;
-                velocity[1] = 0;
-                return;
-            }
+        //    float speed = vec.Length();
+        //    if (speed < 1f)
+        //    {
+        //        velocity[0] = 0;
+        //        velocity[1] = 0;
+        //        return;
+        //    }
 
-            float drop = 0;
+        //    float drop = 0;
 
-            // apply ground friction
-            //if (pm.waterlevel <= 1)
-            //{
-            if (pml.walking && (pml.groundTrace.surfaceFlags & (int)SurfFlags.SURF_SLICK) == 0)
-                {
-                    // if getting knocked back, no friction
-                    if ((pm.ps.pm_flags & PMFlags.TIME_KNOCKBACK) != PMFlags.TIME_KNOCKBACK)
-                    {
-                        float control = (speed < pm_stopspeed) ? pm_stopspeed : speed;
-                        drop += control * pm_friction * pml.frametime;
-                    }
-                }
-            //}
+        //    // apply ground friction
+        //    //if (pm.waterlevel <= 1)
+        //    //{
+        //    if (pml.walking && (pml.groundTrace.surfaceFlags & (int)SurfFlags.SURF_SLICK) == 0)
+        //        {
+        //            // if getting knocked back, no friction
+        //            if ((pm.ps.pm_flags & PMFlags.TIME_KNOCKBACK) != PMFlags.TIME_KNOCKBACK)
+        //            {
+        //                float control = (speed < pm_stopspeed) ? pm_stopspeed : speed;
+        //                drop += control * pm_friction * pml.frametime;
+        //            }
+        //        }
+        //    //}
 
             
-            // if spectator
-            if(pm.ps.pm_type == PMType.SPECTATOR)
-                drop += speed * pm_friction * pml.frametime;
-            //System.Console.WriteLine("Friction speed drop: " + drop + " - delta: " + frametime);
+        //    // if spectator
+        //    if(pm.ps.pm_type == PMType.SPECTATOR)
+        //        drop += speed * pm_friction * pml.frametime;
+        //    //System.Console.WriteLine("Friction speed drop: " + drop + " - delta: " + frametime);
 
-            float newspeed = speed - drop;
-            if (newspeed < 0f)
-                newspeed = 0;
-            newspeed /= speed;
+        //    float newspeed = speed - drop;
+        //    if (newspeed < 0f)
+        //        newspeed = 0;
+        //    newspeed /= speed;
 
-            velocity[0] *= newspeed;
-            velocity[1] *= newspeed;
-            velocity[2] *= newspeed;
+        //    velocity[0] *= newspeed;
+        //    velocity[1] *= newspeed;
+        //    velocity[2] *= newspeed;
 
-            pm.ps.velocity = velocity;
-        }
+        //    pm.ps.velocity = velocity;
+        //}
 
         public void AngleVectors(Vector3 angles, ref Vector3 forward, ref Vector3 right, ref Vector3 up)
         {
@@ -1915,6 +2064,7 @@ namespace CubeHags.common
             public bool walking;
             public bool groundPlane;
             public trace_t groundTrace;
+            //public bool speedCropped;
 
             public float impactSpeed;
             public float fallVelocity;

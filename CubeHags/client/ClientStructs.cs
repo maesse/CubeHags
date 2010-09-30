@@ -180,6 +180,7 @@ namespace CubeHags.client
         public int framecount;
 
         // results (out)
+        public float maxSpeed;
         public int numtouch;
         public int[] touchents = new int[32];
 

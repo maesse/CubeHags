@@ -663,7 +663,7 @@ namespace CubeHags.client
             
             // Init input
             Commands.Instance.AddCommand("r_mode", ToggleFillMode);
-            KeyHags.Instance.SetBind(Keys.F12, "r_mode");
+            KeyHags.Instance.SetBind("F12", "r_mode");
         }
 
         private void InitDevice()
