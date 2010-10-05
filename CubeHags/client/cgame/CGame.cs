@@ -119,11 +119,11 @@ namespace CubeHags.client.cgame
             cg.refdef.vieworg[2] += cg.predictedPlayerState.viewheight;
 
             //// smooth out duck height changes
-            float timeDelta = cg.time - cg.duckTime;
-            if (timeDelta < 100)
-            {
-                cg.refdef.vieworg[2] -= cg.duckChange * (100 - timeDelta) / 100;
-            }
+            //float timeDelta = cg.time - cg.duckTime;
+            //if (timeDelta < 100)
+            //{
+            //    cg.refdef.vieworg[2] -= cg.duckChange * (100 - timeDelta) / 100;
+            //}
 
             // add bob height
             float bob = cg.bobfracsin * cg.xyspeed * cg_bobup.Value;

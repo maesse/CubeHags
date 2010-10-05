@@ -13,7 +13,7 @@ namespace CubeHags.common
 {
     public sealed partial class Common
     {
-        public static float BUNNYJUMP_MAX_SPEED_FACTOR = 1.7f;
+        public static float BUNNYJUMP_MAX_SPEED_FACTOR = 2.5f;
         pml_t pml;
         pmove_t pm = null;
         //trace_t lastTrace;
@@ -21,7 +21,7 @@ namespace CubeHags.common
         float pm_maxspeed = 4000f;
         float pm_maxvelocity = 2000f;
         float pm_stopspeed = 100.0f;
-        float pm_accelerate = 10f;
+        float pm_accelerate = 8f;
         float pm_airaccelerate = 10f;
         float pm_friction = 4f;
 
@@ -48,7 +48,7 @@ namespace CubeHags.common
             if (finalTime > pm.ps.commandTime + 1000)
                 pm.ps.commandTime = finalTime - 1000;
 
-            //pm.ps.speed = (int)pm_maxspeed;
+            pm.ps.speed = 320;
             pm.ps.gravity = CVars.Instance.VariableIntegerValue("sv_gravity");
             
             pm.ps.pmove_framecount = (pm.ps.pmove_framecount + 1) & ((1 << 6) - 1);
@@ -148,7 +148,7 @@ namespace CubeHags.common
 
             if (pm.ps.pm_type == PMType.SPECTATOR)
             {
-                FlyMove2();
+                TryPlayerMove();
                 DropTimers();
                 return;
             }
@@ -194,7 +194,7 @@ namespace CubeHags.common
             if (pml.groundPlane)
                 pm.ps.velocity[2] = 0;
 
-            CGame.SnapVector(pm.ps.velocity);
+            pm.ps.velocity = CGame.SnapVector(pm.ps.velocity);
         }
 
         // Just make sure the velocity don't go absolutely bonkers
@@ -400,7 +400,7 @@ namespace CubeHags.common
             Vector3 hullSizeNormal = Common.playerMaxs - Common.playerMins;
             Vector3 hullSizeDucked = Common.playerDuckedMaxs - Common.playerDuckedMins;
 
-            Vector3 viewDelta = -0.5f * (hullSizeNormal - hullSizeDucked);
+            Vector3 viewDelta = 0.5f * (hullSizeNormal - hullSizeDucked);
 
             pm.ps.Ducked = true;
             pm.ps.pm_flags |= PMFlags.DUCKED;
@@ -408,7 +408,7 @@ namespace CubeHags.common
             pm.ps.viewheight = (int)Common.playerDuckedView.Z;
 
             // HACKHACK - Fudge for collision bug - no time to fix this properly
-            if (!pml.groundPlane)
+            if (pml.groundPlane)
             {
                 pm.ps.origin -= Common.playerDuckedMins - Common.playerMins;
             }
@@ -501,7 +501,8 @@ namespace CubeHags.common
 
         void AirMove2()
         {
-            //float scale = CommandScale(pm.cmd);
+            AngleVectors(pm.ps.viewangles, ref pml.forward, ref pml.right, ref pml.up);
+            
             float fmove = pm.forwardmove;
             float smove = pm.rightmove;
 
@@ -515,22 +516,20 @@ namespace CubeHags.common
             {
                 wishvel[i] = (pml.forward[i] * fmove) + (pml.right[i] * smove);
             }
-            wishvel[2] = 0;
 
+            float wishspeed = wishvel.Length();
             Vector3 wishdir = wishvel;
             wishdir.Normalize();
-            float wishspeed = wishvel.Length();
 
-
-            if (wishspeed > pm.ps.speed)
+            if (wishspeed > pm.maxSpeed)
             {
-                wishvel = wishvel * (pm.ps.speed / wishspeed);
-                wishspeed = pm.ps.speed;
+                wishvel *= (pm.maxSpeed / wishspeed);
+                wishspeed = pm.maxSpeed;
             }
 
             AirAccelerate(wishdir, wishspeed, pm_airaccelerate);
 
-            FlyMove2();
+            TryPlayerMove();
         }
 
         void WalkMove2()
@@ -601,7 +600,7 @@ namespace CubeHags.common
             Vector3 orgvel = pm.ps.velocity;
 
             // Slide move
-            FlyMove2();
+            TryPlayerMove();
 
             // Copy the results out
             Vector3 down = pm.ps.origin;
@@ -623,7 +622,7 @@ namespace CubeHags.common
                 pm.ps.origin = trace.endpos;
 
             // slide move the rest of the way.
-            FlyMove2();
+            TryPlayerMove();
 
             // Now try going back down from the end point
             //  press down the stepheight
@@ -669,7 +668,7 @@ namespace CubeHags.common
 
         
 
-        int FlyMove2()
+        int TryPlayerMove()
         {
             int numbumps = 4;
             int blocked = 0;
@@ -687,7 +686,7 @@ namespace CubeHags.common
             
             for (bumpcount = 0; bumpcount < numbumps; bumpcount++)
             {
-                if (pm.ps.velocity == Vector3.Zero)
+                if (pm.ps.velocity.Length() == 0f)
                     break;
 
                 // Assume we can move all the way from the current origin to the
@@ -750,23 +749,22 @@ namespace CubeHags.common
                 }
 
                 // Set up next clipping plane
-                planes[numplanes] = trace.plane.normal;
-                numplanes++;
+                planes[numplanes++] = trace.plane.normal;
 
                 // modify original_velocity so it parallels all of the clip planes
                 //
-                if (!pml.groundPlane)
+                if (numplanes == 1 && !pml.groundPlane)
                 {
                     for (i = 0; i < numplanes; i++)
                     {
                         if (planes[i][2] > 0.7f)
                         {
                             // floor or slope
-                            ClipVelocity(org_vel, planes[i], ref new_velocity, 1.001f);
+                            ClipVelocity(org_vel, planes[i], ref new_velocity, 1f);
                             org_vel = new_velocity;
                         }
                         else
-                            ClipVelocity(org_vel, planes[i], ref new_velocity, 1.001f);
+                            ClipVelocity(org_vel, planes[i], ref new_velocity, 1f);
                     }
 
                     pm.ps.velocity = new_velocity;
@@ -776,7 +774,7 @@ namespace CubeHags.common
                 {
                     for (i = 0; i < numplanes; i++)
                     {
-                        ClipVelocity(org_vel, planes[i], ref pm.ps.velocity, 1.001f);
+                        ClipVelocity(org_vel, planes[i], ref pm.ps.velocity, 1f);
                         for (j = 0; j < numplanes; j++)
                         {
                             if (j != i)
@@ -813,9 +811,11 @@ namespace CubeHags.common
                     // if original velocity is against the original velocity, stop dead
                     // to avoid tiny occilations in sloping corners
                     //
-
-                    if (Vector3.Dot(pm.ps.velocity, pri_vel) <= 0f)
+                    float vdiff = Vector3.Dot(pm.ps.velocity, pri_vel);
+                    //Common.Instance.Write(vdiff + ", ");
+                    if (vdiff <= 0f)
                     {
+                        //Common.Instance.WriteLine("Back!");
                         pm.ps.velocity = Vector3.Zero;
                         break;
                     }
@@ -858,10 +858,10 @@ namespace CubeHags.common
                 return; // in air, so no effect
             }
 
-            if ((pm.ps.OldButtons & (int)Input.ButtonDef.JUMP) > 0)
-            {
-                return; // don't pogo-stick
-            }
+            //if ((pm.ps.OldButtons & (int)Input.ButtonDef.JUMP) > 0)
+            //{
+            //    return; // don't pogo-stick
+            //}
 
             // In the air now.
             pml.groundPlane = false;
@@ -901,6 +901,58 @@ namespace CubeHags.common
             // We need to limit the speed :(
             float frac = (maxscaledspeed / speed) * 0.65f;
             pm.ps.velocity *= frac; // crop it down
+        }
+
+        private void AirAccelerate(Vector3 wishdir, float wishspeed, float accel)
+        {
+            // Cap speed
+            float wishspd = wishspeed;
+            if (wishspd > 30)
+                wishspd = 30;
+
+            // Determine veer amount
+            float currentspeed = Vector3.Dot(pm.ps.velocity, wishdir);
+
+            // See how much to add
+            float addspeed = wishspd - currentspeed;
+
+            // If not adding any, done.
+            if (addspeed <= 0f)
+                return;
+
+            // Determine acceleration speed after acceleration
+            float accelspeed = accel * pml.frametime * wishspeed;
+
+            // Cap it
+            if (accelspeed > addspeed)
+                accelspeed = addspeed;
+
+            // Adjust pmove vel.
+            pm.ps.velocity += accelspeed * wishdir;
+        }
+
+        // q2 style
+        private void Accelerate(Vector3 wishdir, float wishspeed, float accel)
+        {
+            // Determine veer amount
+            float currentspeed = Vector3.Dot(pm.ps.velocity, wishdir);
+
+            // See how much to add
+            float addspeed = wishspeed - currentspeed;
+
+            // If not adding any, done.
+            if (addspeed <= 0f)
+                return;
+
+            // Determine acceleration speed after acceleration
+            float accelspeed = accel * pml.frametime * wishspeed;
+
+            // Cap it
+            if (accelspeed > addspeed)
+                accelspeed = addspeed;
+
+            // Adjust pmove vel.
+            pm.ps.velocity += accelspeed * wishdir;
         }
 
         void StartGravity()
@@ -990,22 +1042,17 @@ namespace CubeHags.common
                 pm.rightmove *= ratio;
                 pm.upmove *= ratio;
             }
-            //else
-            //{
-            //    pm.forwardmove = (pm.cmd.forwardmove) * 6;
-            //    pm.rightmove = (pm.cmd.rightmove) * 6;
-            //    pm.upmove = (pm.cmd.upmove) * 6;
-            //}
 
-            //if (!speedCropped && (pm.cmd.buttons & (int)Input.ButtonDef.WALK) > 0 && (pm.cmd.buttons & (int)Input.ButtonDef.DUCK) == 0)
-            //{
-            //    float frac = 0.47f;
+            // Walk
+            if (!speedCropped && (pm.cmd.buttons & (int)Input.ButtonDef.WALK) > 0 && (pm.cmd.buttons & (int)Input.ButtonDef.DUCK) == 0)
+            {
+                float frac = 0.47f;
 
-            //    pm.rightmove *= frac;
-            //    pm.upmove *= frac;
-            //    pm.forwardmove *= frac;
-            //    speedCropped = true;
-            //}
+                pm.rightmove *= frac;
+                pm.upmove *= frac;
+                pm.forwardmove *= frac;
+                speedCropped = true;
+            }
 
             // dead
             if (pm.ps.stats[0] <= 0)
@@ -1021,6 +1068,27 @@ namespace CubeHags.common
             return ratio;
         }
 
+        void DropTimers()
+        {
+            // drop misc timing counter
+            if (pm.ps.pm_time > 0)
+            {
+                if (pml.msec >= pm.ps.pm_time)
+                {
+                    pm.ps.pm_flags &= ~PMFlags.ALL_TIMES;
+                    pm.ps.pm_time = 0;
+                }
+                else
+                    pm.ps.pm_time -= pml.msec;
+            }
+            if (pm.ps.DuckTime > 0f)
+            {
+                pm.ps.DuckTime -= pml.msec;
+                if (pm.ps.DuckTime < 0)
+                    pm.ps.DuckTime = 0;
+            }
+        }
+
         Vector3 DropPunchAngle(Vector3 punchangle)
         {
             float len = punchangle.Length();
@@ -1028,6 +1096,109 @@ namespace CubeHags.common
             len -= (10f + len * 0.5f) * pml.frametime;
             len = Math.Max(len, 0.0f);
             return punchangle * len;
+        }
+
+        /*
+        ==================
+        PM_ClipVelocity
+
+        Slide off of the impacting surface
+         * returns the blocked flags:
+            0x01 == floor
+            0x02 == step / wall
+        ==================
+        */
+        int ClipVelocity(Vector3 inv, Vector3 normal, ref Vector3 outv, float overbounce)
+        {
+
+            int blocked = 0;
+            if (normal.Z > 0f)
+                blocked |= 1; // Assume floor
+            if (normal.Z.Equals(0f))
+                blocked |= 2; // Wall or step
+
+            // Determine how far along plane to slide based on incoming direction.
+            float backoff = Vector3.Dot(inv, normal) * overbounce;
+
+            for (int i = 0; i < 3; i++)
+            {
+                float change = normal[i] * backoff;
+                outv[i] = inv[i] - change;
+                // If out velocity is too small, zero it out.
+                if (outv[i] > -0.1f && outv[i] < 0.1f)
+                    outv[i] = 0;
+            }
+
+            return blocked;
+        }
+
+        public void AngleVectors(Vector3 angles, ref Vector3 forward, ref Vector3 right, ref Vector3 up)
+        {
+            float angle = angles[1] * (float)(Math.PI * 2 / 360f);
+            float sy = (float)Math.Sin(angle);
+            float cy = (float)Math.Cos(angle);
+
+            angle = angles[0] * (float)(Math.PI * 2 / 360f);
+            float sp = (float)Math.Sin(angle);
+            float cp = (float)Math.Cos(angle);
+
+            angle = angles[2] * (float)(Math.PI * 2 / 360f);
+            float sr = (float)Math.Sin(angle);
+            float cr = (float)Math.Cos(angle);
+
+            if (forward != null)
+            {
+                forward[0] = cp * cy;
+                forward[1] = cp * sy;
+                forward[2] = -sp;
+            }
+            if (right != null)
+            {
+                right[0] = (-1 * sr * sp * cy + -1 * cr * -sy);
+                right[1] = (-1 * sr * sp * sy + -1 * cr * cy);
+                right[2] = -1 * sr * cp;
+            }
+            if (up != null)
+            {
+                up[0] = (cr * sp * cy + -sr * -sy);
+                up[1] = (cr * sp * sy + -sr * cy);
+                up[2] = cr * cp;
+            }
+        }
+
+        public static void UpdateViewAngles(ref Common.PlayerState ps, Input.UserCommand cmd)
+        {
+            if (ps.pm_type == Common.PMType.INTERMISSION || ps.pm_type == Common.PMType.SPINTERMISSION)
+            {
+                return;
+            }
+
+            //if (ps.pm_type != Common.PMType.SPECTATOR )//&& ps.stats[0] <= 0)
+            //{
+            //    return;
+            //}
+
+
+            // circularly clamp the angles with deltas
+            short temp = (short)(cmd.anglex + ps.delta_angles[0]);
+            // don't let the player look up or down more than 90 degrees
+            if (temp > 16000)
+            {
+                ps.delta_angles[0] = 16000 - cmd.anglex;
+                temp = 16000;
+            }
+            else if (temp < -16000)
+            {
+                ps.delta_angles[0] = -16000 - cmd.anglex;
+                temp = -16000;
+            }
+
+            ps.viewangles[0] = temp * (360.0f / 65536);
+            temp = (short)(cmd.angley + ps.delta_angles[1]);
+            ps.viewangles[1] = temp * (360.0f / 65536);
+            temp = (short)(cmd.anglez + ps.delta_angles[2]);
+            ps.viewangles[2] = temp * (360.0f / 65536);
+            //Common.Instance.WriteLine(ps.viewangles[0] + "\t:\t" + ps.viewangles[1]);
         }
 
         //void PmoveSingle(pmove_t pmove)
@@ -1288,26 +1459,7 @@ namespace CubeHags.common
         
 
 
-        void DropTimers()
-        {
-            // drop misc timing counter
-            if (pm.ps.pm_time > 0)
-            {
-                if (pml.msec >= pm.ps.pm_time)
-                {
-                    pm.ps.pm_flags &= ~PMFlags.ALL_TIMES;
-                    pm.ps.pm_time = 0;
-                }
-                else
-                    pm.ps.pm_time -= pml.msec;
-            }
-            if (pm.ps.DuckTime > 0f)
-            {
-                pm.ps.DuckTime -= pml.msec;
-                if (pm.ps.DuckTime < 0)
-                    pm.ps.DuckTime = 0;
-            }
-        }
+        
 
         //void WalkMove()
         //{
@@ -1563,40 +1715,9 @@ namespace CubeHags.common
         //    StepSlideMove(false);
         //}
 
-        private void AirAccelerate(Vector3 wishdir, float wishspeed, float accel)
-        {
-            // Cap speed
-            if (wishspeed > 30)
-                wishspeed = 30;
+        
 
-            // Continue with normal accelerate
-            Accelerate(wishdir, wishspeed, accel);
-        }
-
-        // q2 style
-        private void Accelerate(Vector3 wishdir, float wishspeed, float accel)
-        {
-            // Determine veer amount
-            float currentspeed = Vector3.Dot(pm.ps.velocity, wishdir);
-            //float currentspeed = pm.ps.velocity.Length();
-            // See how much to add
-            float addspeed = wishspeed - currentspeed;
-
-            // If not adding any, done.
-            if (addspeed <= 0f)
-                return;
-
-            // Determine acceleration speed after acceleration
-            float accelspeed = accel * pml.frametime * wishspeed;
-
-            // Cap it
-            if (accelspeed > addspeed)
-                accelspeed = addspeed;
-
-            // Adjust pmove vel.
-            pm.ps.velocity += accelspeed * wishdir;
-            
-        }
+        
 
         //private void StepSlideMove(bool gravity)
         //{
@@ -1857,39 +1978,7 @@ namespace CubeHags.common
         //    return (bumpcount != 0);
         //}
 
-        /*
-        ==================
-        PM_ClipVelocity
-
-        Slide off of the impacting surface
-         * returns the blocked flags:
-            0x01 == floor
-            0x02 == step / wall
-        ==================
-        */
-        int ClipVelocity(Vector3 inv, Vector3 normal, ref Vector3 outv, float overbounce)
-        {
-            
-            int blocked = 0;
-            if (normal.Z > 0f)
-                blocked |= 1; // Assume floor
-            if (normal.Z.Equals(0f))
-                blocked |= 2; // Wall or step
-
-            // Determine how far along plane to slide based on incoming direction.
-            float backoff = Vector3.Dot(inv, normal) * overbounce;
-
-            for (int i = 0; i < 3; i++)
-            {
-                float change = normal[i] * backoff;
-                outv[i] = inv[i] - change;
-                // If out velocity is too small, zero it out.
-                if (outv[i] > -0.1f && outv[i] < 0.1f)
-                    outv[i] = 0;
-            }
-
-            return blocked;
-        }
+        
 
         //float VectorNormalize2(  Vector3 v, ref Vector3 outv) 
         //{
@@ -1982,74 +2071,7 @@ namespace CubeHags.common
         //    pm.ps.velocity = velocity;
         //}
 
-        public void AngleVectors(Vector3 angles, ref Vector3 forward, ref Vector3 right, ref Vector3 up)
-        {
-            float angle = angles[1] * (float)(Math.PI * 2 / 360f);
-            float sy = (float)Math.Sin(angle);
-            float cy = (float)Math.Cos(angle);
-
-            angle = angles[0] * (float)(Math.PI * 2 / 360f);
-            float sp = (float)Math.Sin(angle);
-            float cp = (float)Math.Cos(angle);
-
-            angle = angles[2] * (float)(Math.PI * 2 / 360f);
-            float sr = (float)Math.Sin(angle);
-            float cr = (float)Math.Cos(angle);
-
-            if (forward != null)
-            {
-                forward[0] = cp * cy;
-                forward[1] = cp * sy;
-                forward[2] = -sp;
-            }
-            if (right != null)
-            {
-                right[0] = (-1 * sr * sp * cy + -1 * cr * -sy);
-                right[1] = (-1 * sr * sp * sy + -1 * cr * cy);
-                right[2] = -1 * sr * cp;
-            }
-            if (up != null)
-            {
-                up[0] = (cr * sp * cy + -sr * -sy);
-                up[1] = (cr * sp * sy + -sr * cy);
-                up[2] = cr * cp;
-            }
-        }
-
-        public static void UpdateViewAngles(ref Common.PlayerState ps, Input.UserCommand cmd)
-        {
-            if (ps.pm_type == Common.PMType.INTERMISSION || ps.pm_type == Common.PMType.SPINTERMISSION)
-            {
-                return;
-            }
-
-            //if (ps.pm_type != Common.PMType.SPECTATOR )//&& ps.stats[0] <= 0)
-            //{
-            //    return;
-            //}
-
-            
-            // circularly clamp the angles with deltas
-            short temp = (short)(cmd.anglex + ps.delta_angles[0]);
-            // don't let the player look up or down more than 90 degrees
-            if (temp > 16000)
-            {
-                ps.delta_angles[0] = 16000 - cmd.anglex;
-                temp = 16000;
-            }
-            else if (temp < -16000)
-            {
-                ps.delta_angles[0] = -16000 - cmd.anglex;
-                temp = -16000;
-            }
-
-            ps.viewangles[0] = temp * (360.0f / 65536);
-            temp = (short)(cmd.angley + ps.delta_angles[1]);
-            ps.viewangles[1] = temp * (360.0f / 65536);
-            temp = (short)(cmd.anglez + ps.delta_angles[2]);
-            ps.viewangles[2] = temp * (360.0f / 65536);
-            //Common.Instance.WriteLine(ps.viewangles[0] + "\t:\t" + ps.viewangles[1]);
-        }
+        
 
         // all of the locals will be zeroed before each
         // pmove, just to make damn sure we don't have

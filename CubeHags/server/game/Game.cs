@@ -36,7 +36,7 @@ namespace CubeHags.server
         {
             spawns  = new spawn_t[] { new spawn_t{Name = "info_player_start", Spawn = new SpawnDelegate(SP_info_player_start)} };
             sv_gravity = CVars.Instance.Get("sv_gravity", "800", CVarFlags.SERVER_INFO);
-            sv_speed = CVars.Instance.Get("sv_speed", "400", CVarFlags.SERVER_INFO);
+            sv_speed = CVars.Instance.Get("sv_speed", "320", CVarFlags.SERVER_INFO);
             g_synchrounousClients = CVars.Instance.Get("g_synchrounousClients", "0", CVarFlags.SERVER_INFO);
             g_forcerespawn = CVars.Instance.Get("g_forcerespawn", "20", CVarFlags.NONE);
             g_smoothClients = CVars.Instance.Get("g_smoothClients", "0", CVarFlags.SERVER_INFO);

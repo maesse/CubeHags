@@ -216,7 +216,7 @@ namespace CubeHags.client.cgame
                 nPredict++;
                 if (pmove.pmove_fixed > 0)
                     pmove.cmd.serverTime = ((pmove.cmd.serverTime + pmove_msec.Integer - 1) / pmove_msec.Integer) * pmove_msec.Integer;
-                cg.predictedPlayerState.speed = 400;
+                //cg.predictedPlayerState.speed = 400;
                 Vector3 oldOrigin = cg.predictedPlayerState.origin;
                 Common.Instance.Pmove(pmove);
                 

@@ -806,8 +806,8 @@ namespace CubeHags.common
                         enterFrac = 0;
                     tw.trace.fraction = enterFrac;
                     tw.trace.plane = clipplane;
-                    //if (leadside.dispinfo == -1)
-                    tw.trace.surfaceFlags = (int)texinfos[leadside.texinfo].flags;
+                    if(leadside.texinfo != -1)
+                        tw.trace.surfaceFlags = (int)texinfos[leadside.texinfo].flags;
                     //tw.trace.surfaceFlags = leadside.bevel;
                     tw.trace.contents = (int)brush.contents;
 

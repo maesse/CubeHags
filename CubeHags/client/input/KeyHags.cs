@@ -345,7 +345,8 @@ namespace CubeHags.client.input
         {
             if (!KeyToCubeKey.ContainsKey(keyVal))
             {
-                Common.Instance.WriteLine("Check val: {0} {1}", keyVal, (char)keyVal);
+                if(!((keyVal >= 'A' && keyVal <= 'Z') || (keyVal >= '0' && keyVal <= '9')))
+                    Common.Instance.WriteLine("Check val: {0} {1}", keyVal, (char)keyVal);
                 return keyVal;
             }
             else
@@ -448,6 +449,12 @@ namespace CubeHags.client.input
         {
             ParseBinding(GetCubeKey((int)key), down, time);
         }
+
+        public void ParseBinding(Keys key, bool down)
+        {
+            ParseBinding(GetCubeKey((int)key), down, 0);
+        }
+
         // Execute the commands in the bind string
         public void ParseBinding(int key, bool down, long time)
         {
@@ -473,7 +480,7 @@ namespace CubeHags.client.input
                     // button commands add keynum and time as parameters
                     // so that multiple sources can be discriminated and
                     // subframe corrected
-                    string cmd = string.Format("{0}{1} {2} {3}\n", (down) ? '+' : '-', bind.Substring(i + 1), (int)key, time);
+                    string cmd = string.Format("{0}{1} {2} {3}\n", (down) ? '+' : '-', bind.Substring(i + 1), key, time);
                     Commands.Instance.AddText(cmd);
                 }
                 else if (down)

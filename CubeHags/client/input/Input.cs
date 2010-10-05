@@ -510,6 +510,7 @@ namespace CubeHags.client
             {
                 if (in_buttons[i].active || in_buttons[i].wasPressed)
                     cmd.buttons |= 1 << i;
+                //if (i == 1) Common.Instance.WriteLine(in_buttons[1].wasPressed + "");
                 in_buttons[i].wasPressed = false;
             }
         }
@@ -523,7 +524,7 @@ namespace CubeHags.client
         void KeyMove(ref UserCommand cmd)
         {
             int forward = 0, side = 0, up = 0;
-            int movespeed = 320;
+            int movespeed = 400;
 
             side += (int)(movespeed * KeyState(ref in_moveright));
             side -= (int)(movespeed * KeyState(ref in_moveleft));
@@ -945,8 +946,8 @@ namespace CubeHags.client
                                 if (NextRawMouse.WheelDelta == -120)
                                 {
                                     // Scroll down
-                                        KeyHags.Instance.ParseBinding((int)KeyHags.CubeKeys.K_MWHEELDOWN, true, ticks);
-                                        KeyHags.Instance.ParseBinding((int)KeyHags.CubeKeys.K_MWHEELDOWN, false, ticks + 1);
+                                        KeyHags.Instance.ParseBinding((int)KeyHags.CubeKeys.K_MWHEELDOWN, true, 0);
+                                        KeyHags.Instance.ParseBinding((int)KeyHags.CubeKeys.K_MWHEELDOWN, false, 0);
                                 }
                                 else if (NextRawMouse.WheelDelta == 120)
                                 {
