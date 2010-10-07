@@ -59,7 +59,7 @@ namespace CubeHags.server
                 return SelectRandomFurthestSpawnPoint(Vector3.Zero, ref origin, ref angles);
 
             origin = spot.s.origin;
-            origin[2] += 9-Common.playerMins[2];
+            origin[2] += 9 - (Common.playerMins[2] - Common.playerMaxs[2]) / 2;
             angles = spot.s.angles;
 
             return spot;
@@ -82,7 +82,7 @@ namespace CubeHags.server
             else
             {   
                 level.intermission_origin = ent.s.origin;
-                level.intermission_origin[2] += 9 - Common.playerMins[2];
+                level.intermission_origin[2] += 9 - (Common.playerMins[2] - Common.playerMaxs[2]) / 2;
                 level.intermission_angle = ent.s.angles;
                 // if it has a target, look towards it
                 if (ent.target != null)
@@ -165,7 +165,7 @@ namespace CubeHags.server
                     Common.Instance.Error("Couldn't find a spawn point");
 
                 origin = spot.s.origin;
-                origin[2] += 9 - Common.playerMins[2];
+                origin[2] += 9 - (Common.playerMins[2] - Common.playerMaxs[2])/2;
                 angles = spot.s.angles;
                 return spot;
             }
@@ -174,7 +174,7 @@ namespace CubeHags.server
             // select a random spot from the spawn points furthest away
             int random = Common.Rand.Next(0,numspots);
             origin = list_spot[random].s.origin;
-            origin[2] += 9 - Common.playerMins[2];
+            origin[2] += 9 - (Common.playerMins[2] - Common.playerMaxs[2]) / 2;
             angles = list_spot[random].s.angles;
 
             return list_spot[random];

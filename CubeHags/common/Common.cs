@@ -627,7 +627,7 @@ namespace CubeHags.common
             //public int weaponstate;
 
             public Vector3 viewangles;		// for fixed views
-            public int viewheight;
+            public int viewheight = (int)Common.playerView.Z;
 
             // damage feedback
             //public int damageEvent;	// when it changes, latch the other parms

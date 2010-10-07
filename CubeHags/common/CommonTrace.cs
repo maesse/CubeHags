@@ -694,7 +694,7 @@ namespace CubeHags.common
                     startout = true;
                     // d1 > 0.f && d2 > 0.f
                     if (d2 > 0.0f)
-                        continue;
+                        return;
 
                     
                 }

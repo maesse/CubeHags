@@ -30,6 +30,7 @@ namespace CubeHags.client.cgame
         CVar cg_bobpitch = CVars.Instance.Get("cg_bobpitch", "0.002", CVarFlags.ARCHIVE);
         CVar cg_bobroll = CVars.Instance.Get("cg_bobroll", "0.002", CVarFlags.ARCHIVE);
         CVar cg_bobup = CVars.Instance.Get("cg_bobroll", "0.004", CVarFlags.CHEAT);
+        CVar cg_fov = CVars.Instance.Get("cg_fov", "80", CVarFlags.USER_INFO | CVarFlags.ARCHIVE);
 
         CGame()
         {
@@ -150,7 +151,7 @@ namespace CubeHags.client.cgame
             ViewParams view = new ViewParams();
             view.viewportWidth = Renderer.Instance.RenderSize.Width;
             view.viewportHeight = Renderer.Instance.RenderSize.Height;
-            view.fovX = 80f;
+            view.fovX = cg_fov.Value;
             float x = (float)(view.viewportWidth / Math.Tan(view.fovX / 360 * Math.PI));
             float fovY = (float)Math.Atan2(view.viewportHeight, x);
             fovY = (float)(fovY * 360 / Math.PI);
