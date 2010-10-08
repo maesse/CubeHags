@@ -18,13 +18,20 @@ namespace CubeHags.common
 {
     public sealed partial class Common
     {
-       public static Vector3 playerMins = new Vector3(-13, -13, 0);
+        public static Vector3 playerMins = new Vector3(-13, -13, 0);
         public static Vector3 playerMaxs = new Vector3(13, 13, 72);
         public static Vector3 playerView = new Vector3(0, 0, 64);
         public static Vector3 playerDuckedMins = new Vector3(-13, -13, 0);
         public static Vector3 playerDuckedMaxs = new Vector3(13, 13, 72);
         public static Vector3 playerDuckedView = new Vector3(0, 0, 30);
         public static Vector3 playerDeadView = new Vector3(0, 0, 14);
+        //public static Vector3 playerMins = new Vector3(-13, -13, -36);
+        //public static Vector3 playerMaxs = new Vector3(13, 13, 36);
+        //public static Vector3 playerView = new Vector3(0, 0, 24);
+        //public static Vector3 playerDuckedMins = new Vector3(-13, -13, -36);
+        //public static Vector3 playerDuckedMaxs = new Vector3(13, 13, 36);
+        //public static Vector3 playerDuckedView = new Vector3(0, 0, 12);
+        //public static Vector3 playerDeadView = new Vector3(0, 0, 0);
 
         private static readonly Common _Instance = new Common();
         public static Common Instance { get { return _Instance; } }

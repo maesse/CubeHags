@@ -54,7 +54,6 @@ namespace CubeHags.common
             pm.ps.pmove_framecount = (pm.ps.pmove_framecount + 1) & ((1 << 6) - 1);
             // chop the move up if it is too long, to prevent framerate
             // dependent behavior
-            
 
             while (pm.ps.commandTime != finalTime)
             {
@@ -121,7 +120,8 @@ namespace CubeHags.common
 
             DropTimers();
 
-            
+            pm.mins = Common.playerMins;
+            pm.maxs = Common.playerMaxs;
 
             // UnStuck
 
@@ -131,7 +131,6 @@ namespace CubeHags.common
             // If we are not on ground, store off how fast we are moving down
             if (!pml.groundPlane)
                 pml.fallVelocity = -pm.ps.velocity[2];
-
 
             Duck();
 
@@ -234,8 +233,7 @@ namespace CubeHags.common
 
         void Duck()
         {
-            pm.mins = Common.playerMins;
-            pm.maxs = Common.playerMaxs;
+            
 
             int buttonsChanged = pm.cmd.buttons ^ pm.ps.OldButtons;
             int buttonsPressed = buttonsChanged & pm.cmd.buttons;
@@ -501,7 +499,7 @@ namespace CubeHags.common
 
         void AirMove2()
         {
-            AngleVectors(pm.ps.viewangles, ref pml.forward, ref pml.right, ref pml.up);
+            //AngleVectors(pm.ps.viewangles, ref pml.forward, ref pml.right, ref pml.up);
             
             float fmove = pm.forwardmove;
             float smove = pm.rightmove;
@@ -537,12 +535,9 @@ namespace CubeHags.common
             // Copy movement amounts
             float fmove = pm.forwardmove;
             float smove = pm.rightmove;
-            //float scale = CommandScale(pm.cmd);
 
             // Zero out z components of movement vectors
-            pml.forward[2] = 0;
-            pml.right[2] = 0;
-
+            pml.forward[2] = pml.right[2] = 0;
             pml.forward.Normalize();
             pml.right.Normalize();
 
@@ -998,12 +993,21 @@ namespace CubeHags.common
 
             Vector3 point = pm.ps.origin;
             point[2] -= 2;
+            Vector3 bumpOrigin = pm.ps.origin;
+            bumpOrigin[2] += 2;
             if (pm.ps.velocity[2] > 180)  // Shooting up really fast.  Definitely not on ground.
                 pml.groundPlane = false;
             else
             {
                 // Try and move down.
-                trace_t tr = ClipMap.Instance.Box_Trace(pm.ps.origin, point, pm.mins, pm.maxs, 0, pm.tracemask);
+                trace_t tr = ClipMap.Instance.Box_Trace(bumpOrigin, point, pm.mins, pm.maxs, 0, pm.tracemask);
+
+                if (tr.startsolid)
+                {
+                    bumpOrigin = pm.ps.origin;
+                    tr = ClipMap.Instance.Box_Trace(bumpOrigin, point, pm.mins, pm.maxs, 0, pm.tracemask);
+                }
+
                 // If we hit a steep plane, we are not on ground
                 if (tr.plane.normal[2] < 0.7f)
                     pml.groundPlane = false;    // too steep
@@ -1017,7 +1021,7 @@ namespace CubeHags.common
                 if (pml.groundPlane)
                 {
                     // If we could make the move, drop us down that 1 pixel
-                    if (!tr.startsolid && !tr.allsolid)
+                    if (!tr.startsolid && !tr.allsolid && tr.fraction > 0f)
                         pm.ps.origin = tr.endpos;
                 }
             }
