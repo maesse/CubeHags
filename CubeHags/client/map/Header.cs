@@ -330,6 +330,7 @@ namespace CubeHags.client.map.Source
         CONTENTS_AREAPORTAL   =  0x8000,
         CONTENTS_PLAYERCLIP   =  0x10000,
         CONTENTS_MONSTERCLIP  =  0x20000,
+        
         CONTENTS_CURRENT_0    =  0x40000,
         CONTENTS_CURRENT_90   =  0x80000,
         CONTENTS_CURRENT_180  =  0x100000,
@@ -344,8 +345,7 @@ namespace CubeHags.client.map.Source
         CONTENTS_LADDER       =  0x20000000,
         CONTENTS_HITBOX = 0x40000000,  // use accurate hitboxes on trace
         MASK_PLAYERSOLID = (CONTENTS_SOLID | brushflags.CONTENTS_PLAYERCLIP | brushflags.CONTENTS_MONSTER),
-
-
+        MASK_CURRENT = (CONTENTS_CURRENT_0 | CONTENTS_CURRENT_90 | CONTENTS_CURRENT_180 | CONTENTS_CURRENT_270 | CONTENTS_CURRENT_UP | CONTENTS_CURRENT_DOWN)
     };
 
     public class dbrushside_t

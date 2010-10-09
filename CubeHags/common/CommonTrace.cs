@@ -70,62 +70,59 @@ namespace CubeHags.common
         traceWork_t tw = new traceWork_t();
         int[] lleafs = new int[1024];
 
+        public int GetPointContents(Vector3 point)
+        {
+            int contents = ClipMap.Instance.GetPointContents(point);
+            if ((contents & (int)brushflags.MASK_CURRENT) > 0)
+            {
+                contents = (int)brushflags.CONTENTS_WATER;
+            }
+
+            if ((contents & (int)brushflags.CONTENTS_SOLID) == 0)
+            {
+                // go over entities
+            }
+
+            return contents;
+        }
+
         public trace_t Box_Trace( Vector3 start, Vector3 end, Vector3 mins, Vector3 maxs, int model, int brushmask)
         {
-            return Trace(start, end, mins, maxs, model, Vector3.Zero, brushmask, null);
+            return Trace(start, end, mins, maxs, model, Vector3.Zero, brushmask);
         }
 
-        public trace_t SV_Trace(Vector3 start, Vector3 end, Vector3 mins, Vector3 maxs, int passEntityNum, int contentMask)
+        public trace_t TransformedBoxTrace(Vector3 start, Vector3 end, Vector3 mins, Vector3 maxs, int model, int brushmask, Vector3 origin, Vector3 angles)
         {
-            trace_t results;
-            if (mins == null)
-                mins = Vector3.Zero;
-            if (maxs == null)
-                maxs = Vector3.Zero;
+            // adjust so that mins and maxs are always symetric, which
+            // avoids some complications with plane expanding of rotated
+            // bmodels
+            Vector3 offset = (mins + maxs) * 0.5f;
+            Vector3[] symetricSize = new Vector3[2];
+            symetricSize[0] = mins - offset;
+            symetricSize[1] = maxs - offset;
+            Vector3 startl = start + offset;
+            Vector3 endl = end + offset;
 
-            // clip to world
-            MoveClip clip = new MoveClip();
-            clip.trace = Box_Trace(start, end, mins, maxs, 0, contentMask);
-            clip.trace.entityNum = (clip.trace.fraction != 1.0f) ? 1022 : 1023;
-            if (clip.trace.fraction == 0f)
+            // subtract origin offset
+            startl = startl - origin;
+            endl = endl - origin;
+
+            // rotate start and end into the models frame of reference
+            bool rotated = false;
+            if (model != 255 && (angles[0] != 0f || angles[1] != 0f || angles[2] != 0f))
+                rotated = true;
+
+            trace_t trace = Trace(startl, endl, symetricSize[0], symetricSize[1], model, origin, brushmask);
+            if (rotated && trace.fraction != 1.0f)
             {
-                return clip.trace; // blocked immediately by the world
+
             }
 
-
-            clip.contentmask = contentMask;
-            clip.start = start;
-            clip.end = end;
-            clip.mins = mins;
-            clip.maxs = maxs;
-            clip.passEntityNum = passEntityNum;
-            clip.capsule = 0;
-
-            // create the bounding box of the entire move
-            // we can limit it to the part of the move not
-            // already clipped off by the world, which can be
-            // a significant savings for line of sight and shot traces
-            for (int i = 0; i < 3; i++)
-            {
-                if (end[i] > start[i])
-                {
-                    clip.boxmins[i] = clip.start[i] + clip.mins[i] - 1;
-                    clip.boxmaxs[i] = clip.end[i] + clip.maxs[i] + 1;
-                }
-                else
-                {
-                    clip.boxmins[i] = clip.end[i] + clip.mins[i] - 1;
-                    clip.boxmaxs[i] = clip.start[i] + clip.maxs[i] + 1;
-                }
-            }
-
-            // clip to other solid entities
-            //ClipMoveToEntities(clip);
-            results = clip.trace;
-            return results;
+            trace.endpos = start + trace.fraction * (end - start);
+            return trace;
         }
 
-        trace_t Trace(Vector3 start, Vector3 end, Vector3 mins, Vector3 maxs, int model, Vector3 origin, int brushmask, sphere_t sphere)
+        trace_t Trace(Vector3 start, Vector3 end, Vector3 mins, Vector3 maxs, int model, Vector3 origin, int brushmask)
         {
             //cmodel_t cmod = ClipHandleToModel(model);
             // for multi-check avoidance

@@ -347,15 +347,16 @@ namespace CubeHags.server
                 if (svEnt.numClusters <= 0)
                     continue;
                 int l;
-                for (i = 0; i < svEnt.numClusters; i++)
+                int j;
+                for (j = 0; j < svEnt.numClusters; j++)
                 {
-                    l = svEnt.clusternums[i];
+                    l = svEnt.clusternums[j];
                     if (clientpvs != null && clientpvs[l])
                         break;
                 }
 
                 // not visible
-                if (i == svEnt.numClusters)
+                if (j == svEnt.numClusters)
                     continue;
 
                 // add it

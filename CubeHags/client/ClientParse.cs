@@ -38,7 +38,7 @@ namespace CubeHags.client
                     {
                         Common.Instance.Error("ParseGameState: Baseline number out of range: " + newnum);
                     }
-                    Common.entityState_t nullstate = null;
+                    Common.entityState_t nullstate = new Common.entityState_t();
                     Net.Instance.MSG_ReadDeltaEntity(msg, ref nullstate, ref cl.entityBaselines[newnum], newnum);
                 }
                 else

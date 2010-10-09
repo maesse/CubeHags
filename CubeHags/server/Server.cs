@@ -967,7 +967,7 @@ namespace CubeHags.server
             {
                 gEnt.s.solid = 0xffffff; // SOLID_BMODEL
             }
-            else if ((gEnt.r.contents & (0x2000000 | 1)) > 0)
+            else if ((gEnt.r.contents & (int)(brushflags.CONTENTS_SOLID | brushflags.CONTENTS_MONSTER)) > 0)
             {
                 // assume that x/y are equal and symetric
                 int i = (int)gEnt.r.maxs[0];
@@ -1265,6 +1265,10 @@ namespace CubeHags.server
             CVars.Instance.Get("sv_serverid", "0", CVarFlags.SERVER_INFO | CVarFlags.ROM);
         }
 
+        sharedEntity GEntityForSvEntity(svEntity_t svEnt) 
+        {
+            return sv.gentities[svEnt.id];
+        }
 
         public class server_t {
 
@@ -1272,7 +1276,7 @@ namespace CubeHags.server
             {
                 for (int i = 0; i < 1024; i++)
                 {
-                    svEntities[i] = new svEntity_t();
+                    svEntities[i] = new svEntity_t(i);
                 }
             }
         	public serverState_t	state;
@@ -1319,6 +1323,12 @@ namespace CubeHags.server
         } 
 
             public class svEntity_t {
+
+                public svEntity_t(int id)
+                {
+                    this.id = id;
+                }
+                public int id;
             	public worldSector_t worldSector;
             	public svEntity_t nextEntityInWorldSector;
             	

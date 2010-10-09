@@ -33,9 +33,9 @@ namespace CubeHags.client.map.Source
             if (origin_values.Length == 3)
             {
                 Vector3 position = Vector3.Zero;
-                position.X = float.Parse(origin_values[0]);
-                position.Y = float.Parse(origin_values[1]);
-                position.Z = float.Parse(origin_values[2]);
+                position.X = float.Parse(origin_values[0], System.Globalization.CultureInfo.InvariantCulture);
+                position.Y = float.Parse(origin_values[1], System.Globalization.CultureInfo.InvariantCulture);
+                position.Z = float.Parse(origin_values[2], System.Globalization.CultureInfo.InvariantCulture);
                 startPosition = SourceParser.SwapZY(position);
             }
             

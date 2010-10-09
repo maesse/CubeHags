@@ -735,9 +735,9 @@ namespace CubeHags.common
             to.delta_angles[2] = msg.ReadBoolean() ? msg.ReadInt32() : from.delta_angles[2];
             to.groundEntityNum = msg.ReadBoolean() ? msg.ReadInt32() : from.groundEntityNum;
             to.movementDir = msg.ReadBoolean() ? msg.ReadInt32() : from.movementDir;
-            to.grapplePoint.X = msg.ReadBoolean() ? msg.ReadFloat() : from.grapplePoint.X;
-            to.grapplePoint.Y = msg.ReadBoolean() ? msg.ReadFloat() : from.grapplePoint.Y;
-            to.grapplePoint.Z = msg.ReadBoolean() ? msg.ReadFloat() : from.grapplePoint.Z;
+            to.ladderNormal.X = msg.ReadBoolean() ? msg.ReadFloat() : from.ladderNormal.X;
+            to.ladderNormal.Y = msg.ReadBoolean() ? msg.ReadFloat() : from.ladderNormal.Y;
+            to.ladderNormal.Z = msg.ReadBoolean() ? msg.ReadFloat() : from.ladderNormal.Z;
             to.speed = msg.ReadBoolean() ? msg.ReadInt32() : from.speed;
             to.eFlags = msg.ReadBoolean() ? (Common.EntityFlags)Enum.Parse(typeof(Common.EntityFlags), ""+msg.ReadInt32()) : from.eFlags;
             to.eventSequence = msg.ReadBoolean() ? msg.ReadInt32() : from.eventSequence;
@@ -842,9 +842,9 @@ namespace CubeHags.common
             if (from.delta_angles[2] != to.delta_angles[2]) { msg.Write(true); msg.Write(to.delta_angles[2]); } else { msg.Write(false); }
             if (from.groundEntityNum != to.groundEntityNum) { msg.Write(true); msg.Write(to.groundEntityNum); } else { msg.Write(false); }
             if (from.movementDir != to.movementDir) { msg.Write(true); msg.Write(to.movementDir); } else { msg.Write(false); }
-            if (from.grapplePoint.X != to.grapplePoint.X) { msg.Write(true); msg.Write(to.grapplePoint.X); } else { msg.Write(false); }
-            if (from.grapplePoint.Y != to.grapplePoint.Y) { msg.Write(true); msg.Write(to.grapplePoint.Y); } else { msg.Write(false); }
-            if (from.grapplePoint.Z != to.grapplePoint.Z) { msg.Write(true); msg.Write(to.grapplePoint.Z); } else { msg.Write(false); }
+            if (from.ladderNormal.X != to.ladderNormal.X) { msg.Write(true); msg.Write(to.ladderNormal.X); } else { msg.Write(false); }
+            if (from.ladderNormal.Y != to.ladderNormal.Y) { msg.Write(true); msg.Write(to.ladderNormal.Y); } else { msg.Write(false); }
+            if (from.ladderNormal.Z != to.ladderNormal.Z) { msg.Write(true); msg.Write(to.ladderNormal.Z); } else { msg.Write(false); }
             if (from.speed != to.speed) { msg.Write(true); msg.Write(from.speed); } else { msg.Write(false); }
 
             if (from.eFlags != to.eFlags) { msg.Write(true); msg.Write((int)to.eFlags); } else { msg.Write(false); }

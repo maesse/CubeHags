@@ -18,11 +18,11 @@ namespace CubeHags.common
 {
     public sealed partial class Common
     {
-        public static Vector3 playerMins = new Vector3(-13, -13, 0);
-        public static Vector3 playerMaxs = new Vector3(13, 13, 72);
+        public static Vector3 playerMins = new Vector3(-16, -16, 0);
+        public static Vector3 playerMaxs = new Vector3(16, 16, 72);
         public static Vector3 playerView = new Vector3(0, 0, 64);
-        public static Vector3 playerDuckedMins = new Vector3(-13, -13, 0);
-        public static Vector3 playerDuckedMaxs = new Vector3(13, 13, 72);
+        public static Vector3 playerDuckedMins = new Vector3(-16, -16, 0);
+        public static Vector3 playerDuckedMaxs = new Vector3(16, 16, 36);
         public static Vector3 playerDuckedView = new Vector3(0, 0, 30);
         public static Vector3 playerDeadView = new Vector3(0, 0, 14);
         //public static Vector3 playerMins = new Vector3(-13, -13, -36);
@@ -218,6 +218,7 @@ namespace CubeHags.common
 
         public void Init(string commandline)
         {
+            
             System.Console.WriteLine("Cubehags os:{0} cpus:{1}", Environment.OSVersion, Environment.ProcessorCount);
             FileStream stream;
             try
@@ -555,7 +556,8 @@ namespace CubeHags.common
             DEAD,		// no acceleration or turning, but free falling
             FREEZE,		// stuck in place with no control
             INTERMISSION,	// no movement or status bar
-            SPINTERMISSION	// no movement or status bar
+            SPINTERMISSION,	// no movement or status bar
+            LADDER
         }
 
         public class PlayerState
@@ -617,7 +619,7 @@ namespace CubeHags.common
             // when at rest, the value will remain unchanged
             // used to twist the legs during strafing
 
-            public Vector3 grapplePoint;	// location of grapple to pull towards if PMF_GRAPPLE_PULL
+            public Vector3 ladderNormal;	// location of grapple to pull towards if PMF_GRAPPLE_PULL
 
             public EntityFlags eFlags;			// copied to entityState_t->eFlags
 

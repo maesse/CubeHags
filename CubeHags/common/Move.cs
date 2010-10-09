@@ -134,35 +134,72 @@ namespace CubeHags.common
 
             Duck();
 
-            // LadderMove();
-
-            //if (pml.groundPlane && (pm.cmd.buttons & (int)Input.ButtonDef.USE) > 0 && !speedCropped)
-            //{
-            //    float frac = 1f / 3.0f;
-            //    pm.rightmove *= frac;
-            //    pm.upmove *= frac;
-            //    pm.forwardmove *= frac;
-            //    speedCropped = true;
-            //}
-
-            if (pm.ps.pm_type == PMType.SPECTATOR)
+            if (LadderMove())
             {
-                TryPlayerMove();
-                DropTimers();
-                return;
+
+            }
+            else if(pm.ps.pm_type == PMType.LADDER)
+            {
+                // clear ladder stuff unless player is noclipping or being lifted by barnacle. 
+                // it will be set immediately again next frame if necessary
+                pm.ps.pm_type = PMType.NORMAL;
+
+            }
+            // 
+
+            if (pml.groundPlane && (pm.cmd.buttons & (int)Input.ButtonDef.USE) > 0 && !speedCropped)
+            {
+                float frac = 1f / 3.0f;
+                pm.rightmove *= frac;
+                pm.upmove *= frac;
+                pm.forwardmove *= frac;
+                speedCropped = true;
             }
 
+            switch (pm.ps.pm_type)
+            {
+                case PMType.SPECTATOR:
+                    TryPlayerMove();
+                    DropTimers();
+                    break;
+                case PMType.LADDER:
+                    FullLadderMove(false);
+                    break;
+                case PMType.NORMAL:
+                    FullWalkMove(false);
+                    break;
+                default:
+                    Common.Instance.WriteLine("Unknown movetype: " + Enum.GetName(typeof(PMType), pm.ps.pm_type));
+                    break;
+            }
+
+            
+        }
+
+        void FullLadderMove(bool onladder)
+        {
+            if ((pm.cmd.buttons & (int)Input.ButtonDef.JUMP) > 0)
+            {
+                if(!onladder)
+                    Jump();
+            }
+            else
+                pm.ps.OldButtons &= ~(int)Input.ButtonDef.JUMP;
+            TryPlayerMove();
+        }
+
+        void FullWalkMove(bool onladder)
+        {
             // Walk
             StartGravity();
 
             // Jump pressed
             if ((pm.cmd.buttons & (int)Input.ButtonDef.JUMP) > 0)
             {
-                //pm.ps.pm_flags |= PMFlags.JUMP_HELD;
-                Jump();
+                if(!onladder)
+                    Jump();
             }
             else
-                //pm.ps.pm_flags &= ~PMFlags.JUMP_HELD;
                 pm.ps.OldButtons &= ~(int)Input.ButtonDef.JUMP;
 
             // Fricion is handled before we add in any base velocity. That way, if we are on a conveyor, 
@@ -194,6 +231,120 @@ namespace CubeHags.common
                 pm.ps.velocity[2] = 0;
 
             pm.ps.velocity = CGame.SnapVector(pm.ps.velocity);
+        }
+
+        bool LadderMove()
+        {
+            Vector3 wishdir; 
+
+            if (pm.ps.pm_type == PMType.NOCLIP)
+                return false;
+
+            // If I'm already moving on a ladder, use the previous ladder direction
+            if (pm.ps.pm_type == PMType.LADDER)
+            {
+                wishdir = -pm.ps.ladderNormal;
+            }
+            else
+            {
+                // otherwise, use the direction player is attempting to move
+                if (pm.forwardmove != 0 || pm.rightmove != 0)
+                {
+                    wishdir = pml.forward * pm.forwardmove + pml.right * pm.rightmove;
+                    wishdir.Normalize();
+                }
+                else
+                {
+                    // Player is not attempting to move, no ladder behavior
+                    return false;
+                }
+            }
+
+            // wishdir points toward the ladder if any exists
+            Vector3 end = pm.ps.origin + 2f * wishdir;
+            trace_t trace = TracePlayerBBox(pm.ps.origin, end, (int)brushflags.MASK_PLAYERSOLID);
+
+            // no ladder in that direction, return
+            if (trace.fraction == 1.0f || !OnLadder(trace))
+                return false;
+
+            pm.ps.pm_type = PMType.LADDER;
+            pm.ps.ladderNormal = trace.plane.normal;
+
+            // On ladder, convert movement to be relative to the ladder
+            Vector3 floor = pm.ps.origin;
+            floor[2] += (pm.ps.Ducked ? Common.playerDuckedMins[2] : Common.playerMins[2]) - 1f;
+
+            bool onfloor;
+            if (ClipMap.Instance.GetPointContents(floor) == (int)brushflags.CONTENTS_SOLID)
+                onfloor = true;
+            else
+                onfloor = false;
+
+            pm.ps.gravity = 0;
+
+            float forwardspd = 0, rightspd = 0;
+            if (pm.cmd.forwardmove < 0)
+                forwardspd -= 200;
+            if (pm.cmd.forwardmove > 0)
+                forwardspd += 200;
+            if (pm.cmd.rightmove < 0)
+                rightspd -= 200;
+            if (pm.cmd.rightmove > 0)
+                rightspd += 200;
+
+            if ((pm.cmd.buttons & (int)Input.ButtonDef.JUMP) > 0)
+            {
+                pm.ps.pm_type = PMType.NORMAL;
+                pm.ps.velocity = trace.plane.normal * 270;
+            }
+            else
+            {
+                if (forwardspd != 0 && rightspd != 0)
+                {
+                    // Calculate player's intended velocity
+                    Vector3 velocity = pml.forward * forwardspd;
+                    velocity = velocity + pml.right * rightspd;
+
+                    // Perpendicular in the ladder plane
+                    Vector3 tmp = Vector3.Zero;
+                    tmp[2] = 1;
+                    Vector3 perp = Vector3.Cross(tmp, trace.plane.normal);
+                    perp.Normalize();
+
+                    // decompose velocity into ladder plane
+                    float normal = Vector3.Dot(velocity, trace.plane.normal);
+
+                    // This is the velocity into the face of the ladder
+                    Vector3 cross = trace.plane.normal * normal;
+
+                    // This is the player's additional velocity
+                    Vector3 lateral = velocity - cross;
+
+                    // This turns the velocity into the face of the ladder into velocity that
+                    // is roughly vertically perpendicular to the face of the ladder.
+                    // NOTE: It IS possible to face up and move down or face down and move up
+                    // because the velocity is a sum of the directional velocity and the converted
+                    // velocity through the face of the ladder -- by design.
+                    tmp = Vector3.Cross(trace.plane.normal, perp);
+                    pm.ps.velocity = lateral - normal * tmp;
+
+                    if (onfloor && normal > 0)   // On ground moving away from the ladder
+                        pm.ps.velocity += trace.plane.normal * 200f;
+                }
+                else
+                    pm.ps.velocity = Vector3.Zero;
+            }
+
+            return true;
+        }
+
+        bool OnLadder(trace_t trace)
+        {
+            if ((trace.contents & (int)brushflags.CONTENTS_LADDER) > 0)
+                return true;
+
+            return false;
         }
 
         // Just make sure the velocity don't go absolutely bonkers
@@ -228,7 +379,7 @@ namespace CubeHags.common
 
         trace_t TracePlayerBBox(Vector3 start, Vector3 end, int mask)
         {
-            return ClipMap.Instance.Box_Trace(start, end, pm.ps.Ducked ? Common.playerDuckedMins : Common.playerMins, pm.ps.Ducked ? Common.playerDuckedMaxs : Common.playerMaxs, 0, mask);
+            return pm.DoTrace(start, end, pm.ps.Ducked ? Common.playerDuckedMins : Common.playerMins, pm.ps.Ducked ? Common.playerDuckedMaxs : Common.playerMaxs, 0, mask);
         }
 
         void Duck()
@@ -357,6 +508,7 @@ namespace CubeHags.common
             pm.ps.Ducking = false;
             pm.ps.pm_flags &= ~PMFlags.DUCKED;
             pm.ps.viewheight = (int)Common.playerView.Z;
+            pm.ps.DuckTime = 0;
 
             pm.ps.origin = newOrg;
 
@@ -383,7 +535,7 @@ namespace CubeHags.common
             bool saveDucked = pm.ps.Ducked;
             pm.ps.Ducked = false;
             trace_t trace = TracePlayerBBox(newOrg, newOrg, (int)brushflags.MASK_PLAYERSOLID);
-            pm.ps.Ducked = true;
+            pm.ps.Ducked = saveDucked;
             if (!trace.startsolid)
                 return true;
 
@@ -578,7 +730,8 @@ namespace CubeHags.common
 
             // first try moving directly to the next spot
             Vector3 start = dest;
-            trace_t trace = ClipMap.Instance.Box_Trace(pm.ps.origin, dest, pm.mins, pm.maxs, 0, pm.tracemask);
+
+            trace_t trace = TracePlayerBBox(pm.ps.origin, dest, pm.tracemask);
             // If we made it all the way, then copy trace end
             //  as new player position.
             if (trace.fraction == 1)
@@ -609,7 +762,7 @@ namespace CubeHags.common
             dest = pm.ps.origin;
             dest[2] += 18;
 
-            trace = ClipMap.Instance.Box_Trace(pm.ps.origin, dest, pm.mins, pm.maxs, 0, pm.tracemask);
+            trace = TracePlayerBBox(pm.ps.origin, dest, pm.tracemask);
             // If we started okay and made it part of the way at least,
             //  copy the results to the movement start position and then
             //  run another move try.
@@ -624,7 +777,7 @@ namespace CubeHags.common
             dest = pm.ps.origin;
             dest[2] -= 18;
 
-            trace = ClipMap.Instance.Box_Trace(pm.ps.origin, dest, pm.mins, pm.maxs, 0, pm.tracemask);
+            trace = TracePlayerBBox(pm.ps.origin, dest, pm.tracemask);
 
             // If we are not on the ground any more then
             //  use the original movement attempt
@@ -690,7 +843,7 @@ namespace CubeHags.common
                     end[i] = pm.ps.origin[i] + time_left * pm.ps.velocity[i];
 
                 // See if we can make it from origin to end point.
-                trace_t trace = ClipMap.Instance.Box_Trace(pm.ps.origin, end, pm.mins, pm.maxs, 0, pm.tracemask);
+                trace_t trace = TracePlayerBBox(pm.ps.origin, end, pm.tracemask);
 
                 allFraction += trace.fraction;
                 // If we started in a solid object, or we were in solid space
@@ -862,10 +1015,16 @@ namespace CubeHags.common
             pml.groundPlane = false;
             pml.walking = false;
 
-            PreventMegaBunnyJumping();
+            //PreventMegaBunnyJumping();
+
+            float groundFactor = 1f;
 
             // Acclerate upward
-            pm.ps.velocity[2] += 295;
+            float startz = pm.ps.velocity[2];
+            if ((pm.ps.pm_flags & PMFlags.DUCKED) > 0 || pm.ps.Ducking)
+                pm.ps.velocity[2] = groundFactor * (float)Math.Sqrt(2 * 800 * 45);
+            else
+                pm.ps.velocity[2] += groundFactor * (float)Math.Sqrt(2 * 800 * 45);
 
             // Decay it for simulation
             FinishGravity();
@@ -1000,12 +1159,12 @@ namespace CubeHags.common
             else
             {
                 // Try and move down.
-                trace_t tr = ClipMap.Instance.Box_Trace(bumpOrigin, point, pm.mins, pm.maxs, 0, pm.tracemask);
+                trace_t tr = TracePlayerBBox(bumpOrigin, point, pm.tracemask);
 
                 if (tr.startsolid)
                 {
                     bumpOrigin = pm.ps.origin;
-                    tr = ClipMap.Instance.Box_Trace(bumpOrigin, point, pm.mins, pm.maxs, 0, pm.tracemask);
+                    tr = TracePlayerBBox(bumpOrigin, point, pm.tracemask);
                 }
 
                 // If we hit a steep plane, we are not on ground

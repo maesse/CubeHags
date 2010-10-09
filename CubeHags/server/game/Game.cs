@@ -34,7 +34,10 @@ namespace CubeHags.server
 
         public Game()
         {
-            spawns  = new spawn_t[] { new spawn_t{Name = "info_player_start", Spawn = new SpawnDelegate(SP_info_player_start)} };
+            spawns  = new spawn_t[] { 
+                new spawn_t{Name = "info_player_start", Spawn = new SpawnDelegate(SP_info_player_start)},
+                new spawn_t{Name = "info_ladder", Spawn = new SpawnDelegate(SP_info_ladder)} 
+            };
             sv_gravity = CVars.Instance.Get("sv_gravity", "800", CVarFlags.SERVER_INFO);
             sv_speed = CVars.Instance.Get("sv_speed", "320", CVarFlags.SERVER_INFO);
             g_synchrounousClients = CVars.Instance.Get("g_synchrounousClients", "0", CVarFlags.SERVER_INFO);
@@ -374,11 +377,11 @@ namespace CubeHags.server
 
         private void FreeEntity(gentity_t ent)
         {
-            // TODO: UnlinkFromWorld
+            Server.Instance.UnlinkEntity(GEntityToSharedEntity(ent));
             if (ent.neverFree)
                 return;
 
-            // TODO: CLear entity
+            // Clear entity
             ent.classname = "freed";
             ent.freetime = level.time;
             ent.inuse = false;
@@ -609,7 +612,7 @@ namespace CubeHags.server
     //#define	MASK_WATER				(32)
     //#define	MASK_OPAQUE				(1)
     //#define	MASK_SHOT				(1|0x2000000|0x4000000)
-            pm.Trace = new TraceDelegate(ClipMap.Instance.SV_Trace);
+            pm.Trace = new TraceDelegate(Server.Instance.SV_Trace);
             pm.ps = client.ps;
             pm.cmd = ucmd;
             if (pm.ps.pm_type == Common.PMType.DEAD)
@@ -728,7 +731,7 @@ namespace CubeHags.server
                 
                 // set up for pmove
                 pmove_t pm = new pmove_t();
-                pm.Trace = new TraceDelegate(ClipMap.Instance.SV_Trace);
+                pm.Trace = new TraceDelegate(Server.Instance.SV_Trace);
                 pm.ps = client.ps;
                 pm.cmd = ucmd;
                 pm.tracemask = (int)(brushflags.CONTENTS_SOLID | brushflags.CONTENTS_MOVEABLE | brushflags.CONTENTS_SLIME | brushflags.CONTENTS_OPAQUE);
@@ -913,6 +916,7 @@ namespace CubeHags.server
 
         void InitEntity(gentity_t ent)
         {
+            
             ent.inuse = true;
             ent.classname = "noclass";
             int entid = 1024;

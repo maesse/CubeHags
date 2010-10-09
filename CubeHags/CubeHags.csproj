@@ -204,6 +204,7 @@
     <Compile Include="server\ServerClient.cs" />
     <Compile Include="server\ServerInit.cs" />
     <Compile Include="server\ServerSnapshot.cs" />
+    <Compile Include="server\ServerWorld.cs" />
     <None Include="app.config" />
     <Compile Include="client\gfx\HeightMap.cs" />
     <Compile Include="common\HighResolutionTimer.cs" />

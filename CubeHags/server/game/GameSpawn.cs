@@ -5,6 +5,7 @@ using System.Text;
 using CubeHags.common;
 using SlimDX;
 using CubeHags.client.common;
+using CubeHags.client.map.Source;
 
 namespace CubeHags.server
 {
@@ -33,7 +34,19 @@ namespace CubeHags.server
             //SP_info_player_deathmatch(ent);
         }
 
+        void SP_info_ladder(gentity_t ent)
+        {
+            ent.r.contents = (int)brushflags.CONTENTS_LADDER;
+            //ent.spawnflags = 1;
+            ent.r.svFlags = Common.svFlags.NOCLIENT;
+            //ent.s.eType = 13;
+            Vector3 size = (ent.r.absmax - ent.r.absmin)*0.5f;
+            ent.r.currentOrigin = ent.r.absmin + size;
+            ent.r.mins = -size;
+            ent.r.maxs = size;
 
+            Server.Instance.LinkEntity(GEntityToSharedEntity(ent));
+        }
 
         /*
         ===========
@@ -183,14 +196,14 @@ namespace CubeHags.server
 
         Vector3 ParseVector(string value)
         {
-            value = value.Replace('.', ','); // Needed for proper C# float parsing
+            //value = value.Replace('.', ','); // Needed for proper C# float parsing
             string[] values = value.Split(' ', '\t');
             if (values.Length == 3)
             {
                 Vector3 position = Vector3.Zero;
-                position.X = float.Parse(values[0]);
-                position.Y = float.Parse(values[1]);
-                position.Z = float.Parse(values[2]);
+                position.X = float.Parse(values[0], System.Globalization.CultureInfo.InvariantCulture);
+                position.Y = float.Parse(values[1], System.Globalization.CultureInfo.InvariantCulture);
+                position.Z = float.Parse(values[2], System.Globalization.CultureInfo.InvariantCulture);
                 return position;
             }
             Common.Instance.Error("ParseVector: Couldn't parse vector");
@@ -199,6 +212,23 @@ namespace CubeHags.server
 
         void ParseField(string key, string value, gentity_t ent)
         {
+            
+            if (key.StartsWith("mins."))
+            {
+                if (ent.r.absmin == null)
+                    ent.r.absmin = Vector3.Zero;
+                if (key.EndsWith("x")) ent.r.absmin.X = float.Parse(value, System.Globalization.CultureInfo.InvariantCulture);
+                if (key.EndsWith("y")) ent.r.absmin.Y = float.Parse(value, System.Globalization.CultureInfo.InvariantCulture);
+                if (key.EndsWith("z")) ent.r.absmin.Z = float.Parse(value, System.Globalization.CultureInfo.InvariantCulture);
+            }
+            else if (key.StartsWith("maxs."))
+            {
+                if (ent.r.absmax == null)
+                    ent.r.absmax = Vector3.Zero;
+                if (key.EndsWith("x")) ent.r.absmax.X = float.Parse(value, System.Globalization.CultureInfo.InvariantCulture);
+                if (key.EndsWith("y")) ent.r.absmax.Y = float.Parse(value, System.Globalization.CultureInfo.InvariantCulture);
+                if (key.EndsWith("z")) ent.r.absmax.Z = float.Parse(value, System.Globalization.CultureInfo.InvariantCulture);
+            } else
             switch (key)
             {
                 case "classname":
@@ -217,7 +247,7 @@ namespace CubeHags.server
                     ent.spawnflags = int.Parse(value);
                     break;
                 case "speed":
-                    ent.speed = float.Parse(value);
+                    ent.speed = float.Parse(value, System.Globalization.CultureInfo.InvariantCulture);
                     break;
                 case "target":
                     ent.target = value;
@@ -232,10 +262,10 @@ namespace CubeHags.server
                     ent.team = value;
                     break;
                 case "wait":
-                    ent.wait = float.Parse(value);
+                    ent.wait = float.Parse(value, System.Globalization.CultureInfo.InvariantCulture);
                     break;
                 case "random":
-                    ent.random = float.Parse(value);
+                    ent.random = float.Parse(value, System.Globalization.CultureInfo.InvariantCulture);
                     break;
                 case "count":
                     ent.count = int.Parse(value);
@@ -262,7 +292,7 @@ namespace CubeHags.server
         Vector3 ParseAngleHack(string str)
         {
             Vector3 res = Vector3.Zero;
-            res[1] = float.Parse(str);
+            res[1] = float.Parse(str, System.Globalization.CultureInfo.InvariantCulture);
             return res;
         }
 
@@ -540,7 +570,7 @@ namespace CubeHags.server
         {
             string s = "";
             bool present = SpawnString(key, defaultString, ref s);
-            f = float.Parse(s);
+            f = float.Parse(s, System.Globalization.CultureInfo.InvariantCulture);
             return present;
         }
 
